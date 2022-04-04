@@ -151,6 +151,15 @@ void StmtVisitor::VisitStmt_(const BlockRealizeNode* op) {
   this->VisitStmt(op->block);
 }
 
+void StmtVisitor::VisitStmt_(const SparseIterationNode* op) {
+  // NOTE(zihao): the sparse iter-vars are not visited.
+  // TODO(zihao): add axis to visitor.
+  if (op->init.defined()) {
+    this->VisitStmt(op->init.value());
+  }
+  this->VisitStmt(op->body);
+}
+
 class StmtMutator::Internal {
  public:
   /*!
@@ -547,6 +556,25 @@ Stmt StmtMutator::VisitStmt_(const BlockRealizeNode* op) {
     n->iter_values = std::move(v);
     n->predicate = std::move(pred);
     n->block = Downcast<Block>(block);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const SparseIterationNode* op) {
+  // NOTE(zihao): sparse iter vars are not visited here.
+  // TODO(zihao): support sparse iter vars in the future.
+  Optional<Stmt> init = NullOpt;
+  if (op->init.defined()) {
+    init = VisitStmt(op->init.value());
+  }
+  Stmt body = VisitStmt(op->body);
+
+  if (init.same_as(op->init) && body.same_as(op->body)) {
+    return GetRef<SparseIteration>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->init = std::move(init);
+    n->body = std::move(body);
     return Stmt(n);
   }
 }

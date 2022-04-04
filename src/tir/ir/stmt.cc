@@ -969,17 +969,21 @@ void PrintBlockSignature(const BlockNode* op, ReprPrinter* p) {
   }
 }
 
-void PrintBlockBody(const BlockNode* op, ReprPrinter* p) {
-  // Print init
-  if (op->init.defined()) {
+void PrintInitStmt(const Optional<Stmt>& init, ReprPrinter* p) {
+  if (init.defined()) {
     p->PrintIndent();
     p->stream << "with init() {\n";
     p->indent += 2;
-    p->Print(op->init.value());
+    p->Print(init.value());
     p->indent -= 2;
     p->PrintIndent();
     p->stream << "}\n";
   }
+}
+
+void PrintBlockBody(const BlockNode* op, ReprPrinter* p) {
+  // Print init
+  PrintInitStmt(op->init, p);
   // Print body
   p->Print(op->body);
 }
@@ -1051,6 +1055,58 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       PrintBlockSignature(block_op, p);
       // Print block init and body
       PrintBlockBody(block_op, p);
+
+      p->indent -= 2;
+      p->PrintIndent();
+      p->stream << "}\n";
+    });
+
+SparseIteration::SparseIteration(Array<SpIterVar> sp_iter_vars, String name, Stmt body,
+                                 Optional<Stmt> init, Span span) {
+  ObjectPtr<SparseIterationNode> node = make_object<SparseIterationNode>();
+  node->sp_iter_vars = std::move(sp_iter_vars);
+  node->name = std::move(name);
+  node->body = std::move(body);
+  node->init = std::move(init);
+  node->span = std::move(span);
+  data_ = std::move(node);
+}
+
+TVM_REGISTER_GLOBAL("tir.SparseIteration")
+    .set_body_typed([](Array<SpIterVar> sp_iter_vars, String name, Stmt body, Optional<Stmt> init,
+                       Span span) {
+      return SparseIteration(sp_iter_vars, name, body, init, span);
+    });
+
+TVM_REGISTER_NODE_TYPE(SparseIterationNode);
+
+void PrintSparseIterationTitle(const SparseIterationNode* op, ReprPrinter* p) {
+  p->stream << "sparse_iteration " << op->name << "(";
+  for (int i = 0; i < static_cast<int>(op->sp_iter_vars.size()); ++i) {
+    p->Print(op->sp_iter_vars[i]);
+    if (i < static_cast<int>(op->sp_iter_vars.size()) - 1) {
+      p->stream << ", ";
+    }
+  }
+  p->stream << ")";
+}
+
+void PrintSparseIterationBody(const SparseIterationNode* op, ReprPrinter* p) {
+  // Print init
+  PrintInitStmt(op->init, p);
+  // Print body
+  p->Print(op->body);
+}
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<SparseIterationNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const SparseIterationNode*>(node.get());
+      p->PrintIndent();
+      PrintSparseIterationTitle(op, p);
+      p->stream << " {\n";
+      p->indent += 2;
+
+      PrintSparseIterationBody(op, p);
 
       p->indent -= 2;
       p->PrintIndent();

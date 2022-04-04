@@ -821,6 +821,15 @@ void CodeGenCUDA::VisitExpr_(const CallNode* op, std::ostream& os) {
     std::string smem_elem_offset = this->PrintExpr(op->args[6]);
     this->stream << PrintLoadMatrixAssembly(trans, num, type, local_ptr, local_elem_offset,
                                             smem_ptr, smem_elem_offset);
+  } else if (op->op.same_as(builtin::tvm_atomic_add())) {
+    os << "atomicAdd(";
+    ICHECK_EQ(op->args.size(), 3U);
+    this->PrintExpr(op->args[0], os);
+    os << " + ";
+    this->PrintExpr(op->args[1], os);
+    os << ", ";
+    this->PrintExpr(op->args[2], os);
+    os << ")";
   } else {
     CodeGenC::VisitExpr_(op, os);
   }

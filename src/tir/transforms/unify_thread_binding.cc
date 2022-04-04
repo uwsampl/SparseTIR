@@ -34,6 +34,24 @@ namespace tir {
 
 using support::StartsWith;
 
+class ThreadTagCollector : public StmtExprVisitor {
+ public:
+  static std::unordered_set<std::string> Collect(Stmt stmt) {
+    ThreadTagCollector collector;
+    collector(std::move(stmt));
+    return std::move(collector.thread_tags);
+  }
+  std::unordered_set<std::string> thread_tags;
+
+ private:
+  void VisitStmt_(const ForNode* op) final {
+    if (op->kind == ForKind::kThreadBinding) {
+      thread_tags.insert(op->thread_binding.value()->thread_tag);
+    }
+    StmtExprVisitor::VisitStmt(op->body);
+  }
+};
+
 /*!
  * \brief A mutator which searches AttrStmts of thread bindings and changes the `node` field IterVar
  * of the AttrStmts, so that for one kind of thread binding, all such thread bindings use the same
@@ -59,14 +77,46 @@ class ThreadBindingUnifier : public StmtExprMutator {
       return StmtExprMutator::VisitStmt_(op);
     }
     Map<String, ObjectRef> annotations = op->annotations;
+    outer_thread_tags_.insert(op->thread_binding.value()->thread_tag);
     Stmt stmt = UnifyThreadBindingImpl(op, op->loop_var, op->thread_binding.value(),
                                        Range::FromMinExtent(op->min, op->extent));
+    outer_thread_tags_.erase(op->thread_binding.value()->thread_tag);
     if (annotations.empty()) {
       return stmt;
     }
     For new_loop = Downcast<For>(stmt);
     new_loop.CopyOnWrite()->annotations = std::move(annotations);
     return std::move(new_loop);
+  }
+
+  Stmt VisitStmt_(const BlockNode* op) final {
+    is_child_blk_ = true;
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  Stmt VisitStmt_(const BlockRealizeNode* op) final {
+    block_thread_tags_stk_.emplace_back(std::move(ThreadTagCollector::Collect(op->block)));
+
+    auto n = CopyOnWrite(op);
+    bool is_atomic = op->block->annotations.Get("atomic").defined();
+    n->block = Downcast<Block>(VisitStmt(op->block));
+    PrimExpr predicate = VisitExpr(op->predicate);
+    if (is_child_blk_ && is_atomic) {
+      std::vector<std::string> diff_thread_tags;
+      std::set_difference(block_thread_tags_stk_[block_thread_tags_stk_.size() - 2].begin(), block_thread_tags_stk_[block_thread_tags_stk_.size() - 2].end(),
+                          outer_thread_tags_.begin(), outer_thread_tags_.end(),
+                          std::inserter(diff_thread_tags, diff_thread_tags.begin()));
+      if (!diff_thread_tags.empty()) {
+        for (const std::string& thread_tag : diff_thread_tags) {
+          predicate =
+              predicate && equal(thread_tag2iter_var_map_.Get(thread_tag).value()->var, Integer(0));
+        }
+      }
+    }
+    n->predicate = predicate;
+    block_thread_tags_stk_.pop_back();
+    is_child_blk_ = false;
+    return BlockRealize(n);
   }
 
   template <typename Node>
@@ -169,6 +219,9 @@ class ThreadBindingUnifier : public StmtExprMutator {
   int thread_block_depth_ = 0;
   /*! \brief An analyzer used for equality proof */
   arith::Analyzer ana;
+  std::unordered_set<std::string> outer_thread_tags_;
+  std::vector<std::unordered_set<std::string>> block_thread_tags_stk_;
+  bool is_child_blk_ = false;
 };
 
 PrimFunc UnifyThreadBinding(PrimFunc f) {

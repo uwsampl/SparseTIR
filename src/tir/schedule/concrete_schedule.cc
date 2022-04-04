@@ -453,6 +453,14 @@ void ConcreteScheduleNode::Reorder(const Array<LoopRV>& ordered_loop_rvs) {
   this->state_->DebugVerify();
 }
 
+void ConcreteScheduleNode::LiftLoop(const LoopRV& loop_rv) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  StmtSRef loop_sref = this->GetSRef(loop_rv);
+  tir::LiftLoop(state_, loop_sref);
+  TVM_TIR_SCHEDULE_END("lift_loop", this->error_render_level_);
+  this->state_->DebugVerify();
+}
+
 /******** Schedule: Manipulate ForKind ********/
 
 void ConcreteScheduleNode::Parallel(const LoopRV& loop_rv) {
@@ -694,6 +702,74 @@ void ConcreteScheduleNode::TransformLayout(const BlockRV& block_rv, int buffer_i
 }
 
 /******** Schedule: Misc ********/
+
+/******** Schedule: SparseTIR schedules ********/
+
+SparseIterationRV ConcreteScheduleNode::GetSparseIteration(const String& name,
+                                                           const String& func_name) {
+  class NotFoundResult : public ScheduleError {
+   public:
+    explicit NotFoundResult(String name, IRModule mod) : name_(name), mod_(mod) {}
+
+    IRModule mod() const final { return mod_; }
+    Array<ObjectRef> LocationsOfInterest() const final { return {}; }
+
+    String DetailRenderTemplate() const final {
+      return "Cannot find a sparse iteration with the name: " + name_;
+    }
+
+    String FastErrorString() const final {
+      return "ScheduleError: Cannot find a sparse iteration with the specified name";
+    }
+
+    String name_;
+    IRModule mod_;
+  };
+
+  BaseFunc func = this->state_->mod->Lookup(func_name);
+  const auto* prim_func = TVM_TYPE_AS(prim_func, func, PrimFuncNode);
+
+  // Currently we only handle cases with single sparse iteration.
+  const auto* block = prim_func->body.as<SparseIterationNode>();
+  if (block == nullptr) {
+    TVM_TIR_SCHEDULE_BEGIN();
+    throw NotFoundResult(name, this->state_->mod);
+    TVM_TIR_SCHEDULE_END("get-sparse-block", this->error_render_level_);
+  }
+
+  return CreateRV(GetRef<SparseIteration>(block));
+}
+
+Array<AxisRV> ConcreteScheduleNode::GetAxes(const String& func_name) {
+  BaseFunc func = this->state_->mod->Lookup(func_name);
+  const auto* prim_func = TVM_TYPE_AS(prim_func, func, PrimFuncNode);
+
+  // TODO(zihao)
+}
+
+Array<SpIterVar> ConcreteScheduleNode::GetSpIters(const SparseIterationRV& block_rv) {
+  return this->Get(block_rv)->sp_iter_vars;
+}
+
+void ConcreteScheduleNode::SparseReorder(const SparseIterationRV& block_rv,
+                                         const Array<SpIterVar>& new_order) {
+  SparseIteration old_block = this->Get(block_rv);
+  SparseIteration new_block{nullptr};
+  TVM_TIR_SCHEDULE_BEGIN();
+  new_block = tir::SparseReorder(state_, old_block, new_order);
+  TVM_TIR_SCHEDULE_END("sparse-reorder", this->error_render_level_);
+  this->UpdateRV(block_rv, new_block);
+}
+
+void ConcreteScheduleNode::SparseFuse(const SparseIterationRV& block_rv,
+                                      const Array<SpIterVar>& iters_to_fuse) {
+  SparseIteration old_block = this->Get(block_rv);
+  SparseIteration new_block{nullptr};
+  TVM_TIR_SCHEDULE_BEGIN();
+  new_block = tir::SparseFuse(state_, old_block, iters_to_fuse);
+  TVM_TIR_SCHEDULE_END("sparse-fuse", this->error_render_level_);
+  this->UpdateRV(block_rv, new_block);
+}
 
 }  // namespace tir
 }  // namespace tvm

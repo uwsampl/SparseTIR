@@ -30,8 +30,8 @@ namespace tir {
 // Get the function type of a PrimFunc
 PrimFunc::PrimFunc(Array<tir::Var> params, Stmt body, Type ret_type,
                    Map<tir::Var, Buffer> buffer_map,
-                   Optional<Map<tir::Var, Buffer>> preflattened_buffer_map, DictAttrs attrs,
-                   Span span) {
+                   Optional<Map<tir::Var, Buffer>> preflattened_buffer_map, Array<Axis> sp_axes,
+                   DictAttrs attrs, Span span) {
   // Assume void-return type for now
   // TODO(tvm-team) consider type deduction from body.
   if (!ret_type.defined()) {
@@ -43,6 +43,7 @@ PrimFunc::PrimFunc(Array<tir::Var> params, Stmt body, Type ret_type,
   n->ret_type = std::move(ret_type);
   n->buffer_map = std::move(buffer_map);
   n->preflattened_buffer_map = preflattened_buffer_map.value_or(Map<tir::Var, Buffer>());
+  n->sp_axes = std::move(sp_axes);
   n->attrs = std::move(attrs);
   n->checked_type_ = n->func_type_annotation();
   n->span = std::move(span);
@@ -122,8 +123,10 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 TVM_REGISTER_GLOBAL("tir.PrimFunc")
     .set_body_typed([](Array<tir::Var> params, Stmt body, Type ret_type,
                        Map<tir::Var, Buffer> buffer_map,
-                       Map<tir::Var, Buffer> preflattened_buffer_map, DictAttrs attrs, Span span) {
-      return PrimFunc(params, body, ret_type, buffer_map, preflattened_buffer_map, attrs, span);
+                       Map<tir::Var, Buffer> preflattened_buffer_map, Array<Axis> sp_axes,
+                       DictAttrs attrs, Span span) {
+      return PrimFunc(params, body, ret_type, buffer_map, preflattened_buffer_map, sp_axes, attrs,
+                      span);
     });
 
 TVM_REGISTER_GLOBAL("tir.TensorIntrin")

@@ -186,6 +186,12 @@ TVM_DLL StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs);
  */
 TVM_DLL void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs);
 
+/*!
+ * \brief Lift a loop to its outer scope.
+ * TODO(zihao): docstring
+ */
+TVM_DLL void LiftLoop(ScheduleState self, const StmtSRef& loop_sref);
+
 /******** Schedule: Manipulate ForKind ********/
 /*!
  * \brief Parallelize the input loop. It requires:
@@ -253,6 +259,7 @@ TVM_DLL StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int r
  */
 TVM_DLL StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_buffer_index,
                             const String& storage_scope);
+
 /******** Schedule: Compute location ********/
 /*!
  * \brief Move a producer block under the specific loop, and regenerate the
@@ -432,6 +439,31 @@ TVM_DLL void TransformLayout(ScheduleState self, const StmtSRef& block_sref, int
                              BufferIndexType buffer_index_type, const IndexMap& index_map);
 
 /******** Schedule: Misc ********/
+/******** Schedule: SparseTIR schedules ********/
+
+/*!
+ * \brief Reorder a list of sparse iterators. It requires the new order to not break the iterator
+ * dependency.
+ * \param self The state of the schedule
+ * \param block The block to be transformed
+ * \param new_order The new order of the sparse iterators, whose length should equal to the number
+ * of the input block's sparse iterators
+ * \return The new sparse iteration, which is only used to update the corresponding random variable
+ * in concrete schedule.
+ */
+TVM_DLL SparseIteration SparseReorder(ScheduleState self, const SparseIteration& block,
+                                      const Array<SpIterVar>& new_order);
+
+/*!
+ * \brief Fuse a list of sparse iterators in a sparse iteration.
+ * \param self The state of the schedule.
+ * \param block The block to be transformed.
+ * \param iters_to_fuse The sparse iterators to be fused.
+ * \return The new sparse iteration, which is only used to update the corresponding random variable
+ * in concrete schedule.
+ */
+TVM_DLL SparseIteration SparseFuse(ScheduleState self, const SparseIteration& block,
+                                   const Array<SpIterVar>& iters_to_fuse);
 
 }  // namespace tir
 }  // namespace tvm

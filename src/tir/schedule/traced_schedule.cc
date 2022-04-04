@@ -198,6 +198,16 @@ void TracedScheduleNode::Reorder(const Array<LoopRV>& ordered_loop_rvs) {
                                       /*outputs=*/{}));
 }
 
+void TracedScheduleNode::LiftLoop(const LoopRV& loop_rv) {
+  ConcreteScheduleNode::LiftLoop(loop_rv);
+
+  static const InstructionKind& kind = InstructionKind::Get("LiftLoop");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{loop_rv},
+                                      /*attrs=*/{},
+                                      /*outputs=*/{}));
+}
+
 /******** Schedule: Manipulate ForKind ********/
 
 void TracedScheduleNode::Parallel(const LoopRV& loop_rv) {
@@ -451,6 +461,38 @@ void TracedScheduleNode::EnterPostproc() {
                                       /*inputs=*/{},
                                       /*attrs=*/{},
                                       /*outputs=*/{}));
+}
+
+/******** Schedule: SparseTIR schedules ********/
+SparseIterationRV TracedScheduleNode::GetSparseIteration(const String& name,
+                                                         const String& func_name) {
+  SparseIterationRV result = ConcreteScheduleNode::GetSparseIteration(name, func_name);
+  // Do not support traced schedule so far.
+  return result;
+}
+
+Array<AxisRV> TracedScheduleNode::GetAxes(const String& func_name) {
+  Array<AxisRV> result = ConcreteScheduleNode::GetAxes(func_name);
+  // Do not support traced schedule so far.
+  return result;
+}
+
+Array<SpIterVar> TracedScheduleNode::GetSpIters(const SparseIterationRV& block_rv) {
+  Array<SpIterVar> result = ConcreteScheduleNode::GetSpIters(block_rv);
+  // Do not support traced schedule so far.
+  return result;
+}
+
+void TracedScheduleNode::SparseReorder(const SparseIterationRV& block_rv,
+                                       const Array<SpIterVar>& new_order) {
+  ConcreteScheduleNode::SparseReorder(block_rv, new_order);
+  // Do not support traced schedule so far.
+}
+
+void TracedScheduleNode::SparseFuse(const SparseIterationRV& block_rv,
+                                    const Array<SpIterVar>& new_order) {
+  ConcreteScheduleNode::SparseFuse(block_rv, new_order);
+  // Do not support traced schedule so far.
 }
 
 }  // namespace tir

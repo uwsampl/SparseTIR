@@ -289,7 +289,7 @@ class IterVarNode : public Object {
   static constexpr const char* _type_key = "tir.IterVar";
   static constexpr const bool _type_has_method_sequal_reduce = true;
   static constexpr const bool _type_has_method_shash_reduce = true;
-  TVM_DECLARE_FINAL_OBJECT_INFO(IterVarNode, Object);
+  TVM_DECLARE_BASE_OBJECT_INFO(IterVarNode, Object);
 };
 
 /*!

@@ -17,9 +17,19 @@
 """TVM Script Parser Intrinsic Classes"""
 # pylint: disable=redefined-builtin, relative-beyond-top-level
 import builtins
-from typing import List, Any
+from optparse import Option
+from typing import List, Optional, Any, Tuple
+
+from numpy import isin
 
 import tvm.tir
+from tvm.ir import Span
+from tvm.tir.sparse import (
+    Axis,
+    AttachedAxis,
+    FusedAxis,
+)
+from tvm.tir import Var, PrimExpr
 from ..registry import register
 from ...target import codegen
 from ..utils import get_param_list, tvm_span_from_synr
@@ -120,6 +130,11 @@ def min_value(dtype, span):
 @register
 def max_value(dtype, span):
     return tvm.tir.max_value(dtype, span)
+
+
+@register
+def atomic_add(ptr, elem_offset, val, span):
+    return tvm.tir.atomic_add(ptr, elem_offset, val, span)
 
 
 @register
@@ -251,3 +266,15 @@ def comm_reducer(lambda_io, identities, span):
 def llvm_lookup_intrinsic_id(name, span):
     # pylint: disable=unused-argument
     return codegen.llvm_lookup_intrinsic_id(name)
+
+
+@register
+def attach(axis: Axis, new_parent: Axis, span: Optional[Span] = None):
+    # pylint: disable=unused-argument
+    return AttachedAxis(axis, new_parent)
+
+
+@register
+def fuse(*group: List[Axis], span: Optional[Span] = None):
+    # pylint: disable=unused-argument
+    return [FusedAxis(group, i) for i, _ in enumerate(group)]

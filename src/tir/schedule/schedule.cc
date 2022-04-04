@@ -27,6 +27,10 @@ BlockRV::BlockRV() { this->data_ = make_object<BlockRVNode>(); }
 
 LoopRV::LoopRV() { this->data_ = make_object<LoopRVNode>(); }
 
+SparseIterationRV::SparseIterationRV() { this->data_ = make_object<SparseIterationRVNode>(); }
+
+AxisRV::AxisRV() { this->data_ = make_object<AxisRVNode>(); }
+
 /**************** GetSRef ****************/
 
 StmtSRef ScheduleNode::GetSRef(const StmtNode* stmt) const {
@@ -42,6 +46,8 @@ StmtSRef ScheduleNode::GetSRef(const StmtNode* stmt) const {
 
 TVM_REGISTER_NODE_TYPE(BlockRVNode);
 TVM_REGISTER_NODE_TYPE(LoopRVNode);
+TVM_REGISTER_NODE_TYPE(SparseIterationRVNode);
+TVM_REGISTER_NODE_TYPE(AxisRVNode);
 TVM_REGISTER_OBJECT_TYPE(ScheduleNode);
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetMod")  //
@@ -61,6 +67,10 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleForkSeed")  //
 
 TVM_REGISTER_GLOBAL("tir.schedule.BlockRV").set_body_typed([]() { return BlockRV(); });
 TVM_REGISTER_GLOBAL("tir.schedule.LoopRV").set_body_typed([]() { return LoopRV(); });
+TVM_REGISTER_GLOBAL("tir.schedule.SparseIterationRV").set_body_typed([]() {
+  return SparseIterationRV();
+});
+TVM_REGISTER_GLOBAL("tir.schedule.AxisRV").set_body_typed([]() { return AxisRV(); });
 TVM_REGISTER_GLOBAL("tir.schedule.ConcreteSchedule")
     .set_body_typed([](IRModule mod, support::LinearCongruentialEngine::TRandState seed,
                        int debug_mask, int error_render_level) -> Schedule {
@@ -86,6 +96,9 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGet")
       }
       if (const auto* expr_rv = obj.as<ExprRVNode>()) {
         return self->Get(GetRef<ExprRV>(expr_rv));
+      }
+      if (const auto* sp_iteration_rv = obj.as<SparseIterationRVNode>()) {
+        return self->Get(GetRef<SparseIterationRV>(sp_iteration_rv));
       }
       LOG(FATAL) << "TypeError: Cannot evaluate the random variable of type: " << obj->GetTypeKey()
                  << ". Its value is: " << obj;
@@ -115,6 +128,9 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRemoveRV")
       }
       if (const auto* expr_rv = obj.as<ExprRVNode>()) {
         return self->RemoveRV(GetRef<ExprRV>(expr_rv));
+      }
+      if (const auto* sp_iteration_rv = obj.as<SparseIterationRVNode>()) {
+        return self->RemoveRV(GetRef<SparseIterationRV>(sp_iteration_rv));
       }
       LOG(FATAL) << "TypeError: Invalid type: " << obj->GetTypeKey();
       throw;
@@ -153,6 +169,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleFuse").set_body_method<Schedule>(&Sche
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplit").set_body_method<Schedule>(&ScheduleNode::Split);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReorder")
     .set_body_method<Schedule>(&ScheduleNode::Reorder);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleLiftLoop")
+    .set_body_method<Schedule>(&ScheduleNode::LiftLoop);
 /******** (FFI) Manipulate ForKind ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel")
     .set_body_method<Schedule>(&ScheduleNode::Parallel);
@@ -237,6 +255,15 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTransformLayout")
 /******** (FFI) Misc ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleEnterPostproc")
     .set_body_method<Schedule>(&ScheduleNode::EnterPostproc);
+/******** (FFI) SparseTIR schedules ********/
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetSparseIteration")
+    .set_body_method<Schedule>(&ScheduleNode::GetSparseIteration);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetSpIters")
+    .set_body_method<Schedule>(&ScheduleNode::GetSpIters);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSparseReorder")
+    .set_body_method<Schedule>(&ScheduleNode::SparseReorder);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSparseFuse")
+    .set_body_method<Schedule>(&ScheduleNode::SparseFuse);
 
 }  // namespace tir
 }  // namespace tvm

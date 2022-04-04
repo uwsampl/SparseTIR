@@ -40,12 +40,12 @@ from .stmt import (
 
 from .stmt import ProducerRealize, SeqStmt
 from .stmt import IfThenElse, Evaluate, Prefetch, stmt_seq, stmt_list
-from .stmt import BufferRegion, MatchBufferRegion, Block, BlockRealize
+from .stmt import BufferRegion, MatchBufferRegion, Block, BlockRealize, SparseIteration
 
 from .function import PrimFunc, TensorIntrin, IndexMap
 
 from .op import call_packed, call_intrin, call_pure_extern, call_extern
-from .op import call_llvm_intrin, call_llvm_pure_intrin, ret, all, any, min_value, max_value, trace
+from .op import call_llvm_intrin, call_llvm_pure_intrin, ret, all, any, min_value, max_value, trace, atomic_add
 from .op import exp, exp2, exp10, log, log2, log10, log1p, ldexp, clz
 from .op import sin, sinh, asin, asinh
 from .op import cos, cosh, acos, acosh
@@ -65,3 +65,4 @@ from . import transform
 from . import analysis
 from . import stmt_functor
 from . import usmp
+from . import sparse

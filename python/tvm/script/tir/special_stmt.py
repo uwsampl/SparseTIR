@@ -26,8 +26,17 @@ from tvm.ir.expr import PrimExpr, Range
 import tvm.tir
 from tvm.runtime import Object, String
 from tvm.target import Target
-from tvm.ir import Span
+from tvm.ir import Span, PrimType, PointerType
 from tvm.tir import IntImm, IterVar, Var
+from tvm.tir.sparse import (
+    Axis,
+    FlattenedAxis,
+    FusedAxis,
+    dense_fixed_axis,
+    dense_variable_axis,
+    sparse_fixed_axis,
+    sparse_variable_axis,
+)
 
 from .node import BufferSlice
 from .utils import buffer_slice_to_region
@@ -38,6 +47,7 @@ from ..utils import (
     get_param_list,
     tvm_span_from_synr,
     call_with_error_reporting,
+    flatten_axes,
 )
 
 
@@ -159,7 +169,7 @@ class MatchBuffer(SpecialStmt):
                 buffer_type,
                 span=span,
             )
-            if isinstance(param, tvm.tir.Var):
+            if isinstance(param, Var):
                 if param not in self.context.func_params:
                     self.context.report_error(
                         "Can not bind non-input param to buffer", self.node.rhs.params[0].span
@@ -522,7 +532,9 @@ class BlockAxisSpatial(BlockAxis):
 
     def __init__(self):
         def axis_spatial(
-            dom: Union[PrimExpr, Tuple[PrimExpr, PrimExpr]], value: PrimExpr, span: Span = None
+            dom: Union[PrimExpr, Tuple[PrimExpr, PrimExpr]],
+            value: PrimExpr,
+            span: Span = None,
         ):
             if not isinstance(self.node, ast.Assign) or not len(self.node.lhs) == 1:
                 self.context.report_error(
@@ -551,7 +563,9 @@ class BlockAxisS(BlockAxis):
 
     def __init__(self):
         def axis_spatial(
-            dom: Union[PrimExpr, Tuple[PrimExpr, PrimExpr]], value: PrimExpr, span: Span = None
+            dom: Union[PrimExpr, Tuple[PrimExpr, PrimExpr]],
+            value: PrimExpr,
+            span: Span = None,
         ):
             if not isinstance(self.node, ast.Assign) or not len(self.node.lhs) == 1:
                 self.context.report_error(
@@ -580,7 +594,9 @@ class BlockAxisReduce(BlockAxis):
 
     def __init__(self):
         def axis_reduce(
-            dom: Union[PrimExpr, Tuple[PrimExpr, PrimExpr]], value: PrimExpr, span: Span = None
+            dom: Union[PrimExpr, Tuple[PrimExpr, PrimExpr]],
+            value: PrimExpr,
+            span: Span = None,
         ):
             if not isinstance(self.node, ast.Assign) or not len(self.node.lhs) == 1:
                 self.context.report_error(
@@ -609,7 +625,9 @@ class BlockAxisR(BlockAxis):
 
     def __init__(self):
         def axis_reduce(
-            dom: Union[PrimExpr, Tuple[PrimExpr, PrimExpr]], value: PrimExpr, span: Span = None
+            dom: Union[PrimExpr, Tuple[PrimExpr, PrimExpr]],
+            value: PrimExpr,
+            span: Span = None,
         ):
             if not isinstance(self.node, ast.Assign) or not len(self.node.lhs) == 1:
                 self.context.report_error(
@@ -700,7 +718,11 @@ class BlockAxisRemap(BlockAxis):
     """
 
     def __init__(self):
-        def axis_remap(iter_types: str, loop_vars: List[tvm.tir.expr.Var], span: Span = None):
+        def axis_remap(
+            iter_types: str,
+            loop_vars: List[tvm.tir.expr.Var],
+            span: Span = None,
+        ):
             if not isinstance(self.node, ast.Assign) or not len(self.node.lhs) >= 1:
                 self.context.report_error(
                     "`axis.remap` must be assigned to one or more vars, "
@@ -744,7 +766,8 @@ class BlockAxisRemap(BlockAxis):
                         f"Cannot find loop var {loop_var} in loop nesting.",
                         span,
                     )
-                self.axis(var.id.name, loops[loop_var], loop_var, iter_type)
+                dom = loops[loop_var]
+                self.axis(var.id.name, dom, loop_var, iter_type)
 
         super().__init__(axis_remap, def_symbol=True)
 
@@ -957,3 +980,201 @@ class TargetAttrValue(SpecialStmt):
                 f"T.target expected a config dict or string, but got {type(target_config)}"
             )
         return Target(target_config)
+
+
+@register
+class DenseFixed(SpecialStmt):
+    """Special Stmt for creating dense fixed axis."""
+
+    def __init__(self):
+        def dense_fixed(length: PrimExpr, idtype: str = "int32", span: Optional[Span] = None):
+            names = [x.id.name for x in self.node.lhs]
+            if len(names) != 1:
+                self.context.report_error(
+                    f"`dense_fixed` expected assign to only one var, but got {names}", span
+                )
+
+            axis = dense_fixed_axis(names[0], length, idtype)
+            self.context.func_sp_axes.append(axis)
+            self.context.update_symbol(names[0], axis, self.node)
+
+        super().__init__(dense_fixed, def_symbol=True)
+
+
+@register
+class DenseVariable(SpecialStmt):
+    """Special Stmt for creating dense variable axis."""
+
+    def __init__(self):
+        def dense_variable(
+            parent_axis: Axis,
+            shape: Tuple[PrimExpr, PrimExpr],
+            indptr_var: Var,
+            idtype: str = "int32",
+            span: Optional[Span] = None,
+        ):
+            names = [x.id.name for x in self.node.lhs]
+            if len(names) != 1:
+                self.context.report_error(
+                    f"`dense_variable` expected assign to only one var, but got {names}", span
+                )
+
+            length, nnz = shape
+            axis = dense_variable_axis(names[0], parent_axis, length, nnz, indptr_var, idtype)
+            self.context.func_sp_axes.append(axis)
+            self.context.update_symbol(names[0], axis, self.node)
+
+        super().__init__(dense_variable, def_symbol=True)
+
+
+@register
+class Flatten(SpecialStmt):
+    """Special Stmt for attaching axis."""
+
+    def __init__(self):
+        def flatten(
+            axes: List[Axis],
+            nnz: PrimExpr,
+            offset_vars: List[Var],
+            idtype: str = "int32",
+            span: Optional[Span] = None,
+        ):
+            # TODO(zihao): refactor this part later on.
+            names = [x.id.name for x in self.node.lhs]
+            if len(names) != 1:
+                self.context.report_error(
+                    f"`attach_axis` expected assign to only one var, but got {names}", span
+                )
+
+            axis = FlattenedAxis(names[0], axes, nnz, offset_vars, idtype)
+            self.context.func_sp_axes.append(axis)
+            self.context.update_symbol(names[0], axis, self.node)
+
+        super().__init__(flatten, def_symbol=True)
+
+
+@register
+class SparseFixed(SpecialStmt):
+    """Special Stmt for creating sparse fixed axis."""
+
+    def __init__(self):
+        def sparse_fixed(
+            parent_axis: Axis,
+            shape: Tuple[PrimExpr, PrimExpr],
+            indices_var: Var,
+            idtype: str = "int32",
+            span: Optional[Span] = None,
+        ):
+            names = [x.id.name for x in self.node.lhs]
+            if len(names) != 1:
+                self.context.report_error(
+                    f"`sparse_fixed` expected assign to only one var, but got {names}", span
+                )
+
+            length, nnz_cols = shape
+            axis = sparse_fixed_axis(names[0], parent_axis, length, nnz_cols, indices_var, idtype)
+            self.context.func_sp_axes.append(axis)
+            self.context.update_symbol(names[0], axis, self.node)
+
+        super().__init__(sparse_fixed, def_symbol=True)
+
+
+@register
+class SparseVariable(SpecialStmt):
+    """Special Stmt for creating sparse variable axis:"""
+
+    def __init__(self):
+        def sparse_variable(
+            parent_axis: Axis,
+            shape: Tuple[PrimExpr, PrimExpr],
+            data: Tuple[Var, Var],
+            idtype: str = "int32",
+            span: Optional[Span] = None,
+        ):
+            names = [x.id.name for x in self.node.lhs]
+            if len(names) != 1:
+                self.context.report_error(
+                    f"`sparse_variable` expected assign to only one var, but got {names}", span
+                )
+
+            length, nnz = shape
+            indptr_var, indices_var = data
+            axis = sparse_variable_axis(
+                names[0], parent_axis, length, nnz, indptr_var, indices_var, idtype
+            )
+            self.context.func_sp_axes.append(axis)
+            self.context.update_symbol(names[0], axis, self.node)
+
+        super().__init__(sparse_variable, def_symbol=True)
+
+
+@register
+class MatchSparseBuffer(SpecialStmt):
+    """Special Stmt match_sparse_buffer()"""
+
+    def __init__(self):
+        def match_sparse_buffer(
+            param: Var,
+            axes: List[Axis],
+            dtype: str = "float32",
+            extra_storage: Optional[PrimExpr] = None,
+            span: Optional[Span] = None,
+        ):
+            if not isinstance(self.node, ast.Assign) or not len(self.node.lhs) == 1:
+                self.context.report_error(
+                    "`match_sparse_buffer` must be assigned to a single sparse buffer, "
+                    "e.g. A = match_sparse_buffer(...)"
+                )
+
+            buffer_name: str = self.node.lhs[0].id.name
+            if not isinstance(param, Var):
+                self.context.report_error(
+                    "The source of match_sparse_buffer expected Var, but got" + str(type(param)),
+                    self.node.rhs.params[0].span,
+                )
+
+            if param in self.context.func_params:
+                storage_type = PrimType(dtype)
+                storage_type = PrimType("int8") if storage_type.dtype == "bool" else storage_type
+                data = Var(buffer_name, PointerType(storage_type, "global"), span)
+                buffer = tvm.tir.sparse.SparseBuffer(
+                    data, axes, dtype, buffer_name, extra_storage, span
+                )
+                self.context.func_buffer_map[param] = buffer
+                self.context.update_symbol(buffer_name, buffer, self.node)
+            else:
+                self.context.report_error(
+                    "Can not bind non-input param to sparse buffer", self.node.rhs.params[0].span
+                )
+
+        super().__init__(match_sparse_buffer, def_symbol=True)
+
+
+@register
+class AllocSparseBuffer(SpecialStmt):
+    """Special Stmt alloc_sparse_buffer()"""
+
+    def __init__(self):
+        def alloc_sparse_buffer(
+            axes: List[Axis],
+            dtype: str = "float32",
+            scope: str = "global",
+            span: Optional[Span] = None,
+        ):
+            if not isinstance(self.node, ast.Assign) or not len(self.node.lhs) == 1:
+                self.context.report_error(
+                    "`alloc_sparse_buffer` must be assigned to a single sparse buffer, "
+                    "e.g. A = match_sparse_buffer(...)"
+                )
+            buffer_name: str = self.node.lhs[0].id.name
+
+            data = Var(buffer_name, PointerType(PrimType(dtype), scope), span)
+            buffer = tvm.tir.sparse.SparseBuffer(data, axes, dtype, buffer_name, 0, span)
+            if self.context.current_block_scope():
+                self.context.current_block_scope().alloc_buffers.append(buffer)
+            else:
+                # If it is allocated outside all blocks, allocate it under root block.
+                self.context.root_alloc_buffers.append(buffer)
+            self.context.update_symbol(buffer_name, buffer, self.node)
+
+        super().__init__(alloc_sparse_buffer, def_symbol=True)

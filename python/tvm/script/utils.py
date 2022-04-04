@@ -16,13 +16,14 @@
 # under the License.
 """Helper functions in TVM Script Parser"""
 
-from typing import Callable, List, Any, Optional, Tuple
+from typing import Callable, List, Any, Optional, Tuple, Union
 
 import inspect
 import synr
 
 from tvm.ir import Span, SourceName
 from tvm.error import DiagnosticError
+from tvm.tir.sparse import Axis
 
 
 def get_param_list(
@@ -103,3 +104,14 @@ def call_with_error_reporting(
         # printing last non-empty row of error message.
         error_msg = list(filter(None, str(err).split("\n")))[-1]
         report_error(error_msg, node_span)
+
+
+# flatten nested axes to axes, to address the special case of fusion.
+def flatten_axes(axes: List[Union[Axis, List[Axis]]]) -> List[Axis]:
+    ret = []
+    for axis_group in axes:
+        if isinstance(axis_group, List):
+            ret += axis_group
+        else:
+            ret.append(axis_group)
+    return ret

@@ -318,6 +318,11 @@ Bool IsFromLegacyTESchedule(PrimFunc f) {
   return from_legacy_te_schedule.value();
 }
 
+Integer SparseTIRLevel(PrimFunc f) {
+  Optional<Integer> sparse_tir_level = f->GetAttr("sparse_tir_level", Integer(0));
+  return sparse_tir_level.value();
+}
+
 Map<Var, Range> ConditionalBoundsContext::GetVarBoundsFromCondition() {
   // extract equations and related vars from condition expression.
   // currently only extract simple integral equations which could be solvable.

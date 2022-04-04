@@ -258,8 +258,10 @@ class ApplyDeviceConstraintsMutator : public StmtExprMutator {
     buffer_subst_.clear();
 
     if (any_change) {
+      // TODO(zihao): understand what this function does
+      //              I changed the interface of Primfunc
       return PrimFunc(prim_func->params, std::move(new_body), prim_func->ret_type,
-                      std::move(new_buffer_map), std::move(new_preflattened_buffer_map),
+                      std::move(new_buffer_map), std::move(new_preflattened_buffer_map), {},
                       prim_func->attrs, prim_func->span);
     } else {
       return prim_func;

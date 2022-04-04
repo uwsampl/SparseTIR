@@ -285,6 +285,7 @@ def DivideConstants(const_dict):
             f.ret_type,
             new_buffer_map,
             f.preflattened_buffer_map,
+            f.sp_axes,
             f.attrs,
             f.span,
         )
@@ -534,6 +535,8 @@ def EncodeConstants(const_dict):
             f.ret_type,
             new_buffer_map,
             f.preflattened_buffer_map,
+            f.sp_axes,
+            f.sp_axes_from_map,
             f.attrs,
             f.span,
         )
@@ -785,6 +788,7 @@ def CreatePrimFuncWithoutConstants(const_dict):
             f.ret_type,
             new_buffer_map,
             new_preflattened_buffer_map,
+            f.sp_axes,
             f.attrs,
             f.span,
         )

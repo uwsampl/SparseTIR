@@ -777,7 +777,6 @@ def ConvertForLoopsToSerial():
 
 def InjectSoftwarePipeline():
     """Transform annotated loops into pipelined one that parallelize producers and consumers
-
     Returns
     -------
     fpass : tvm.transform.Pass
@@ -799,10 +798,52 @@ def ExtractPrimFuncConstants():
 
 def RenormalizeSplitPattern():
     """Renormalize the split pattern from floordiv(floormod()) to floormod(floordiv())
-
     Returns
     -------
     fpass : tvm.transform.Pass
         The result pass
     """
     return _ffi_api.RenormalizeSplitPattern()  # type: ignore
+
+
+def LowerSparseIter():
+    """Lower iterations in Sparse TIR
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.LowerSparseIter()  # type: ignore
+
+
+def LowerSparseBuffer():
+    """Lower sparse buffers in Sparse TIR
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.LowerSparseBuffer()  # type: ignore
+
+
+def HorizontalFusion():
+    """Horizontal fusion in TIR scripts.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.HorizontalFusion()  # type: ignore
+
+def LowerAtomic():
+    """Lower the atomic operations in the program.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.LowerAtomic()  # type: ignore

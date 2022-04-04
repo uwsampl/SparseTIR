@@ -34,6 +34,7 @@
 #include <tvm/runtime/container/string.h>
 #include <tvm/runtime/data_type.h>
 #include <tvm/tir/buffer.h>
+#include <tvm/tir/sparse.h>
 #include <tvm/tir/var.h>
 
 #include <algorithm>
@@ -658,6 +659,7 @@ class BufferLoad : public PrimExpr {
   TVM_DEFINE_OBJECT_REF_METHODS(BufferLoad, PrimExpr, BufferLoadNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BufferLoadNode);
 };
+
 
 /*!
  * \brief Load value from the result produced by the producer.

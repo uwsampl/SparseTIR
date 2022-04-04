@@ -162,6 +162,13 @@ class ScheduleStateNode : public Object {
    * \return A boolean flag indicating if the block has quasi-affine bindings
    */
   bool IsAffineBlockBinding(const StmtSRef& block_sref) const {
+    // (SparseTIR Hack) Always return true for sparse iterations.
+    const auto* block = block_sref->StmtAs<BlockNode>();
+    Optional<ObjectRef> sparse_attr = block != nullptr ? block->annotations.Get("sparse") : NullOpt;
+    if (sparse_attr.defined() && sparse_attr.as<IntImmNode>()->value == 1) {
+      return true;
+    }
+
     return GetBlockInfo(block_sref).affine_binding;
   }
   /*!

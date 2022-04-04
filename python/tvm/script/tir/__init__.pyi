@@ -432,3 +432,37 @@ class handle:
 class Ptr: ...
 
 def target(target_str: Union[str, Mapping[str, Object]]) -> Target: ...
+
+"""
+sparse
+"""
+
+class Axis: ...
+
+def dense_fixed(length: PrimExpr, idtype: str = "int32"): ...
+def dense_variable(
+    parent_axis: Axis, 
+    sizes: Tuple[Union[PrimExpr, int], Union[PrimExpr, int]],
+    data: Var,
+    idtype: str = "int32",
+): ...
+def sparse_fixed(
+    parent_axis: Axis,
+    sizes: Tuple[Union[PrimExpr, int], Union[PrimExpr, int]],
+    data: Var,
+    idtype: str = "int32",
+): ...
+def sparse_variable(
+    parent_axis: Axis,
+    sizes: Tuple[Union[PrimExpr, int], Union[PrimExpr, int]],
+    data: Tuple[Var, Var],
+    idtype: str = "int32",
+): ...
+def match_sparse_buffer(data: Var, axes: Sequence[Axis], dtype: str = "float32"): ...
+def alloc_sparse_buffer(axes: Sequence[Axis], dtype: str, scope: str = "float32"): ...
+
+class iter(ContextManager):
+    def __init__(
+        self, axes: Sequence[Axis], iter_types: str, name_hint: str = ""
+    ) -> None: ...
+    def __enter__(self) -> Sequence[IterVar]: ...

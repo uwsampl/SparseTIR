@@ -1318,7 +1318,57 @@ class BlockRealize : public Stmt {
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockRealizeNode);
 };
 
-/*! \brief namespace of possible attributes in AttrStmt.attr_key */
+/*!
+ * \brief Sparse Iteration node.
+ */
+class SparseIterationNode : public StmtNode {
+ public:
+  /*! \brief The sparse iteration variables of the block. */
+  Array<SpIterVar> sp_iter_vars;
+  /*! \brief The name of the block */
+  String name;
+  /*! \brief The body of the block */
+  Stmt body;
+  /*! \brief The init statement of the block */
+  Optional<Stmt> init;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("sp_iter_vars", &sp_iter_vars);
+    v->Visit("name", &name);
+    v->Visit("body", &body);
+    v->Visit("init", &init);
+  }
+
+  bool SEqualReduce(const SparseIterationNode* other, SEqualReducer equal) const {
+    return equal(sp_iter_vars, other->sp_iter_vars) && equal(name, other->name) &&
+           equal(body, other->body) && equal(init, other->init);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce(sp_iter_vars);
+    hash_reduce(name);
+    hash_reduce(body);
+    hash_reduce(init);
+  }
+
+  static constexpr const char* _type_key = "tir.SparseIteration";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SparseIterationNode, StmtNode);
+};
+
+/*!
+ * \brief Managed reference to SparseIterationNode
+ * \sa SparseIterationNode
+ */
+class SparseIteration : public Stmt {
+ public:
+  TVM_DLL explicit SparseIteration(Array<SpIterVar> sp_iter_vars, String name, Stmt body,
+                                   Optional<Stmt> init = NullOpt, Span span = Span());
+
+  TVM_DEFINE_OBJECT_REF_METHODS(SparseIteration, Stmt, SparseIterationNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(SparseIterationNode);
+};
+
+/*! \brief namespace of possible attribute sin AttrStmt.attr_key */
 namespace attr {
 // The above attr does not pass to ir stage.
 /*! \brief Mark launching extent of thread, used by device API. */

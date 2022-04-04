@@ -20,10 +20,12 @@ from typing import Tuple, Any, Callable, Optional, List, Union, Mapping
 
 import synr
 import numpy as np
+from synr.ast import With
 import tvm.tir
 from tvm.runtime import Object, String, convert
 from tvm.ir import Span, Range
 from tvm.tir import Stmt, PrimExpr, IterVar, Var, Buffer, BufferRegion, ForKind
+from tvm.tir.sparse import FusedAxis, SpIterVar, Axis
 
 from .node import BufferSlice
 from .utils import buffer_slice_to_region
@@ -34,6 +36,7 @@ from ..utils import (
     get_param_list,
     tvm_span_from_synr,
     call_with_error_reporting,
+    flatten_axes,
 )
 
 
@@ -386,6 +389,76 @@ class Block(WithScopeHandler):
                 f"but got {optional_vars}",
                 node.span,
             )
+
+
+@register
+class SparseIteration(WithScopeHandler):
+    """With scope handler of SparseIteration"""
+
+    def __init__(self):
+        def iter(axes: List, iter_types: str, name_hint: str = "", span: Optional[Span] = None):
+            assert (
+                self.node and self.context and self.body
+            ), "call 'exit_scope' before 'enter_scope'"
+            block_info = self.context.block_info_stack[-1]
+            axes = flatten_axes(axes)
+
+            if len(axes) != len(self.sp_iters):
+                self.context.report_error(
+                    "Inconsistent number of sparse iteration variable names, "
+                    + f"there are {len(axes)} iterators but {len(self.sp_iters)} names. "
+                    + "The number of sparse iteration variable names should match the number of iterators.",
+                    self.node.span,
+                )
+            if len(axes) != len(iter_types):
+                self.context.report_error(
+                    "Inconsistent number of sparse iteration variable types, "
+                    + f"there are {len(axes)} iterators but {len(iter_types)} types. "
+                    + "The number of sparse iteration variable types should match the number of iterators.",
+                    self.node.span,
+                )
+
+            sp_iters: List[SpIterVar] = []
+            for i, axis in enumerate(axes):
+                is_reduction = True if iter_types[i] == "R" else False
+                if isinstance(axis, FusedAxis):
+                    length = axis.group[axis.index].length
+                sp_iters.append(
+                    SpIterVar(
+                        self.sp_iters[i],
+                        is_reduction,
+                        axis,
+                    )
+                )
+
+            block = tvm.tir.SparseIteration(
+                sp_iters,
+                name_hint,
+                self.body,
+                block_info.init,
+                span,
+            )
+            return block
+
+        super().__init__(func=iter, concise_scope=False, def_symbol=True)
+        self.sp_iters = None
+
+    def enter_scope(
+        self,
+        node: synr.ast.Node,
+        context: ContextMaintainer,
+        arg_list: List[Any],
+        span: synr.ast.Span,
+    ):
+        # define sparse iteration variables
+        assert isinstance(
+            node, synr.ast.With
+        ), f"SparseIteration ScopeHandler expected to work on synr.ast.With but got {type(node)}"
+
+        vars = WithScopeHandler.get_optional_vars(node, context)
+        self.sp_iters = [tvm.te.var(var.id.name, "int32") for var in vars]
+        for sp_iter in self.sp_iters:
+            context.update_symbol(sp_iter.name, sp_iter, node)
 
 
 @register

@@ -78,7 +78,7 @@ class HoistAllocatesMutator : public StmtExprMutator {
 
     PrimFunc new_main_func =
         PrimFunc(main_func->params, new_main_func_body, main_func->ret_type, main_func->buffer_map,
-                 main_func->preflattened_buffer_map, main_func->attrs);
+                 main_func->preflattened_buffer_map, main_func->sp_axes, main_func->attrs);
     return new_main_func;
   }
 

@@ -624,6 +624,30 @@ TVM_DLL Pass ExtractPrimFuncConstants();
  */
 TVM_DLL Pass RenormalizeSplitPattern();
 
+/*!
+ * \brief Lower sparse iterations in Sparse TIR.
+ * \return The pass.
+ */
+TVM_DLL Pass LowerSparseIter();
+
+/*!
+ * \brief Lower sparse buffers in Sparse TIR.
+ * \return The pass.
+ */
+TVM_DLL Pass LowerSparseBuffer();
+
+/*!
+ * \brief Horizontal fusion pass.
+ * \return The pass.
+ */
+TVM_DLL Pass HorizontalFusion();
+
+/*!
+ * \brief Lower atomic operations.
+ * \return The pass.
+ */
+TVM_DLL Pass LowerAtomic();
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm

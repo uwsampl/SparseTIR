@@ -250,11 +250,43 @@ def test_fma():
     assert mod["test_tir_fma"].body.body.value.op.name == "tir.call_llvm_pure_intrin"
 
 
+@T.prim_func
+def global_add(a: T.handle) -> None:
+    A = T.match_buffer(a, (1,), dtype='int32')
+    for i in T.serial(0, 1024):
+        with T.block('global_add'):
+            T.block_attr({
+                "atomic": True
+            })
+            T.reads([A[0:1]])
+            T.writes([A[0:1]])
+            vi = T.axis.S(1024, i)
+            T.evaluate(T.atomic_add(A.data, vi))
+
+
+def test_global_add():
+    sch = tir.Schedule(global_add)
+    b = sch.get_block('global_add')
+    i, = sch.get_loops(b)
+    sch.bind(i, 'blockIdx.x')
+    f = tvm.build(sch.mod['main'], target='cuda')
+
+    # create input and run kernel
+    dev = tvm.cuda(0)
+    a = np.zeros((1,)).astype(np.int32)
+    a_gpu = tvm.nd.array(a, device=dev)
+    f(a_gpu)
+
+    # check output
+    tvm.testing.assert_allclose(a_gpu.numpy(), np.array([1024 * 1023 / 2]).astype(np.int32))
+
+
 if __name__ == "__main__":
     test_nearbyint()
     test_unary_intrin()
     test_round_intrinsics_on_int()
     test_binary_intrin()
     test_ldexp()
-    test_clz()
+    # test_clz()
     test_fma()
+    test_global_add()

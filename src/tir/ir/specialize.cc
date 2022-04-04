@@ -74,6 +74,19 @@ class PrimFuncSpecializer : public StmtExprMutator {
 
   static PrimFunc Specialize(PrimFunc f, const VarMap& var_map) {
     PrimFuncSpecializer specializer(var_map);
+
+    // Update sp_axes
+    Array<Axis> sp_axes;
+    bool sp_axes_updated = false;
+    for (const Axis& axis : f->sp_axes) {
+      Axis new_axis = specializer.MutateAxis(axis);
+      sp_axes.push_back(new_axis);
+      if (!new_axis.same_as(axis)) {
+        sp_axes_updated = true;
+        specializer.axis_map_[axis] = new_axis;
+      }
+    }
+
     // Updating Buffer map
     Map<Var, Buffer> buffer_map;
     bool buffer_map_updated = false;
@@ -103,11 +116,12 @@ class PrimFuncSpecializer : public StmtExprMutator {
     // Updating function body
     Stmt body = specializer(f->body);
 
-    if (param_updated || buffer_map_updated || !f->body.same_as(body)) {
+    if (param_updated || buffer_map_updated || sp_axes_updated || !f->body.same_as(body)) {
       PrimFuncNode* f_ptr = f.CopyOnWrite();
       f_ptr->params = std::move(params);
       f_ptr->buffer_map = std::move(buffer_map);
       f_ptr->body = std::move(body);
+      f_ptr->sp_axes = std::move(sp_axes);
     }
     return f;
   }
@@ -130,14 +144,18 @@ class PrimFuncSpecializer : public StmtExprMutator {
     Array<BufferRegion> writes = MutateArray(
         op->writes,
         std::bind(&PrimFuncSpecializer::MutateBufferRegion, this, std::placeholders::_1));
+    Array<IterVar> iter_vars = MutateArray(
+        op->iter_vars, std::bind(&PrimFuncSpecializer::MutateIterVar, this, std::placeholders::_1));
 
-    if (alloc_buffers.same_as(op->alloc_buffers) && reads.same_as(op->reads)) {
+    if (alloc_buffers.same_as(op->alloc_buffers) && reads.same_as(op->reads) &&
+        iter_vars.same_as(op->iter_vars)) {
       return GetRef<Block>(op);
     } else {
       ObjectPtr<BlockNode> n = CopyOnWrite(op);
       n->alloc_buffers = std::move(alloc_buffers);
       n->reads = std::move(reads);
       n->writes = std::move(writes);
+      n->iter_vars = std::move(iter_vars);
       return Stmt(n);
     }
   }
@@ -179,6 +197,28 @@ class PrimFuncSpecializer : public StmtExprMutator {
     }
   }
 
+  Stmt VisitStmt_(const SparseIterationNode* op) {
+    Optional<Stmt> init = NullOpt;
+    if (op->init.defined()) {
+      init = VisitStmt(op->init.value());
+    }
+    Stmt body = VisitStmt(op->body);
+    Array<SpIterVar> sp_iter_vars =
+        MutateArray(op->sp_iter_vars,
+                    std::bind(&PrimFuncSpecializer::MutateSpIterVar, this, std::placeholders::_1));
+
+    if (init.same_as(op->init) && body.same_as(op->body) &&
+        sp_iter_vars.same_as(op->sp_iter_vars)) {
+      return GetRef<SparseIteration>(op);
+    } else {
+      auto n = CopyOnWrite(op);
+      n->init = std::move(init);
+      n->body = std::move(body);
+      n->sp_iter_vars = std::move(sp_iter_vars);
+      return Stmt(n);
+    }
+  }
+
   DEFINE_SPECIALIZER_BINARY_OP_MUTATE(AddNode, add);
   DEFINE_SPECIALIZER_BINARY_OP_MUTATE(SubNode, sub);
   DEFINE_SPECIALIZER_BINARY_OP_MUTATE(MulNode, mul);
@@ -200,22 +240,141 @@ class PrimFuncSpecializer : public StmtExprMutator {
 
  private:
   Buffer MutateBuffer(const Buffer& buffer) {
-    Array<PrimExpr> shape =
-        MutateArray(buffer->shape, [this](const PrimExpr& e) { return VisitExpr(e); });
-    Array<PrimExpr> strides =
-        MutateArray(buffer->strides, [this](const PrimExpr& e) { return VisitExpr(e); });
-
-    PrimExpr elem_offset = VisitExpr(buffer->elem_offset);
-
-    if (buffer->elem_offset.same_as(elem_offset) && buffer->shape.same_as(shape) &&
-        buffer->strides.same_as(strides)) {
-      return buffer;
+    if (const SparseBufferNode* sp_buf = buffer.as<SparseBufferNode>()) {
+      Array<Axis> axes = MutateArray(
+          sp_buf->axes, std::bind(&PrimFuncSpecializer::MutateAxis, this, std::placeholders::_1));
+      if (axes.same_as(sp_buf->axes)) {
+        return buffer;
+      } else {
+        return SparseBuffer(sp_buf->data, std::move(axes), sp_buf->dtype, sp_buf->name,
+                            sp_buf->extra_storage, sp_buf->span);
+      }
     } else {
-      auto n = make_object<BufferNode>(*buffer.get());
-      n->elem_offset = std::move(elem_offset);
-      n->shape = std::move(shape);
-      n->strides = std::move(strides);
-      return Buffer(n);
+      Array<PrimExpr> shape =
+          MutateArray(buffer->shape, [this](const PrimExpr& e) { return VisitExpr(e); });
+      Array<PrimExpr> strides =
+          MutateArray(buffer->strides, [this](const PrimExpr& e) { return VisitExpr(e); });
+
+      PrimExpr elem_offset = VisitExpr(buffer->elem_offset);
+
+      if (buffer->elem_offset.same_as(elem_offset) && buffer->shape.same_as(shape) &&
+          buffer->strides.same_as(strides)) {
+        return buffer;
+      } else {
+        auto n = make_object<BufferNode>(*buffer.get());
+        n->elem_offset = std::move(elem_offset);
+        n->shape = std::move(shape);
+        n->strides = std::move(strides);
+        return Buffer(n);
+      }
+    }
+  }
+
+  Axis MutateAxis(const Axis& axis) {
+    // NOTE(zihao): change this if there are new kind of axis.
+    // Order: from inherited class to base class.
+    if (axis_map_.find(axis) != axis_map_.end()) {
+      return axis_map_[axis];
+    } else {
+      if (const FlattenedAxisNode* flattened_axis = axis.as<FlattenedAxisNode>()) {
+        Array<Axis> axes = MutateArray(flattened_axis->axes,
+                                       [this](const Axis& axis) { return MutateAxis(axis); });
+        PrimExpr flattened_nnz = VisitExpr(flattened_axis->flattened_nnz);
+        Buffer offset = MutateBuffer(flattened_axis->offset);
+        if (axes.same_as(flattened_axis->axes) &&
+            flattened_nnz.same_as(flattened_axis->flattened_nnz) &&
+            offset.same_as(flattened_axis->offset)) {
+          return axis;
+        } else {
+          return FlattenedAxis(axis->name, axes, flattened_nnz, offset);
+        }
+      } else if (const AttachedAxisNode* attached_axis = axis.as<AttachedAxisNode>()) {
+        Axis base = MutateAxis(attached_axis->base);
+        Axis new_parent = MutateAxis(GetParentAxis(axis));
+        if (base.same_as(attached_axis->base) && new_parent.same_as(GetParentAxis(axis))) {
+          return axis;
+        } else {
+          return AttachedAxis(base, new_parent);
+        }
+      } else if (const FusedAxisNode* fused_axis = axis.as<FusedAxisNode>()) {
+        Array<Axis> group =
+            MutateArray(fused_axis->group,
+                        std::bind(&PrimFuncSpecializer::MutateAxis, this, std::placeholders::_1));
+        if (group.same_as(fused_axis->group)) {
+          return axis;
+        } else {
+          return FusedAxis(group, fused_axis->index);
+        }
+      } else {
+        switch (axis->kind()) {
+          case AxisKind::kDenseFixed: {
+            PrimExpr length = VisitExpr(axis->length);
+            if (length.same_as(axis->length)) {
+              return axis;
+            } else {
+              return Axis(axis->name, NullOpt, length, length, length, NullOpt, NullOpt,
+                          axis->idtype);
+            }
+            break;
+          }
+          case AxisKind::kDenseVariable: {
+            Axis old_parent = GetParentAxis(axis);
+            Axis parent = MutateAxis(old_parent);
+            PrimExpr length = VisitExpr(axis->length);
+            PrimExpr nnz = VisitExpr(axis->nnz);
+            if (parent.same_as(old_parent) && length.same_as(axis->length) &&
+                nnz.same_as(axis->nnz)) {
+              return axis;
+            } else {
+              return Axis(axis->name, parent, length, nnz, NullOpt, axis->indptr, NullOpt,
+                          axis->idtype);
+            }
+            break;
+          }
+          case AxisKind::kSparseFixed: {
+            Axis old_parent = GetParentAxis(axis);
+            Axis parent = MutateAxis(old_parent);
+            PrimExpr length = VisitExpr(axis->length);
+            PrimExpr nnz = VisitExpr(axis->nnz);
+            PrimExpr nnz_cols = VisitExpr(axis->nnz_cols.value());
+            if (parent.same_as(old_parent) && length.same_as(axis->length) &&
+                nnz_cols.same_as(axis->nnz_cols.value())) {
+              return axis;
+            } else {
+              return Axis(axis->name, parent, length, nnz, nnz_cols, NullOpt, axis->indices,
+                          axis->idtype);
+            }
+            break;
+          }
+          case AxisKind::kSparseVariable: {
+            Axis old_parent = GetParentAxis(axis);
+            Axis parent = MutateAxis(old_parent);
+            PrimExpr length = VisitExpr(axis->length);
+            PrimExpr nnz = VisitExpr(axis->nnz);
+            if (parent.same_as(old_parent) && length.same_as(axis->length)) {
+              return axis;
+            } else {
+              return Axis(axis->name, parent, length, nnz, NullOpt, axis->indptr, axis->indices,
+                          axis->idtype);
+            }
+            break;
+          }
+          default:
+            throw;
+        }
+      }
+    }
+  }
+
+  IterVar MutateIterVar(const IterVar& iter_var) { return iter_var; }
+
+  SpIterVar MutateSpIterVar(const SpIterVar& sp_iter_var) {
+    Axis axis = MutateAxis(sp_iter_var->axis);
+
+    if (axis.same_as(sp_iter_var->axis)) {
+      return sp_iter_var;
+    } else {
+      return SpIterVar(sp_iter_var->var, sp_iter_var->is_reduction, std::move(axis));
     }
   }
 
@@ -257,6 +416,8 @@ class PrimFuncSpecializer : public StmtExprMutator {
   const VarMap& var_map_;
   /*! \brief map from old buffer to mutated buffer */
   std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map_;
+  /*! \brief map from old axis to mutated axis */
+  std::unordered_map<Axis, Axis, ObjectPtrHash, ObjectPtrEqual> axis_map_;
 };
 
 /*!

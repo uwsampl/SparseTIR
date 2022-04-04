@@ -829,6 +829,11 @@ PrimExpr nearbyint(PrimExpr x, Span span) {
 
 TIR_REGISTER_PURE_UNARY_OP("tir.nearbyint");
 
+// atomic_add
+PrimExpr atomic_add(tir::Var ptr, PrimExpr elem_offset, PrimExpr val, Span span) {
+  return tir::Call(val->dtype, builtin::tvm_atomic_add(), {ptr, elem_offset, val}, span);
+}
+
 // trunc
 PrimExpr trunc(PrimExpr x, Span span) {
   if (x.dtype().is_int() || x.dtype().is_uint()) {
@@ -942,6 +947,8 @@ TVM_REGISTER_GLOBAL("tir.nearbyint").set_body_typed(tvm::nearbyint);
 TVM_REGISTER_GLOBAL("tir.trunc").set_body_typed(tvm::trunc);
 
 TVM_REGISTER_GLOBAL("tir._cast").set_body_typed(tvm::cast);
+
+TVM_REGISTER_GLOBAL("tir.atomic_add").set_body_typed(tvm::atomic_add);
 
 // operator overloading, smarter than make
 #define REGISTER_MAKE_BINARY_OP(Node, Func)                                                \
