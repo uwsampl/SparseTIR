@@ -169,10 +169,95 @@ SparseIteration SparseReorder(ScheduleState self, const SparseIteration& block,
   return new_block;
 }
 
+int CheckFuseMatch(const ScheduleState self, const Array<SpIterVar>& iters_to_fuse,
+                   const Array<SpIterVar>& blk_iter_vars) {
+  class FuseNotMatchError : public ScheduleError {
+   public:
+    explicit FuseNotMatchError(IRModule mod, const Array<SpIterVar>& iters_to_fuse,
+                               const Array<SpIterVar>& blk_iter_vars)
+        : mod_(std::move(mod)),
+          iters_to_fuse_(std::move(iters_to_fuse)),
+          blk_iter_vars_(std::move(blk_iter_vars)) {}
+
+    String FastErrorString() const final {
+      return "ScheduleError: The sparse iter vars to fuse doesn't match the sparse iter vars in "
+             "the given sparse iteration.";
+    }
+
+    String DetailRenderTemplate() const final {
+      std::ostringstream os;
+      os << "ScheduleError: The sparse iter vars to fuse: " << iters_to_fuse_ << " doesn't match "
+         << "the sparse iter vars in the given sparse iteration: " << blk_iter_vars_;
+      return os.str();
+    }
+
+    IRModule mod() const final { return mod_; }
+    Array<ObjectRef> LocationsOfInterest() const final { return {}; }
+
+    IRModule mod_;
+    Array<SpIterVar> iters_to_fuse_;
+    Array<SpIterVar> blk_iter_vars_;
+  };
+
+  size_t j = 0;
+  size_t match_pos = 0;
+  for (size_t i = 0; i < blk_iter_vars.size(); ++i) {
+    if (blk_iter_vars[i].same_as(iters_to_fuse[j])) {
+      if (j == 0) {
+        match_pos = i;
+      }
+      j++;
+      if (j == iters_to_fuse.size()) {
+        return match_pos;
+      }
+    }
+  }
+  throw FuseNotMatchError(self->mod, iters_to_fuse, blk_iter_vars);
+  return -1;
+}
+
 SparseIteration SparseFuse(ScheduleState self, const SparseIteration& block,
-                                   const Array<SpIterVar>& iters_to_fuse) {
-                                     // TODO(zihao)
-                                   }
+                           const Array<SpIterVar>& iters_to_fuse) {
+  // Step 1. Check match or not.
+  int match_pos = CheckFuseMatch(self, iters_to_fuse, block->sp_iter_vars);
+
+  ObjectPtr<SparseIterationNode> p_new_block = make_object<SparseIterationNode>(*block.get());
+  Array<SpIterVar> new_sp_iters;
+  for (int i = 0; i < match_pos; ++i) {
+    new_sp_iters.push_back(block->sp_iter_vars[i]);
+  }
+  Array<Axis> axis_group;
+  for (const SpIterVar& sp_iter_var : iters_to_fuse) {
+    axis_group.push_back(sp_iter_var->axis);
+  }
+  for (size_t i = 0; i < iters_to_fuse.size(); ++i) {
+    const SpIterVar& sp_iter_var = iters_to_fuse[i];
+    Axis new_axis = FusedAxis(axis_group, i);
+    new_sp_iters.push_back(SpIterVar(sp_iter_var->var, sp_iter_var->is_reduction, new_axis));
+  }
+  for (size_t i = match_pos + iters_to_fuse.size(); i < block->sp_iter_vars.size(); ++i) {
+    new_sp_iters.push_back(block->sp_iter_vars[i]);
+  }
+  p_new_block->sp_iter_vars = new_sp_iters;
+  SparseIteration new_block(p_new_block);
+
+  // Step 4. Create the new IRModule. (The following lines are from Schedule::Replace(...))
+  const PrimFuncNode* g_func = nullptr;
+  GlobalVar g_var;
+  g_func = GetPrimFuncFromSparseIteration(self->mod, block.get(), &g_var);
+
+  IRModuleNode* new_mod = self->mod.CopyOnWrite();
+  MapNode* new_map = new_mod->functions.CopyOnWrite();
+  PrimFunc ref_new_func = Downcast<PrimFunc>(std::move(new_map->at(g_var)));
+  ICHECK(ref_new_func.get() == g_func);
+  PrimFuncNode* new_func = ref_new_func.CopyOnWrite();
+
+  new_func->body = new_block;
+  new_map->at(g_var) = std::move(ref_new_func);
+  self->mod = GetRef<IRModule>(new_mod);
+
+  return new_block;
+}
 
 }  // namespace tir
 }  // namespace tvm

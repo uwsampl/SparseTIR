@@ -2242,7 +2242,7 @@ class Schedule(Object):
         self,
         name: str,
         func_name: str = "main",
-    ) -> SparseIteration:
+    ) -> SparseIterationRV:
         """Retrieve a sparse iteration in a specific function with its name
 
         Parameters
@@ -2263,6 +2263,23 @@ class Schedule(Object):
             name,
             func_name,
         )
+
+    def get_axes(
+        self,
+        func_name: str = "main",
+    ) -> List[AxisRV]:
+        """Retrieve an axis RV in a specific function.
+
+        Parameters
+        ----------
+        func_name : str = "main"
+            The name of the function
+
+        Returns
+        -------
+        List[AxisRV]
+        """
+        return _ffi_api.ScheduleGetAxes(self, func_name)  # type: ignore # pylint: disable=no-member
 
     def get_sp_iters(self, block: SparseIterationRV) -> List[SpIterVar]:
         """Retrieve the sparse iterators of a given sparse iteration

@@ -137,9 +137,7 @@ class FusedAxisNode : public AxisNode {
     v->Visit("index", &index);
   }
 
-  bool IsLastAxis() const {
-    return index + 1 == int(group.size());
-  }
+  bool IsLastAxis() const { return index + 1 == int(group.size()); }
 
   bool SEqualReduce(const FusedAxisNode* other, SEqualReducer equal) const {
     return AxisNode::SEqualReduce(other, equal) && equal(group, other->group) &&
@@ -296,8 +294,7 @@ class SparseBufferNode : public BufferNode {
 class SparseBuffer : public Buffer {
  public:
   TVM_DLL explicit SparseBuffer(Var data, Array<Axis> axes, DataType dtype, String name,
-                                Optional<PrimExpr> extra_storage,
-                                Span span = Span());
+                                Optional<PrimExpr> extra_storage, Span span = Span());
   TVM_DEFINE_OBJECT_REF_METHODS(SparseBuffer, Buffer, SparseBufferNode);
 };
 
@@ -320,7 +317,7 @@ class SpIterVarNode : public Object {
   }
 
   bool SEqualReduce(const SpIterVarNode* other, SEqualReducer equal) const {
-    return equal(axis, other->axis) && equal(var, other->var) &&
+    return equal(axis, other->axis) && equal.DefEqual(var, other->var) &&
            equal(is_reduction, other->is_reduction);
   }
 

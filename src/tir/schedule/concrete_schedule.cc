@@ -744,7 +744,11 @@ Array<AxisRV> ConcreteScheduleNode::GetAxes(const String& func_name) {
   BaseFunc func = this->state_->mod->Lookup(func_name);
   const auto* prim_func = TVM_TYPE_AS(prim_func, func, PrimFuncNode);
 
-  // TODO(zihao)
+  Array<AxisRV> axes;
+  for (const Axis& axis: prim_func->sp_axes) {
+    axes.push_back(CreateRV(axis));
+  }
+  return axes;
 }
 
 Array<SpIterVar> ConcreteScheduleNode::GetSpIters(const SparseIterationRV& block_rv) {

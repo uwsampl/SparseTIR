@@ -195,6 +195,12 @@ class ConcreteScheduleNode : public ScheduleNode {
    */
   inline SparseIterationRV CreateRV(const SparseIteration& sp_iteration);
   /*!
+   * \brief Add an axis as a random variable into the symbol table
+   * \param axis
+   * \return AxisRV
+   */
+  inline AxisRV CreateRV(const Axis& axis);
+  /*!
    * \brief Update the value of the input SparseIterationRV to the input block.
    * \param sp_iteration_rv The random variable to be updated
    * \param block The new value of the random variable
@@ -366,6 +372,12 @@ inline Array<ExprRV> ConcreteScheduleNode::CreateRV(const std::vector<int64_t>& 
 inline SparseIterationRV ConcreteScheduleNode::CreateRV(const SparseIteration& block) {
   SparseIterationRV rv;
   this->symbol_table_.Set(rv, block);
+  return rv;
+}
+
+inline AxisRV ConcreteScheduleNode::CreateRV(const Axis& axis) {
+  AxisRV rv;
+  this->symbol_table_.Set(rv, axis);
   return rv;
 }
 
