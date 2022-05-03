@@ -134,6 +134,16 @@ Axis GetAxisBeforeFuse(const Axis& axis) {
   }
 }
 
+class VarUsedVisitor : public StmtExprVisitor {
+ public:
+  explicit VarUsedVisitor() {}
+  std::unordered_set<const VarNode*> used_var;
+ private:
+  void VisitExpr_(const VarNode* op) final {
+    used_var.insert(op);
+  }
+};
+
 }  // namespace
 
 /*!
@@ -355,7 +365,6 @@ class IterTransformer : public StmtExprMutator {
   }
 
   Array<Buffer> root_alloc_buffers;  // allocated buffers in root block.
-  Array<Stmt> root_stmts;            // initialization statements in root block.
   Optional<Buffer> bsearch_low;      // local buffer `low` for binary search.
   Optional<Buffer> bsearch_high;     // local buffer `high` for binary search.
  private:
@@ -842,9 +851,7 @@ class IterTransformer : public StmtExprMutator {
 
     bsearch_blk_counter++;
     root_alloc_buffers.push_back(mid);
-    PrimExpr root_init_value = Integer(-1);
-    root_stmts.push_back(BufferStore(mid, root_init_value, {Integer(0)}));
-    BlockRealize block_realize({}, mid_val == root_init_value, std::move(new_block));
+    BlockRealize block_realize({}, const_true(), std::move(new_block));
     ctx_.AddBinarySearch(block_realize, mid, Range::FromMinExtent(Integer(0), buf->shape.back()));
     return mid_val;
   }
@@ -856,13 +863,19 @@ class IterTransformer : public StmtExprMutator {
     Array<Stmt> new_block_realizes;
     for (const BlockRealize& block_realize : block_realizes) {
       Array<IterVar> new_iter_vars;
+      Array<PrimExpr> new_iter_bindings;
       std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> block_var_map;
+      VarUsedVisitor visitor;
+      visitor(block_realize);
       for (size_t i = 0; i < iter_vars.size(); ++i) {
         const IterVar& iter_var = iter_vars[i];
-        Var new_var("ax" + std::to_string(i), iter_var->var->dtype);
-        IterVar new_iter_var(iter_var->dom, new_var, IterVarType::kDataPar);
-        block_var_map[iter_var->var] = new_var;
-        new_iter_vars.push_back(std::move(new_iter_var));
+        if (visitor.used_var.count(iter_var->var.get())) {
+          Var new_var("ax" + std::to_string(i), iter_var->var->dtype);
+          IterVar new_iter_var(iter_var->dom, new_var, IterVarType::kDataPar);
+          block_var_map[iter_var->var] = new_var;
+          new_iter_vars.push_back(std::move(new_iter_var));
+          new_iter_bindings.push_back(iter_bindings[i]);
+        }
       }
       ObjectPtr<BlockNode> block_node = CopyOnWrite(block_realize->block.get());
       block_node->iter_vars = std::move(new_iter_vars);
@@ -877,7 +890,7 @@ class IterTransformer : public StmtExprMutator {
 
       ObjectPtr<BlockRealizeNode> block_realize_node = CopyOnWrite(block_realize.get());
       block_realize_node->block = std::move(new_block);
-      block_realize_node->iter_values = iter_bindings;
+      block_realize_node->iter_values = new_iter_bindings;
       new_block_realizes.push_back(BlockRealize(block_realize_node));
     }
     return new_block_realizes;
@@ -1030,11 +1043,6 @@ PrimFunc LowerSparseIter(PrimFunc f) {
     IterTransformer lower_sparse(axis_indptr_map, axis_indices_map, fptr->sp_axes);
     Stmt body = lower_sparse(std::move(fptr->body));
     // Step 3. Wrap with root block.
-    if (!lower_sparse.root_stmts.empty()) {
-      Array<Stmt> stmts = std::move(lower_sparse.root_stmts);
-      stmts.push_back(std::move(body));
-      body = SeqStmt(stmts);
-    }
     Block root_block({}, {}, {}, "root", body, NullOpt, lower_sparse.root_alloc_buffers);
     fptr->body = BlockRealize({}, const_true(), std::move(root_block));
     // Step 4. Lower sparse tir level.

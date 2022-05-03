@@ -90,11 +90,9 @@ def csrmm_dense_iter(
     low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
     high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
     mid_0 = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
-    mid_0[0] = -1
     for v_vi, v_vj, v_vk in T.grid(m, n, k):
         with T.block("binary_search_0"):
-            ax0, ax1, ax2 = T.axis.remap("SSS", [v_vi, v_vj, v_vk])
-            T.where(mid_0[0] == -1)
+            ax0, ax1 = T.axis.remap("SS", [v_vi, v_vj])
             T.reads(J_indices[ax0, 0 : J_indptr[ax0 + 1] - J_indptr[ax0]])
             T.writes(mid_0[0])
             T.block_attr({"sparse": True})
@@ -445,12 +443,9 @@ def fused_sddmm(
     low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
     high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
     mid_0 = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
-    mid_0[0] = -1
     for v_vj, v_vk in T.grid(nnz, k):
         with T.block("binary_search_0"):
-            ax0 = T.axis.spatial(1, 0)
-            ax1, ax2 = T.axis.remap("SS", [v_vj, v_vk])
-            T.where(mid_0[0] == -1)
+            ax1 = T.axis.spatial(nnz, v_vj)
             T.reads(J_indptr[0 : m + 1])
             T.writes(mid_0[0])
             T.block_attr({"sparse": True})
@@ -564,7 +559,6 @@ def square_sum_two_K(
     low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
     high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
     mid_0 = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
-    mid_0[0] = -1
     for v_vi in T.serial(M):
         with T.block("square_sum0"):
             vi = T.axis.spatial(M, v_vi)
@@ -591,7 +585,6 @@ def square_sum_two_K(
                     for v_vk in T.serial(K1_indptr[vi, vj + 1] - K1_indptr[vi, vj]):
                         with T.block("binary_search_0"):
                             ax0 = T.axis.spatial(N2, v_vk)
-                            T.where(mid_0[0] == -1)
                             T.reads(
                                 K0_indices[vi, vj, 0 : K0_indptr[vi, vj + 1] - K0_indptr[vi, vj]]
                             )
@@ -934,7 +927,6 @@ def csr2bsr(
     low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
     high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
     mid_0 = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
-    mid_0[0] = -1
     for v_vi in T.serial(m_in):
         with T.block("csr2bsr0"):
             vi = T.axis.spatial(m_in, v_vi)
@@ -950,7 +942,6 @@ def csr2bsr(
             for v_vj in T.serial(J_indptr[vi + 1] - J_indptr[vi]):
                 with T.block("binary_search_0"):
                     ax0 = T.axis.spatial(n_in, v_vj)
-                    T.where(mid_0[0] == -1)
                     T.reads(
                         J_bsr_indices[
                             vi // blk_size,
