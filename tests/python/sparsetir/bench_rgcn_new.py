@@ -53,20 +53,50 @@ def prepare_hetero_graph_simplified(g: dgl.DGLHeteroGraph):
         "etype_edge_pointer": th.IntTensor(etype_pointer),
     }
 
+
+def get_ground_truth(g_homo: dgl.DGLHeteroGraph, feat: th.Tensor, weight: th.Tensor) -> th.Tensor:
+    feat_size = feat.shape[-1]
+    g_homo = g_homo.to(0)
+    weight_T = weight.permute(0, 2, 1).contiguous()
+    try:
+        g_homo.srcdata["feat"] = feat.unsqueeze(-1)
+        us, vs = g_homo.edges()
+        feat_transformed = feat[us]
+        msg = th.zeros(g_homo.num_edges(), feat_size).to(0)
+        with th.no_grad():
+            for i in range(1, len(g_homo.etype_pointer)):
+                start = g_homo.etype_pointer[i - 1]
+                end = g_homo.etype_pointer[i]
+                msg[start:end] = feat_transformed[start:end] @ weight_T[i - 1]
+            y_dgl_lowmem = dgl.ops.copy_e_sum(g_homo, msg)
+    except RuntimeError as err:
+        print("dgl-lowmem: OOM")
+        y_dgl_lowmem = None
+    return y_dgl_lowmem
+
+
 blks = ["blockIdx.x", "blockIdx.y", "blockIdx.z"]
 
-def test_lower_rgcn_hetero(g: dgl.DGLHeteroGraph, feat_size: int, blk_order: List[Tuple[str]], split_factor_f: int, split_factor_i: int):
+
+def test_lower_rgcn_hetero(
+    g: dgl.DGLHeteroGraph,
+    feat_size: int,
+    feat,
+    weight,
+    ground_truth_y,
+    blk_order: List[Tuple[str]],
+    split_factor_f: int,
+    split_factor_i: int,
+):
     N, R, FEAT_SIZE, NNZ_I, NNZ_J = rgcn_hetero_forward.params[-5:]
     n = g.num_nodes()
     r = len(g.etypes)
     nnz_j = g.num_edges()
 
-    feat = th.rand(n, feat_size).to(0) / 100
-    out = th.zeros(n, feat_size).to(0) / 100
-    weight = th.rand(r, feat_size, feat_size).to(0)
-    W = tvm.nd.array(weight.view(-1).cpu().numpy().astype("float32"), device=tvm.cuda(0))
-    X = tvm.nd.array(feat.view(-1).cpu().numpy().astype("float32"), device=tvm.cuda(0))
-    Y = tvm.nd.array(out.view(-1).cpu().numpy().astype("float32"), device=tvm.cuda(0))
+    out = np.zeros((n * feat_size))
+    W = tvm.nd.array(weight.astype("float32"), device=tvm.cuda(0))
+    X = tvm.nd.array(feat.astype("float32"), device=tvm.cuda(0))
+    Y = tvm.nd.array(out.astype("float32"), device=tvm.cuda(0))
 
     indptr_i = [th.LongTensor([0])]
     indices_i = []
@@ -81,9 +111,9 @@ def test_lower_rgcn_hetero(g: dgl.DGLHeteroGraph, feat_size: int, blk_order: Lis
         indptr, indices, _ = g_sub.adj_sparse(fmt="csc")
 
         unique_nodes = th.nonzero(indptr[:-1] != indptr[1:]).squeeze(1)
-        indptr_i.append(th.LongTensor([len(unique_nodes)]))
+        indptr_i.append(th.LongTensor([len(unique_nodes) + indptr_i[-1].item()]))
         indices_i.append(unique_nodes + g.ntype_pointer[dst_type_id])
-        indptr_j.append(indptr[unique_nodes] + g.etype_pointer[etype_id])
+        indptr_j.append(indptr[unique_nodes + 1] + g.etype_pointer[etype_id])
         indices_j.append(indices + g.ntype_pointer[src_type_id])
 
     indptr_i = tvm.nd.array(th.cat(indptr_i).numpy().astype("int32"), device=tvm.cuda(0))
@@ -103,7 +133,7 @@ def test_lower_rgcn_hetero(g: dgl.DGLHeteroGraph, feat_size: int, blk_order: Lis
     blk0 = sch.get_block("rgcn-hetero-forward0")
     blk1 = sch.get_block("rgcn-hetero-forward1")
     blk2 = sch.get_block("rgcn-hetero-forward2")
-    read_blk = sch.cache_read(blk1, 2, "shared")
+    read_blk = sch.cache_read(blk1, 2, "local")
     write_blk = sch.cache_write(blk2, 0, "local")
     sch.annotate(write_blk, "atomic", True)
     f_out, r = sch.get_loops(blk0)
@@ -131,6 +161,8 @@ def test_lower_rgcn_hetero(g: dgl.DGLHeteroGraph, feat_size: int, blk_order: Lis
     for epoch in range(10):
         with TorchOpTimer() as timer:
             f(W, X, Y, indptr_i, indices_i, indptr_j, indices_j)
+        if epoch == 0:
+            tvm.testing.assert_allclose(Y.numpy(), ground_truth_y, rtol=1e-2)
         if epoch >= cold_start:
             accum += timer.time
 
@@ -143,10 +175,35 @@ if __name__ == "__main__":
             dataset = get_dataset_by_name(name)
             g = dataset[0]
             type_pointers = prepare_hetero_graph_simplified(g)
+            n = g.num_nodes()
+            r = len(g.etypes)
+            feat = th.rand(n, feat_size).to(0) / 100
+            weight = th.rand(r, feat_size, feat_size).to(0)
+            # homograph
+            g_homo = dgl.to_homogeneous(g)
+            g_homo.ntype_pointer = type_pointers["ntype_node_pointer"]
+            g_homo.etype_pointer = type_pointers["etype_edge_pointer"]
+            g_homo.num_ntypes = max(g_homo.ndata[dgl.NTYPE]).item() + 1
+            g_homo.num_rels = max(g_homo.edata[dgl.ETYPE]).item() + 1
+            ground_truth_y = get_ground_truth(g_homo, feat, weight)
+            # heterograph
             g.ntype_pointer = type_pointers["ntype_node_pointer"]
             g.etype_pointer = type_pointers["etype_edge_pointer"]
             for blk_order in [(0, 1, 2), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1), (2, 1, 0)]:
                 for split_factor_f in [1, 2, 4, 8, 16, 32]:
                     for split_factor_i in [8, 16, 32, 64, 128, 256, 512]:
-                        print("dataset {}, blk_order {}, split_factor_f {}, split_factor_i {}:".format(name, blk_order, split_factor_f, split_factor_i))
-                        test_lower_rgcn_hetero(g, feat_size, blk_order, split_factor_f, split_factor_i)
+                        print(
+                            "dataset {}, blk_order {}, split_factor_f {}, split_factor_i {}:".format(
+                                name, blk_order, split_factor_f, split_factor_i
+                            )
+                        )
+                        test_lower_rgcn_hetero(
+                            g,
+                            feat_size,
+                            feat.view(-1).cpu().numpy(),
+                            weight.view(-1).cpu().numpy(),
+                            ground_truth_y.view(-1).cpu().numpy(),
+                            blk_order,
+                            split_factor_f,
+                            split_factor_i,
+                        )
