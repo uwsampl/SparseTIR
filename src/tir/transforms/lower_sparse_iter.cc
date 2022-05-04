@@ -787,6 +787,7 @@ class IterTransformer : public StmtExprMutator {
     args.push_back(ub);
     args.push_back(val);
     args.push_back(Bool(left));
+    args.push_back(Bool(minus_one));
     if (bsearch_map_.count(args)) {
       return bsearch_map_[args];
     }
@@ -852,6 +853,7 @@ class IterTransformer : public StmtExprMutator {
     root_alloc_buffers.push_back(mid);
     BlockRealize block_realize({}, const_true(), std::move(new_block));
     ctx_.AddBinarySearch(block_realize, mid, Range::FromMinExtent(Integer(0), buf->shape.back()));
+    bsearch_map_[args] = mid_val;
     return mid_val;
   }
 
