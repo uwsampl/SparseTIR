@@ -171,6 +171,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReorder")
     .set_body_method<Schedule>(&ScheduleNode::Reorder);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleLiftLoop")
     .set_body_method<Schedule>(&ScheduleNode::LiftLoop);
+TVM_REGISTER_GLOBAL("tir.schedule.SchedulePlaceUnder")
+    .set_body_method<Schedule>(&ScheduleNode::PlaceUnder);
 /******** (FFI) Manipulate ForKind ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel")
     .set_body_method<Schedule>(&ScheduleNode::Parallel);

@@ -724,6 +724,24 @@ class Schedule(Object):
         """
         _ffi_api.ScheduleLiftLoop(self, loop)  # type: ignore # pylint: disable=no-member
 
+    @type_checked
+    def place_under(self, block: BlockRV, loop: LoopRV) -> None:
+        """Place a block under a loop.
+
+        Parameters
+        ----------
+        block : BlockRV
+            The block to place.
+
+        loop : LoopRV
+            The loop to place under.
+
+        Examples
+        --------
+        TODO(zihao)
+        """
+        _ffi_api.SchedulePlaceUnder(self, block, loop)  # type: ignore # pylint: disable=no-member
+
     ########## Schedule: Manipulate ForKind ##########
 
     @type_checked

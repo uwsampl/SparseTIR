@@ -461,6 +461,15 @@ void ConcreteScheduleNode::LiftLoop(const LoopRV& loop_rv) {
   this->state_->DebugVerify();
 }
 
+void ConcreteScheduleNode::PlaceUnder(const BlockRV& block, const LoopRV& loop) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  StmtSRef block_sref = this->GetSRef(block);
+  StmtSRef loop_sref = this->GetSRef(loop);
+  tir::PlaceUnder(state_, block_sref, loop_sref);
+  TVM_TIR_SCHEDULE_END("place_under", this->error_render_level_);
+  this->state_->DebugVerify();
+}
+
 /******** Schedule: Manipulate ForKind ********/
 
 void ConcreteScheduleNode::Parallel(const LoopRV& loop_rv) {

@@ -192,6 +192,12 @@ TVM_DLL void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_sre
  */
 TVM_DLL void LiftLoop(ScheduleState self, const StmtSRef& loop_sref);
 
+/*!
+ * \brief Place a block under another loop.
+ * TODO(zihao): docstring
+ */
+TVM_DLL void PlaceUnder(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& loop_sref);
+
 /******** Schedule: Manipulate ForKind ********/
 /*!
  * \brief Parallelize the input loop. It requires:

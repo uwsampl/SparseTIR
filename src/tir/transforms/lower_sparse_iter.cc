@@ -138,10 +138,9 @@ class VarUsedVisitor : public StmtExprVisitor {
  public:
   explicit VarUsedVisitor() {}
   std::unordered_set<const VarNode*> used_var;
+
  private:
-  void VisitExpr_(const VarNode* op) final {
-    used_var.insert(op);
-  }
+  void VisitExpr_(const VarNode* op) final { used_var.insert(op); }
 };
 
 }  // namespace

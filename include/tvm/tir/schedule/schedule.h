@@ -374,6 +374,11 @@ class ScheduleNode : public runtime::Object {
    * \note TODO(zihao): write something about requirements.
    */
   virtual void LiftLoop(const LoopRV& loop_rv) = 0;
+  /*!
+   * \brief Place a block under loop.
+   * \note TODO(zihao): write something about requirements.
+   */
+  virtual void PlaceUnder(const BlockRV& block, const LoopRV& loop) = 0;
   /******** Schedule: Manipulate ForKind ********/
   /*!
    * \brief Parallelize the input loop. It requires:

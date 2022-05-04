@@ -721,6 +721,46 @@ void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs) {
   self->Replace(GetRef<StmtSRef>(top), new_loop, {});
 }
 
+class BlockMover : public StmtExprMutator {
+ public:
+  explicit BlockMover(const BlockNode* block_to_move, const ForNode* loop_to_place_under)
+      : block_to_move_(block_to_move), loop_to_place_under_(loop_to_place_under) {}
+
+ private:
+  Stmt VisitStmt_(const ForNode* op) final {
+    if (op == loop_to_place_under_) {
+      Stmt body = VisitStmt(op->body);
+      auto n = CopyOnWrite(op);
+      Array<Stmt> stmts;
+      stmts.push_back(std::move(block_realize_));
+      if (const SeqStmtNode* seq_stmt = body.as<SeqStmtNode>()) {
+        for (const Stmt& stmt : seq_stmt->seq) {
+          stmts.push_back(stmt);
+        }
+      } else {
+        stmts.push_back(body);
+      }
+      n->body = SeqStmt(stmts);
+      return For(n);
+    } else {
+      return StmtExprMutator::VisitStmt_(op);
+    }
+  }
+
+  Stmt VisitStmt_(const BlockRealizeNode* op) final {
+    if (op->block.get() == block_to_move_) {
+      block_realize_ = GetRef<BlockRealize>(op);
+      return Evaluate(Integer(0));
+    } else {
+      return StmtExprMutator::VisitStmt_(op);
+    }
+  }
+
+  BlockRealize block_realize_;
+  const BlockNode* block_to_move_;
+  const ForNode* loop_to_place_under_;
+};
+
 class LoopLifter : public StmtExprMutator {
  public:
   explicit LoopLifter(const BlockNode* parent_blk, const ForNode* loop)
@@ -743,7 +783,7 @@ class LoopLifter : public StmtExprMutator {
       n->iter_values.push_back(loop_->loop_var);
     } else {
       Array<PrimExpr> iter_values;
-      for (const PrimExpr& iter_value: op->iter_values) {
+      for (const PrimExpr& iter_value : op->iter_values) {
         iter_values.push_back(Substitute(iter_value, var_map_));
       }
       n->iter_values = std::move(iter_values);
@@ -809,6 +849,31 @@ void LiftLoop(ScheduleState self, const StmtSRef& loop_sref) {
   LoopLifter loop_lifter(parent_block, loop);
   Stmt new_subtree = loop_lifter(GetRef<Block>(root_block));
   self->Replace(GetRef<StmtSRef>(top), new_subtree, loop_lifter.block_map_);
+}
+
+void PlaceUnder(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& loop_sref) {
+  // Step 1. Check loop_sref is block_sref's ancestor, and there is no other block between the two.
+  const StmtSRefNode* p = block_sref->parent;
+  bool is_ancestor = false;
+  bool blks_in_between = false;
+  for (; p != nullptr; p = p->parent) {
+    if (p == loop_sref.get()) {
+      is_ancestor = true;
+      break;
+    } else if (p->stmt->IsInstance<BlockNode>()) {
+      blks_in_between = true;
+    }
+  }
+  CHECK(is_ancestor) << "The give loop_sref must be an ancestor of the block_sref.";
+  CHECK(!blks_in_between) << "There are other blocks between the given block_sref and loop_sref.";
+  // Step 2. Check whether the change breaks any of the dependencies.
+  // TODO(zihao)
+  // Step 3. Perform the movement.
+  const BlockNode* blk = TVM_SREF_TO_BLOCK(blk, block_sref);
+  const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  BlockMover blk_mover(blk, loop);
+  Stmt new_subtree = blk_mover(GetRef<For>(loop));
+  self->Replace(loop_sref, new_subtree, {});
 }
 
 /******** InstructionKind Registration ********/
@@ -930,10 +995,34 @@ struct LiftLoopTraits : public UnpackedInstTraits<LiftLoopTraits> {
   friend struct ::tvm::tir::UnpackedInstTraits;
 };
 
+struct PlaceUnderTraits : public UnpackedInstTraits<PlaceUnderTraits> {
+  static constexpr const char* kName = "PlaceUnder";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 2;
+  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumDecisions = 0;
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, LoopRV loop_rv) {
+    return sch->PlaceUnder(block_rv, loop_rv);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block_rv, String loop_rv) {
+    PythonAPICall py("place_under");
+    py.Input("", block_rv);
+    py.Input("", loop_rv);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct ::tvm::tir::UnpackedInstTraits;
+};
+
 TVM_REGISTER_INST_KIND_TRAITS(SplitTraits);
 TVM_REGISTER_INST_KIND_TRAITS(FuseTraits);
 TVM_REGISTER_INST_KIND_TRAITS(ReorderTraits);
 TVM_REGISTER_INST_KIND_TRAITS(LiftLoopTraits);
+TVM_REGISTER_INST_KIND_TRAITS(PlaceUnderTraits);
 
 }  // namespace tir
 }  // namespace tvm

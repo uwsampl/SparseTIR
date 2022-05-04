@@ -208,6 +208,16 @@ void TracedScheduleNode::LiftLoop(const LoopRV& loop_rv) {
                                       /*outputs=*/{}));
 }
 
+void TracedScheduleNode::PlaceUnder(const BlockRV& block_rv, const LoopRV& loop_rv) {
+  ConcreteScheduleNode::PlaceUnder(block_rv, loop_rv);
+
+  static const InstructionKind& kind = InstructionKind::Get("PlaceUnder");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{block_rv, loop_rv},
+                                      /*attrs=*/{},
+                                      /*outputs=*/{}));
+}
+
 /******** Schedule: Manipulate ForKind ********/
 
 void TracedScheduleNode::Parallel(const LoopRV& loop_rv) {
