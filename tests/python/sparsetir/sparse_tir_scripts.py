@@ -489,10 +489,46 @@ def rgcn_hetero_forward(
     W = T.match_sparse_buffer(w, (R, F_out, F_in), "float32")
     X = T.match_sparse_buffer(x, (J_detach, F_in), "float32")
     Y = T.match_sparse_buffer(y, (I_detach, F_out), "float32")
-    with T.iter([F_out, R, I, J, F_in], "SSSRR", "rgcn-hetero-forward") as [vout, vr, vi, vj, vin]:
+    with T.iter([F_out, T.fuse(R, I), J, F_in], "SSSRR", "rgcn-hetero-forward") as [vout, vr, vi, vj, vin]:
         with T.init():
             Y[vi, vout] = 0.0
         Y[vi, vout] = Y[vi, vout] + W[vr, vout, vin] * X[vj, vin]
+
+
+@T.prim_func
+def rgcn_hetero_forward_2(
+    w: T.handle,
+    x: T.handle,
+    y: T.handle,
+    etypes: T.handle,
+    indptr_i: T.handle,
+    indices_i: T.handle,
+    indptr_j: T.handle,
+    indices_j: T.handle,
+    n: T.int32,
+    r: T.int32,
+    group: T.int32,
+    feat_size: T.int32,
+    nnz_i: T.int32,
+    nnz_j: T.int32,
+):
+    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
+    R = T.dense_fixed(r)
+    G = T.dense_fixed(group)
+    I = T.sparse_variable(G, (n, nnz_i), (indptr_i, indices_i), "int32")
+    J = T.sparse_variable(I, (n, nnz_j), (indptr_j, indices_j), "int32")
+    I_detach = T.dense_fixed(n)
+    J_detach = T.dense_fixed(n)
+    F_in = T.dense_fixed(feat_size)
+    F_out = T.dense_fixed(feat_size)
+    W = T.match_sparse_buffer(w, (R, F_out, F_in), "float32")
+    X = T.match_sparse_buffer(x, (J_detach, F_in), "float32")
+    Y = T.match_sparse_buffer(y, (I_detach, F_out), "float32")
+    E = T.match_sparse_buffer(etypes, (G,), "int32")
+    with T.iter([F_out, G, I, J, F_in], "SSSRR", "rgcn-hetero-forward") as [vout, vg, vi, vj, vin]:
+        with T.init():
+            Y[vi, vout] = 0.
+        Y[vi, vout] = Y[vi, vout] + W[E[vg], vout, vin] * X[vj, vin]
 
 
 @T.prim_func
