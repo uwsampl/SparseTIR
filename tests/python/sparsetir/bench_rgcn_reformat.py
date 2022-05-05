@@ -1,4 +1,3 @@
-from dgl.heterograph import DGLHeteroGraph
 import tvm
 import tvm.testing
 import tvm.tir as tir
@@ -11,7 +10,6 @@ from tvm.script import tir as T
 from dgl.data.rdf import AIFBDataset, MUTAGDataset, BGSDataset, AMDataset
 from sparse_tir_scripts import rgcn_hetero_forward_2
 from tvm.sparse import lower_sparse_iter, lower_sparse_buffer
-from typing import List, Tuple
 
 
 def get_dataset_by_name(name: str):
@@ -75,16 +73,12 @@ def get_ground_truth(g_homo: dgl.DGLHeteroGraph, feat: th.Tensor, weight: th.Ten
     return y_dgl_lowmem
 
 
-blks = ["blockIdx.x", "blockIdx.y", "blockIdx.z"]
-
-
 def test_lower_rgcn_hetero(
     g: dgl.DGLHeteroGraph,
     feat_size: int,
     feat,
     weight,
     ground_truth_y,
-    blk_order: List[Tuple[str]],
     split_factor_f: int,
     bucket_size: int,
 ):
@@ -158,16 +152,14 @@ def test_lower_rgcn_hetero(
     f_out_o, f_out_i = sch.split(f_out, [split_factor_f, None])
     (i,) = sch.get_loops(blk1)
     j, f_in = sch.get_loops(blk2)
-    sch.reorder(f_in, j)
-    sch.bind(g, blks[blk_order[0]])
-    sch.bind(f_out_o, blks[blk_order[1]])
+    sch.bind(g, "blockIdx.y")
+    sch.bind(f_out_o, "blockIdx.x")
     sch.bind(f_in, "threadIdx.x")
     sch.bind(f_out_i, "threadIdx.y")
     _, _, ax2 = sch.get_loops(read_blk)
     sch.bind(ax2, "threadIdx.x")
     mod = lower_sparse_buffer(sch.mod)
     f = tvm.build(mod["main"], target="cuda")
-    # print(f.imported_modules[0].get_source())
 
     cold_start = 3
     total = 10
@@ -204,21 +196,19 @@ if __name__ == "__main__":
             # heterograph
             g.ntype_pointer = type_pointers["ntype_node_pointer"]
             g.etype_pointer = type_pointers["etype_edge_pointer"]
-            for blk_order in [(1, 0)]:
-                for split_factor_f in [2, 4, 8]:
-                    for bucket_size in [128, 256, 512, 1024]:
-                        print(
-                            "dataset {}, blk_order {}, split_factor_f {}, bucket_size {}".format(
-                                name, blk_order, split_factor_f, bucket_size
-                            )
+            for split_factor_f in [2, 4, 8, 16]:
+                for bucket_size in [128, 256, 512, 1024, 2048]:
+                    print(
+                        "dataset {}, split_factor_f {}, bucket_size {}".format(
+                            name, split_factor_f, bucket_size
                         )
-                        test_lower_rgcn_hetero(
-                            g,
-                            feat_size,
-                            feat.view(-1).cpu().numpy(),
-                            weight.view(-1).cpu().numpy(),
-                            ground_truth_y.view(-1).cpu().numpy(),
-                            blk_order,
-                            split_factor_f,
-                            bucket_size,
-                        )
+                    )
+                    test_lower_rgcn_hetero(
+                        g,
+                        feat_size,
+                        feat.view(-1).cpu().numpy(),
+                        weight.view(-1).cpu().numpy(),
+                        ground_truth_y.view(-1).cpu().numpy(),
+                        split_factor_f,
+                        bucket_size,
+                    )
