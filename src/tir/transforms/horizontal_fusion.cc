@@ -80,10 +80,11 @@ class ThreadTagExtentCollector : public StmtExprVisitor {
 class HorizontalFuser : public StmtExprMutator {
  public:
   explicit HorizontalFuser(Map<String, Integer> thread_tag_extent_map)
-      : block_idx("block_idx"),
-        blockIdx_x_accum_offset_(0),
-        thread_tag_extent_map_(std::move(thread_tag_extent_map)) {
-    predicate_stack_.push_back({});
+      : blockIdx_x_accum_offset_(0), thread_tag_extent_map_(std::move(thread_tag_extent_map)) {
+    thread_tag_var_map_.Set("blockIdx.x", Var("block_idx_x"));
+    thread_tag_var_map_.Set("threadIdx.x", Var("thread_idx_x"));
+    thread_tag_var_map_.Set("threadIdx.y", Var("thread_idx_y"));
+    thread_tag_var_map_.Set("threadIdx.z", Var("thread_idx_z"));
   }
 
  private:
@@ -102,42 +103,25 @@ class HorizontalFuser : public StmtExprMutator {
     }
     String thread_tag = op->thread_binding.value()->thread_tag;
     Integer original_extent = Downcast<Integer>(op->extent);
+    Var thread_var = thread_tag_var_map_.Get(thread_tag).value();
     if (thread_tag == "blockIdx.x") {
-      predicate_stack_.back().push_back((block_idx >= blockIdx_x_accum_offset_) &&
-                                        (block_idx < blockIdx_x_accum_offset_ + original_extent));
-      var_substitution_map_[op->loop_var.get()] = block_idx - blockIdx_x_accum_offset_;
+      var_substitution_map_[op->loop_var.get()] = thread_var - blockIdx_x_accum_offset_;
+      Stmt body = IfThenElse(((thread_var >= blockIdx_x_accum_offset_) &&
+                              (thread_var < blockIdx_x_accum_offset_ + original_extent)),
+                             VisitStmt(op->body));
       blockIdx_x_accum_offset_ += original_extent->value;
-      Stmt body = VisitStmt(op->body);
-      predicate_stack_.back().pop_back();
       return body;
     } else {
       Integer new_extent = thread_tag_extent_map_.Get(thread_tag).value();
-      Var loop_var = op->loop_var;
-
-      auto n = CopyOnWrite(op);
+      Stmt body;
+      var_substitution_map_[op->loop_var.get()] = thread_var;
       if (original_extent->value != new_extent->value) {
-        n->extent = new_extent;
-        predicate_stack_.back().push_back(loop_var < original_extent);
-        n->body = VisitStmt(n->body);
-        predicate_stack_.back().pop_back();
+        body = IfThenElse(thread_var < original_extent, VisitStmt(op->body));
       } else {
-        n->body = VisitStmt(n->body);
+        body = VisitStmt(op->body);
       }
-      return For(n);
+      return body;
     }
-  }
-
-  Stmt VisitStmt_(const BlockRealizeNode* op) final {
-    PrimExpr new_predicate = op->predicate;
-    for (const PrimExpr& predicate : predicate_stack_.back()) {
-      new_predicate = new_predicate && predicate;
-    }
-    auto n = CopyOnWrite(op);
-    n->predicate = new_predicate;
-    predicate_stack_.push_back({});
-    n->block = Downcast<Block>(VisitStmt(n->block));
-    predicate_stack_.pop_back();
-    return BlockRealize(n);
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
@@ -145,20 +129,25 @@ class HorizontalFuser : public StmtExprMutator {
       // add an extra loop in root block.
       auto n = CopyOnWrite(op);
       Stmt body = VisitStmt(n->body);
-      For new_loop(block_idx, Integer(0), thread_tag_extent_map_.Get("blockIdx.x").value(),
-                   ForKind::kThreadBinding, body,
-                   IterVar(NullValue<Range>(), Var(""), IterVarType::kThreadIndex, "blockIdx.x"));
-      n->body = new_loop;
+      for (auto& kv : thread_tag_extent_map_) {
+        String thread_tag = kv.first;
+        PrimExpr extent = kv.second;
+        For new_loop(thread_tag_var_map_.Get(thread_tag).value(), Integer(0), extent,
+                     ForKind::kThreadBinding, body,
+                     IterVar(NullValue<Range>(), Var(""), IterVarType::kThreadIndex, thread_tag));
+        body = new_loop;
+      }
+      n->body = body;
+      LOG(INFO) << body;
       return Block(n);
     }
     return StmtExprMutator::VisitStmt_(op);
   }
 
-  Var block_idx;
   int32_t blockIdx_x_accum_offset_;
   Map<String, Integer> thread_tag_extent_map_;
+  Map<String, Var> thread_tag_var_map_;
   std::unordered_map<const VarNode*, PrimExpr> var_substitution_map_;
-  std::vector<std::vector<PrimExpr>> predicate_stack_;
 };
 
 PrimFunc HorizontalFusion(PrimFunc f) {

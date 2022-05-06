@@ -110,10 +110,18 @@ def csrmm_padding_tir(
 
 @T.prim_func
 def csrmm_hyb_tir(
-    a: T.handle,
     b: T.handle,
     c: T.handle,
     placeholder: T.handle,
+    row_4: T.handle,
+    indices_4: T.handle,
+    a_4: T.handle,
+    row_8: T.handle,
+    indices_8: T.handle,
+    a_8: T.handle,
+    row_16: T.handle,
+    indices_16: T.handle,
+    a_16: T.handle,
     row_32: T.handle,
     indices_32: T.handle,
     a_32: T.handle,
@@ -129,6 +137,9 @@ def csrmm_hyb_tir(
     row_512: T.handle,
     indices_512: T.handle,
     a_512: T.handle,
+    n4: T.int32,
+    n8: T.int32,
+    n16: T.int32,
     n32: T.int32,
     n64: T.int32,
     n128: T.int32,
@@ -148,6 +159,15 @@ def csrmm_hyb_tir(
     N = T.dense_fixed(n)
     O = T.dense_fixed(1)
     F = T.dense_fixed(f)
+    I4 = T.sparse_variable(O, (n, n4), (placeholder, row_4))
+    J4 = T.sparse_fixed(I4, (n, 4), indices_4)
+    A4 = T.match_sparse_buffer(a_4, [O, I4, J4], "float32")
+    I8 = T.sparse_variable(O, (n, n8), (placeholder, row_8))
+    J8 = T.sparse_fixed(I8, (n, 8), indices_8)
+    A8 = T.match_sparse_buffer(a_8, [O, I8, J8], "float32")
+    I16 = T.sparse_variable(O, (n, n16), (placeholder, row_16))
+    J16 = T.sparse_fixed(I16, (n, 16), indices_16)
+    A16 = T.match_sparse_buffer(a_16, [O, I16, J16], "float32")
     I32 = T.sparse_variable(O, (n, n32), (placeholder, row_32))
     J32 = T.sparse_fixed(I32, (n, 32), indices_32)
     A32 = T.match_sparse_buffer(a_32, [O, I32, J32], "float32")
@@ -165,6 +185,18 @@ def csrmm_hyb_tir(
     A512 = T.match_sparse_buffer(a_512, [O, I512, J512], "float32")
     B = T.match_sparse_buffer(b, (N, F), "float32")
     C = T.match_sparse_buffer(c, (N, F), "float32")
+    with T.iter([T.fuse(O, I4), J4, F], "SSRS", "csrmm_4") as [vo, vi, vj, vf]:
+        with T.init():
+            C[vi, vf] = 0.0
+        C[vi, vf] = C[vi, vf] + A4[vo, vi, vj] * B[vj, vf]
+    with T.iter([T.fuse(O, I8), J8, F], "SSRS", "csrmm_8") as [vo, vi, vj, vf]:
+        with T.init():
+            C[vi, vf] = 0.0
+        C[vi, vf] = C[vi, vf] + A8[vo, vi, vj] * B[vj, vf]
+    with T.iter([T.fuse(O, I16), J16, F], "SSRS", "csrmm_16") as [vo, vi, vj, vf]:
+        with T.init():
+            C[vi, vf] = 0.0
+        C[vi, vf] = C[vi, vf] + A16[vo, vi, vj] * B[vj, vf]
     with T.iter([T.fuse(O, I32), J32, F], "SSRS", "csrmm_32") as [vo, vi, vj, vf]:
         with T.init():
             C[vi, vf] = 0.0
@@ -190,75 +222,248 @@ def csrmm_hyb_tir(
 def bench_hyb(g, feat_size=128):
     # still work in progress
     in_degrees = g.in_degrees()
-    rows_32 = (in_degrees <= 32).nonzero().view(-1)
-    rows_64 = (in_degrees <= 64).nonzero().view(-1)
-    rows_128 = (in_degrees <= 128).nonzero().view(-1)
-    rows_256 = (in_degrees <= 256).nonzero().view(-1)
+    rows_4 = ((in_degrees <= 4)).nonzero().view(-1)
+    rows_8 = ((in_degrees <= 8) & (in_degrees > 4)).nonzero().view(-1)
+    rows_16 = ((in_degrees <= 16) & (in_degrees > 8)).nonzero().view(-1)
+    rows_32 = ((in_degrees <= 32) & (in_degrees > 16)).nonzero().view(-1)
+    rows_64 = ((in_degrees <= 64) & (in_degrees > 32)).nonzero().view(-1)
+    rows_128 = ((in_degrees <= 128) & (in_degrees > 64)).nonzero().view(-1)
+    rows_256 = ((in_degrees <= 256) & (in_degrees > 128)).nonzero().view(-1)
     rows_512 = (in_degrees > 256).nonzero().view(-1)
+    n_4 = len(rows_4)
+    n_8 = len(rows_8)
+    n_16 = len(rows_16)
     n_32 = len(rows_32)
     n_64 = len(rows_64)
     n_128 = len(rows_128)
     n_256 = len(rows_256)
     n_512 = len(rows_512)
+    n = g.num_nodes()
 
-    N32, N64, N128, N256, N512, N, F = csrmm_hyb_tir.params[-7:]
+    indices_4 = []
+    a_4 = []
+    for row in rows_4:
+        in_edges = g.in_edges([row])[0]
+        indices_4.append(th.cat([in_edges, th.full((4 - len(in_edges),), 0)]))
+        a_4.append(th.cat([th.ones(len(in_edges)), th.zeros(4 - len(in_edges))]))
+    indices_4 = th.stack(indices_4)
+    a_4 = th.stack(a_4)
+
+    indices_8 = []
+    a_8 = []
+    for row in rows_8:
+        in_edges = g.in_edges([row])[0]
+        indices_8.append(th.cat([in_edges, th.full((8 - len(in_edges),), 0)]))
+        a_8.append(th.cat([th.ones(len(in_edges)), th.zeros(8 - len(in_edges))]))
+    indices_8 = th.stack(indices_8)
+    a_8 = th.stack(a_8)
+
+    indices_16 = []
+    a_16 = []
+    for row in rows_16:
+        in_edges = g.in_edges([row])[0]
+        indices_16.append(th.cat([in_edges, th.full((16 - len(in_edges),), 0)]))
+        a_16.append(th.cat([th.ones(len(in_edges)), th.zeros(16 - len(in_edges))]))
+    indices_16 = th.stack(indices_16)
+    a_16 = th.stack(a_16)
+
+    indices_32 = []
+    a_32 = []
+    for row in rows_32:
+        in_edges = g.in_edges([row])[0]
+        indices_32.append(th.cat([in_edges, th.full((32 - len(in_edges),), 0)]))
+        a_32.append(th.cat([th.ones(len(in_edges)), th.zeros(32 - len(in_edges))]))
+    indices_32 = th.stack(indices_32)
+    a_32 = th.stack(a_32)
+
+    indices_64 = []
+    a_64 = []
+    for row in rows_64:
+        in_edges = g.in_edges([row])[0]
+        indices_64.append(th.cat([in_edges, th.full((64 - len(in_edges),), 0)]))
+        a_64.append(th.cat([th.ones(len(in_edges)), th.zeros(64 - len(in_edges))]))
+    indices_64 = th.stack(indices_64)
+    a_64 = th.stack(a_64)
+
+    indices_128 = []
+    a_128 = []
+    for row in rows_128:
+        in_edges = g.in_edges([row])[0]
+        indices_128.append(th.cat([in_edges, th.full((128 - len(in_edges),), 0)]))
+        a_128.append(th.cat([th.ones(len(in_edges)), th.zeros(128 - len(in_edges))]))
+    indices_128 = th.stack(indices_128)
+    a_128 = th.stack(a_128)
+
+    indices_256 = []
+    a_256 = []
+    for row in rows_256:
+        in_edges = g.in_edges([row])[0]
+        indices_256.append(th.cat([in_edges, th.full((256 - len(in_edges),), 0)]))
+        a_256.append(th.cat([th.ones(len(in_edges)), th.zeros(256 - len(in_edges))]))
+    indices_256 = th.stack(indices_256)
+    a_256 = th.stack(a_256)
+
+    indices_512 = []
+    a_512 = []
+    for row in rows_512:
+        in_edges = g.in_edges([row])[0][:512]
+        indices_512.append(th.cat([in_edges, th.full((512 - len(in_edges),), 0)]))
+        a_512.append(th.cat([th.ones(len(in_edges)), th.zeros(512 - len(in_edges))]))
+    indices_512 = th.stack(indices_512)
+    a_512 = th.stack(a_512)
+
+    N4, N8, N16, N32, N64, N128, N256, N512, N, F = csrmm_hyb_tir.params[-10:]
 
     mod = tvm.IRModule.from_expr(
         csrmm_hyb_tir.specialize(
             {
+                N4: n_4,
+                N8: n_8,
+                N16: n_16,
                 N32: n_32,
                 N64: n_64,
                 N128: n_128,
                 N256: n_256,
                 N512: n_512,
-                N: g.num_nodes(),
+                N: n,
                 F: feat_size,
             }
         )
     )
+    print(n_4, n_8, n_16, n_32, n_64, n_128, n_256, n_512)
     mod = tvm.sparse.lower_sparse_iter(mod)
     sch = tvm.tir.Schedule(mod)
+    # schedule 4
+    blk_4 = sch.get_block("csrmm_40")
+    i, j, f = sch.get_loops(blk_4)
+    sch.reorder(f, i, j)
+    sch.bind(f, "threadIdx.x")
+    sch.unroll(j)
+    sch.bind(i, "blockIdx.x")
+    # schedule 8
+    blk_8 = sch.get_block("csrmm_80")
+    i, j, f = sch.get_loops(blk_8)
+    sch.reorder(f, i, j)
+    sch.bind(f, "threadIdx.x")
+    sch.unroll(j)
+    sch.bind(i, "blockIdx.x")
+    # schedule 16
+    blk_16 = sch.get_block("csrmm_160")
+    i, j, f = sch.get_loops(blk_16)
+    sch.reorder(f, i, j)
+    sch.bind(f, "threadIdx.x")
+    sch.unroll(j)
+    sch.bind(i, "blockIdx.x")
     # schedule 32
     blk_32 = sch.get_block("csrmm_320")
     i, j, f = sch.get_loops(blk_32)
-    sch.reorder(f, j)
+    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
-    # sch.unroll(j)
+    sch.unroll(j)
     sch.bind(i, "blockIdx.x")
-    # sch.cache_write(blk_32, 0, "local")
     # schedule 64
     blk_64 = sch.get_block("csrmm_640")
     i, j, f = sch.get_loops(blk_64)
-    sch.reorder(f, j)
+    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
-    # sch.unroll(j)
+    sch.unroll(j)
     sch.bind(i, "blockIdx.x")
     # schedule 128
     blk_128 = sch.get_block("csrmm_1280")
     i, j, f = sch.get_loops(blk_128)
-    sch.reorder(f, j)
+    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
-    # sch.unroll(j)
+    sch.unroll(j)
     sch.bind(i, "blockIdx.x")
     # schedule 256
     blk_256 = sch.get_block("csrmm_2560")
     i, j, f = sch.get_loops(blk_256)
-    sch.reorder(f, j)
+    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
-    # sch.unroll(j)
+    sch.unroll(j)
     sch.bind(i, "blockIdx.x")
     # schedule 512
     blk_512 = sch.get_block("csrmm_5120")
     i, j, f = sch.get_loops(blk_512)
-    sch.reorder(f, j)
+    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
-    # sch.unroll(j)
+    sch.unroll(j)
     sch.bind(i, "blockIdx.x")
 
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     # print(mod["main"].script())
     f = tvm.build(mod, target="cuda")
-    print(f.imported_modules[0].get_source())
+    # print(f.imported_modules[0].get_source())
+
+    b_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
+    c_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
+    placeholder = tvm.nd.array(np.zeros((2,)).astype("int32"), device=tvm.cuda(0))
+    row_4_nd = tvm.nd.array(rows_4.numpy().astype("int32"), device=tvm.cuda(0))
+    row_8_nd = tvm.nd.array(rows_8.numpy().astype("int32"), device=tvm.cuda(0))
+    row_16_nd = tvm.nd.array(rows_16.numpy().astype("int32"), device=tvm.cuda(0))
+    row_32_nd = tvm.nd.array(rows_32.numpy().astype("int32"), device=tvm.cuda(0))
+    row_64_nd = tvm.nd.array(rows_64.numpy().astype("int32"), device=tvm.cuda(0))
+    row_128_nd = tvm.nd.array(rows_128.numpy().astype("int32"), device=tvm.cuda(0))
+    row_256_nd = tvm.nd.array(rows_256.numpy().astype("int32"), device=tvm.cuda(0))
+    row_512_nd = tvm.nd.array(rows_512.numpy().astype("int32"), device=tvm.cuda(0))
+    a_4_nd = tvm.nd.array(a_4.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
+    a_8_nd = tvm.nd.array(a_8.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
+    a_16_nd = tvm.nd.array(a_16.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
+    a_32_nd = tvm.nd.array(a_32.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
+    a_64_nd = tvm.nd.array(a_64.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
+    a_128_nd = tvm.nd.array(a_128.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
+    a_256_nd = tvm.nd.array(a_256.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
+    a_512_nd = tvm.nd.array(a_512.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
+    indices_4_nd = tvm.nd.array(indices_4.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
+    indices_8_nd = tvm.nd.array(indices_8.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
+    indices_16_nd = tvm.nd.array(indices_16.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
+    indices_32_nd = tvm.nd.array(indices_32.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
+    indices_64_nd = tvm.nd.array(indices_64.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
+    indices_128_nd = tvm.nd.array(indices_128.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
+    indices_256_nd = tvm.nd.array(indices_256.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
+    indices_512_nd = tvm.nd.array(indices_512.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
+
+    accum_time = 0.0
+    runs = 0
+    cold_start_time = 3
+    for i in range(10):
+        with TorchOpTimer() as timer:
+            f(
+                b_nd,
+                c_nd,
+                placeholder,
+                row_4_nd,
+                indices_4_nd,
+                a_4_nd,
+                row_8_nd,
+                indices_8_nd,
+                a_8_nd,
+                row_16_nd,
+                indices_16_nd,
+                a_16_nd,
+                row_32_nd,
+                indices_32_nd,
+                a_32_nd,
+                row_64_nd,
+                indices_64_nd,
+                a_64_nd,
+                row_128_nd,
+                indices_128_nd,
+                a_128_nd,
+                row_256_nd,
+                indices_256_nd,
+                a_256_nd,
+                row_512_nd,
+                indices_512_nd,
+                a_512_nd,
+            )
+        if i >= cold_start_time:
+            accum_time += timer.time
+            runs += 1
+
+    print(accum_time / runs * 1000)
+
+    print(c_nd.numpy())
 
 
 def bench_tir_csrmm(g, feat_size=128):
@@ -298,6 +503,7 @@ def bench_tir_csrmm(g, feat_size=128):
         if i >= cold_start_time:
             accum_time += timer.time
             runs += 1
+        Y_val = Y_nd.numpy()
     print("tir naive time: {:.3f}ms".format(accum_time / runs * 1000))
 
     g_gpu = g.to(0)
@@ -358,6 +564,7 @@ def bench_tir_csrmm(g, feat_size=128):
             if i >= cold_start_time:
                 accum_time += timer.time
                 runs += 1
+            Y_val = Y_nd.numpy()
         print(
             "tir w/ padding (tile_size={}) time: {:.3f}ms".format(
                 tile_size, accum_time / runs * 1000
@@ -366,9 +573,8 @@ def bench_tir_csrmm(g, feat_size=128):
 
 
 if __name__ == "__main__":
-    arxiv = DglNodePropPredDataset(name="ogbn-proteins")
+    arxiv = DglNodePropPredDataset(name="ogbn-arxiv")
     g = arxiv[0][0]
-    in_degrees = g.in_degrees()
     # proteins = DglNodePropPredDataset(name='ogbn-proteins')
     # g = proteins[0][0]
     # pubmed = dgl.data.PubmedGraphDataset()
@@ -378,7 +584,7 @@ if __name__ == "__main__":
     # reddit = dgl.data.RedditDataset()
     # g = reddit[0]
 
-    # bench_hyb(g, feat_size=128)
-    for feat_size in [32, 64, 128, 256, 512]:
-        print('feat_size=', feat_size)
-        bench_tir_csrmm(g, feat_size=feat_size)
+    bench_hyb(g, feat_size=128)
+    # for feat_size in [128]:  # [32, 64, 128, 256, 512]:
+    #     print("feat_size=", feat_size)
+    #     bench_tir_csrmm(g, feat_size=feat_size)
