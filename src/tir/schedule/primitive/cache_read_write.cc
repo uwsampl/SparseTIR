@@ -75,6 +75,8 @@ struct CacheStageInfo {
   Stmt cache_stage;
   /*! \brief The map used for ScheduleStateNode::Replace. */
   Map<Block, Block> block_reuse;
+  /*! \brief annotation of cache stage block. */
+  Map<String, ObjectRef> annotations;
 };
 
 /*! \brief Return the buffer region realted with the buffer */
@@ -143,7 +145,7 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
       /*init=*/NullOpt,
       /*alloc_buffers=*/{},
       /*match_buffers=*/{},
-      /*annotations=*/{});
+      /*annotations=*/info->annotations);
   // Create the block realize node
   Stmt body = BlockRealize(/*values=*/iter_values,
                            /*predicate=*/const_true(),
@@ -547,6 +549,10 @@ class CacheWriteRewriter : public StmtExprMutator {
         stmt = Block(n);
       }
     }
+    // Remove atomic flag
+    ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
+    n->annotations.erase("atomic");
+    stmt = Block(n);
     info_->block_reuse.Set(old_stmt, stmt);
     return std::move(stmt);
   }
@@ -631,6 +637,7 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int read_buff
   info.write_buffer = WithScope(read_buffer, storage_scope);
   // Create the corresponding buffer allocation
   info.alloc = info.write_buffer;
+  info.annotations = block->annotations;
 
   // Step 3. Update cache stage info.
   BufferRegion cache_region{nullptr};
@@ -701,9 +708,11 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_bu
   info.write_buffer = write_buffer;
   // Create the corresponding buffer allocation
   info.alloc = info.read_buffer;
+  info.annotations = block->annotations;
 
   // Step 3. Check the only writer block.
-  ICHECK_EQ(block_sref.get(), GetOnlyWriteBlock(self, scope_sref, write_buffer).get());
+  // NOTE(zihao): disable it for horizontal fuse
+  // ICHECK_EQ(block_sref.get(), GetOnlyWriteBlock(self, scope_sref, write_buffer).get());
 
   // Step 4. Find the producing region and insert position
   BufferRegion region = GetBufferRegionFromBuffer(block->writes, write_buffer).value();

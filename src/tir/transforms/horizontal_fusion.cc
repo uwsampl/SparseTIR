@@ -138,7 +138,6 @@ class HorizontalFuser : public StmtExprMutator {
         body = new_loop;
       }
       n->body = body;
-      LOG(INFO) << body;
       return Block(n);
     }
     return StmtExprMutator::VisitStmt_(op);

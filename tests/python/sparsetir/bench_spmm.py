@@ -237,7 +237,6 @@ def bench_hyb(g, feat_size=128):
     n_64 = len(rows_64)
     n_128 = len(rows_128)
     n_256 = len(rows_256)
-    n_512 = len(rows_512)
     n = g.num_nodes()
 
     indices_4 = []
@@ -305,12 +304,18 @@ def bench_hyb(g, feat_size=128):
 
     indices_512 = []
     a_512 = []
+    new_rows_512 = []
     for row in rows_512:
-        in_edges = g.in_edges([row])[0][:512]
-        indices_512.append(th.cat([in_edges, th.full((512 - len(in_edges),), 0)]))
-        a_512.append(th.cat([th.ones(len(in_edges)), th.zeros(512 - len(in_edges))]))
+        in_edges = g.in_edges([row])[0]
+        for i in range((len(in_edges) + 511) // 512):
+            in_edges_i = in_edges[i * 512 : (i + 1) * 512]
+            indices_512.append(th.cat([in_edges_i, th.full((512 - len(in_edges_i),), 0)]))
+            a_512.append(th.cat([th.ones(len(in_edges_i)), th.zeros(512 - len(in_edges_i))]))
+            new_rows_512.append(row)
     indices_512 = th.stack(indices_512)
     a_512 = th.stack(a_512)
+    rows_512 = th.tensor(new_rows_512).int()
+    n_512 = len(rows_512)
 
     N4, N8, N16, N32, N64, N128, N256, N512, N, F = csrmm_hyb_tir.params[-10:]
 
@@ -336,64 +341,59 @@ def bench_hyb(g, feat_size=128):
     # schedule 4
     blk_4 = sch.get_block("csrmm_40")
     i, j, f = sch.get_loops(blk_4)
-    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
     sch.unroll(j)
     sch.bind(i, "blockIdx.x")
     # schedule 8
     blk_8 = sch.get_block("csrmm_80")
     i, j, f = sch.get_loops(blk_8)
-    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
     sch.unroll(j)
     sch.bind(i, "blockIdx.x")
     # schedule 16
     blk_16 = sch.get_block("csrmm_160")
     i, j, f = sch.get_loops(blk_16)
-    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
     sch.unroll(j)
     sch.bind(i, "blockIdx.x")
     # schedule 32
     blk_32 = sch.get_block("csrmm_320")
     i, j, f = sch.get_loops(blk_32)
-    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
     sch.unroll(j)
     sch.bind(i, "blockIdx.x")
     # schedule 64
     blk_64 = sch.get_block("csrmm_640")
     i, j, f = sch.get_loops(blk_64)
-    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
     sch.unroll(j)
     sch.bind(i, "blockIdx.x")
     # schedule 128
     blk_128 = sch.get_block("csrmm_1280")
     i, j, f = sch.get_loops(blk_128)
-    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
     sch.unroll(j)
     sch.bind(i, "blockIdx.x")
     # schedule 256
     blk_256 = sch.get_block("csrmm_2560")
     i, j, f = sch.get_loops(blk_256)
-    sch.reorder(f, i, j)
     sch.bind(f, "threadIdx.x")
     sch.unroll(j)
     sch.bind(i, "blockIdx.x")
     # schedule 512
     blk_512 = sch.get_block("csrmm_5120")
     i, j, f = sch.get_loops(blk_512)
-    sch.reorder(f, i, j)
+    sch.reorder(f, j)
     sch.bind(f, "threadIdx.x")
     sch.unroll(j)
     sch.bind(i, "blockIdx.x")
-
+    sch.annotate(blk_512, "atomic", True)
+    _ = sch.blockize(j)
+    write_blk = sch.cache_write(blk_512, 0, "local")
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     # print(mod["main"].script())
     f = tvm.build(mod, target="cuda")
-    # print(f.imported_modules[0].get_source())
+    print(f.imported_modules[0].get_source())
 
     b_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
     c_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
