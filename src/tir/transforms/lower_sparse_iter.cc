@@ -364,8 +364,6 @@ class IterTransformer : public StmtExprMutator {
   }
 
   Array<Buffer> root_alloc_buffers;  // allocated buffers in root block.
-  Optional<Buffer> bsearch_low;      // local buffer `low` for binary search.
-  Optional<Buffer> bsearch_high;     // local buffer `high` for binary search.
  private:
   /*! \brief Create base dom map: each axis parameters should be greater than 0. */
   void CreateBaseDomMap(const Array<Axis>& axes) {
@@ -792,16 +790,8 @@ class IterTransformer : public StmtExprMutator {
       return bsearch_map_[args];
     }
     DataType dtype = buf->dtype;
-    if (!bsearch_low.defined()) {
-      bsearch_low = MakeScratchpad("low", dtype);
-      root_alloc_buffers.push_back(bsearch_low.value());
-    }
-    if (!bsearch_high.defined()) {
-      bsearch_high = MakeScratchpad("high", dtype);
-      root_alloc_buffers.push_back(bsearch_high.value());
-    }
-    Buffer low = bsearch_low.value();
-    Buffer high = bsearch_high.value();
+    Buffer low = MakeScratchpad("low", dtype);
+    Buffer high = MakeScratchpad("high", dtype);
     Buffer mid = MakeScratchpad("mid_" + std::to_string(bsearch_blk_counter), dtype);
 
     Stmt low_store = BufferStore(low, lb, {Integer(0)});
@@ -845,7 +835,7 @@ class IterTransformer : public StmtExprMutator {
                     /*name_hint=*/"binary_search_" + std::to_string(bsearch_blk_counter),
                     /*body=*/body,
                     /*init=*/{},
-                    /*alloc_buffers=*/{},
+                    /*alloc_buffers=*/{low, high},
                     /*match_buffers=*/{},
                     /*annotations=*/{{"sparse", Bool(true)}});
 
