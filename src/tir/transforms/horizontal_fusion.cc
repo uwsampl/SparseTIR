@@ -63,8 +63,6 @@ class ThreadTagExtentCollector : public StmtExprVisitor {
         if (thread_tag == "blockIdx.x") {
           // Fuse horizontally on blockIdx.x
           thread_tag_extent_map_.Set(thread_tag, Integer(prev_extent->value + extent->value));
-        } else if (StartsWith(thread_tag, "blockIdx")) {
-          LOG(FATAL) << "blockIdx.y/z is not allowed in horizontal fusion.";
         } else {
           // Padded to maximum possible extent for other threads.
           thread_tag_extent_map_.Set(thread_tag,
@@ -82,6 +80,8 @@ class HorizontalFuser : public StmtExprMutator {
   explicit HorizontalFuser(Map<String, Integer> thread_tag_extent_map)
       : blockIdx_x_accum_offset_(0), thread_tag_extent_map_(std::move(thread_tag_extent_map)) {
     thread_tag_var_map_.Set("blockIdx.x", Var("block_idx_x"));
+    thread_tag_var_map_.Set("blockIdx.y", Var("block_idx_y"));
+    thread_tag_var_map_.Set("blockIdx.z", Var("block_idx_z"));
     thread_tag_var_map_.Set("threadIdx.x", Var("thread_idx_x"));
     thread_tag_var_map_.Set("threadIdx.y", Var("thread_idx_y"));
     thread_tag_var_map_.Set("threadIdx.z", Var("thread_idx_z"));
