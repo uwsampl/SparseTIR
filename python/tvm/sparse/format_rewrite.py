@@ -16,14 +16,16 @@
 # under the License.
 
 """Format search module for sparse tensor algebra."""
-from typing import Callable
+from typing import Callable, Dict, List
 import tvm._ffi
 import tvm.tir
 
-from tvm.tir import IndexMap
+from tvm.runtime import Object
+from tvm.tir import IndexMap, _ffi_api
 
 
-class FormatRewriteRule:
+@tvm._ffi.register_object("tir.sparse.FormatRewriteRule")
+class FormatRewriteRule(Object):
     """Format rewriting rule.
 
     Parameters
@@ -32,11 +34,13 @@ class FormatRewriteRule:
         Name of the format rewriting rule.
     format_desc : PrimFunc
         A TIR script describing the new format.
+    axis_map : Dict[str, List[str]]
+        The axis mapping from the old format to the new format.
     idx_map_func : Callable
-        A function describing the coordinate mapping from indices in old format
+        A function describing the coordinate mapping from indices in old format.
         to indices in new format.
     inv_idx_map_func : Callable
-        A function describing the coordinate mapping frmo indices in new format
+        A function describing the coordinate mapping frmo indices in new format.
         to indices in old format.
     params_transform_func : Callable
         A transformation function that turns the parameters (indptr/indices) of old format
@@ -46,13 +50,38 @@ class FormatRewriteRule:
     def __init__(
         self,
         name: str,
-        format_desc: tvm.tir.PrimFunc,
+        new_format_desc: tvm.tir.PrimFunc,
+        axis_map: Dict[str, List[str]],
         idx_map_func: Callable,
         inv_idx_map_func: Callable,
         params_transform_func: Callable,
     ) -> None:
-        self.name = name
-        self.format_desc = format_desc
-        self.idx_map = IndexMap.from_func(idx_map_func)
-        self.inv_idx_map = IndexMap.from_func(inv_idx_map_func)
+        self.__init_handle_by_constructor__(
+            _ffi_api.FormatRewriteRule,
+            name,
+            new_format_desc,
+            axis_map,
+            IndexMap.from_func(idx_map_func),
+            IndexMap.from_func(inv_idx_map_func),
+        )  # type: ignore
         self.params_transform = params_transform_func
+
+    @property
+    def name(self) -> str:
+        return _ffi_api.GetName(self)
+
+    @property
+    def new_format_desc(self) -> tvm.tir.PrimFunc:
+        return _ffi_api.GetNewFormatDesc(self)
+
+    @property
+    def axis_map(self) -> Dict[str, List[str]]:
+        return _ffi_api.GetAxisMapping(self)
+
+    @property
+    def idx_map(self) -> IndexMap:
+        return _ffi_api.GetIdxMap(self)
+
+    @property
+    def inv_idx_map(self) -> IndexMap:
+        return _ffi_api.GetInvIdxMap(self)
