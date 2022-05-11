@@ -18,4 +18,4 @@
 """Python-interface for Sparse-TIR"""
 
 from .lower import lower_sparse_iter, lower_sparse_buffer
-# from .runtime import Axis
+from .format_rewrite import FormatRewriteRule

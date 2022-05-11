@@ -15,4 +15,35 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Format search module for sparse tensor algebra."""
+
+from tvm.sparse import FormatRewriteRule
+from sparse_tir_format_rewrite_scripts import bsr
+
+
+def csr2bsr_index_map(block_size):
+    def func(i, j):
+        return i // block_size, j // block_size, i % block_size, j % block_size
+
+    return func
+
+
+def csr2bsr_inv_index_map(block_size):
+    def func(io, jo, ii, ji):
+        return io * block_size + ii, jo * block_size + ji
+
+    return func
+
+
+def test_declare_format_rewrite_rule():
+    csr2bsr_32 = FormatRewriteRule(
+        "csr2bsr",
+        bsr,
+        csr2bsr_index_map(32),
+        csr2bsr_inv_index_map(32),
+        None,
+    )
+    print(csr2bsr_32.idx_map)
+
+
+if __name__ == "__main__":
+    test_declare_format_rewrite_rule()
