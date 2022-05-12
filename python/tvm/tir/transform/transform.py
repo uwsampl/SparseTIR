@@ -16,7 +16,7 @@
 # under the License.
 """Wrapping existing transformations."""
 # pylint: disable=invalid-name
-from typing import Optional
+from typing import Optional, List
 from . import _ffi_api
 from . import function_pass as _fpass
 
@@ -847,3 +847,24 @@ def LowerAtomic():
         The result pass
     """
     return _ffi_api.LowerAtomic()  # type: ignore
+
+def SparseFormatRewrite(
+    rewrite_rules: List['FormatRewriteRule'],
+    horizontal_fuse: bool = True, 
+):
+    """Rewrite the sparse format of sparse buffers in the TIR scripts.
+
+    Parameters
+    ----------
+    rewrite_rules : List[FormatRewriteRule]
+        The rewrite rules to perform.
+    
+    Returns
+    ------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    # TODO(zihao)
+    return _ffi_api.SparseFormatRewrite(
+        rewrite_rules
+    )  # type: ignore

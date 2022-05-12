@@ -26,6 +26,7 @@
 
 #include <tvm/ir/transform.h>
 #include <tvm/tir/expr.h>
+#include <tvm/tir/format_rewrite.h>
 #include <tvm/tir/function.h>
 
 #include <string>
@@ -647,6 +648,13 @@ TVM_DLL Pass HorizontalFusion();
  * \return The pass.
  */
 TVM_DLL Pass LowerAtomic();
+
+/*!
+ * \brief Sparse format rewrite pass.
+ * \param format_rewrite_rules The list of format rewrite rules to perform.
+ * \return The pass.
+ */
+TVM_DLL Pass SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules);
 
 }  // namespace transform
 }  // namespace tir

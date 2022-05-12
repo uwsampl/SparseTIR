@@ -38,13 +38,18 @@ def test_declare_format_rewrite_rule():
     csr2bsr_32 = FormatRewriteRule(
         "csr2bsr",
         bsr,
+        ["A"],
         {"I": ["IO", "II"], "J": ["JO", "JI"]},
         csr2bsr_index_map(32),
         csr2bsr_inv_index_map(32),
-        None,
     )
     print(csr2bsr_32)
+    print(csr2bsr_32.name)
+    print(csr2bsr_32.new_format_desc)
+    print(csr2bsr_32.buffers_to_rewrite)
+    print(csr2bsr_32.axis_map)
     print(csr2bsr_32.idx_map)
+    print(csr2bsr_32.inv_idx_map)
 
 
 if __name__ == "__main__":

@@ -421,11 +421,13 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 /*! \brief Default constructor of FormatRewriteRule. */
 FormatRewriteRule::FormatRewriteRule(String name, PrimFunc new_format_desc,
+                                     Array<String> buffers_to_rewrite,
                                      Map<String, Array<String>> axis_map, IndexMap idx_map,
                                      IndexMap inv_idx_map) {
   ObjectPtr<FormatRewriteRuleNode> node = make_object<FormatRewriteRuleNode>();
   node->name = std::move(name);
   node->new_format_desc = std::move(new_format_desc);
+  node->buffers_to_rewrite = std::move(buffers_to_rewrite);
   node->axis_map = std::move(axis_map);
   node->idx_map = std::move(idx_map);
   node->inv_idx_map = std::move(inv_idx_map);
@@ -435,9 +437,11 @@ FormatRewriteRule::FormatRewriteRule(String name, PrimFunc new_format_desc,
 TVM_REGISTER_NODE_TYPE(FormatRewriteRuleNode);
 
 TVM_REGISTER_GLOBAL("tir.sparse.FormatRewriteRule")
-    .set_body_typed([](String name, PrimFunc new_format_desc, Map<String, Array<String>> axis_map,
-                       IndexMap idx_map, IndexMap inv_idx_map) {
-      return FormatRewriteRule(std::move(name), std::move(new_format_desc), std::move(axis_map),
+    .set_body_typed([](String name, PrimFunc new_format_desc, Array<String> buffers_to_rewrite,
+                       Map<String, Array<String>> axis_map, IndexMap idx_map,
+                       IndexMap inv_idx_map) {
+      return FormatRewriteRule(std::move(name), std::move(new_format_desc),
+                               std::move(buffers_to_rewrite), std::move(axis_map),
                                std::move(idx_map), std::move(inv_idx_map));
     });
 
@@ -446,6 +450,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       auto* op = static_cast<const FormatRewriteRuleNode*>(node.get());
       p->stream << "sparse_format_rewrite_rule(";
       p->stream << op->name << ", ";
+      p->stream << op->buffers_to_rewrite << ", ";
       p->stream << op->axis_map << ", ";
       p->stream << op->idx_map << ", ", p->stream << op->inv_idx_map;
       p->stream << ")";
