@@ -59,7 +59,7 @@ def test_csrmm_bsr_rewrite():
     for block_size in [4, 16, 32]:
         rewrites.append(
             FormatRewriteRule(
-                "csr2bsr_{}".format(block_size),
+                str(block_size),
                 bsr.specialize({block_size_symbol: block_size}),
                 ["A"],
                 {"I": ["IO", "II"], "J": ["JO", "JI"]},
