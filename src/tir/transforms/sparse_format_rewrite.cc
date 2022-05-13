@@ -132,28 +132,86 @@ Array<Axis> UpdateSparseAxes(const Array<PrimFunc>& format_descs, const Array<Ax
 
 class SparseFormatRewriter : public StmtExprMutator {
  public:
-  explicit SparseFormatRewriter(Array<FormatRewriteRule> format_rewrite_rules)
-      : format_rewrite_rules_(std::move(format_rewrite_rules)) {
-    // CHECK
+  explicit SparseFormatRewriter(FormatRewriteRule rule, Array<Axis> old_axes) : rule_(std::move(rule)) {
+    for (const Axis& axis: old_axes) {
+      name_axis_map_.Set(axis->name, axis);
+    }
+    for (const Axis& axis: rule->new_format_desc->sp_axes) {
+      name_axis_map_.Set(axis->name, axis);
+    }
+    for (const auto& kv: rule->axis_map) {
+      const Axis& k = name_axis_map_.Get(kv.first).value();
+      Array<Axis> v;
+      for (const String& name: kv.second) {
+        v.push_back(name_axis_map_.Get(name).value());
+      }
+      axis_rewrite_map_.Set(k, v);
+    }
   }
 
+  Array<SparseIteration> format_rewrites_blks;
+  Array<SparseIteration> compute_blks;
+
  private:
-  Array<FormatRewriteRule> format_rewrite_rules_;
+
+  Stmt VisitStmt_(const SparseIterationNode* op) final {
+    // compute_blks.push_back(SparseIteration(
+    //   , op->name + "_" + rule_->name,
+    //   VisitStmt(op->body),
+    // ));
+    // return GetRef<SparseIteration>(op);
+  }
+
+  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
+    // TODO
+  }
+
+  Stmt VisitStmt_(const BufferStoreNode* op) final {
+    // TODO
+  }
+
+  FormatRewriteRule rule_;
+  Map<String, Axis> name_axis_map_;
+  Map<Axis, Array<Axis>> axis_rewrite_map_;
 };
 
-PrimFunc SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules, PrimFunc f) {
+PrimFunc SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules, PrimFunc f,
+                             bool include_format_rewrite_blks = false) {
   // Only apply this pass to TIR that is not from TE schedules
   if (!IsFromLegacyTESchedule(f)) {
-    SparseFormatRewriter rewriter(format_rewrite_rules);
+    // SparseFormatRewriter rewriter(format_rewrite_rules);
     PrimFuncNode* fptr = f.CopyOnWrite();
     Array<PrimFunc> format_descs;
     for (const FormatRewriteRule& rule : format_rewrite_rules) {
       format_descs.push_back(AddSuffix(rule->new_format_desc, "_" + rule->name));
     }
     fptr->params = UpdateParams(format_descs, f->params);
-    fptr->body = rewriter(f->body);
     fptr->buffer_map = UpdateBufferMap(format_descs, f->buffer_map);
     fptr->sp_axes = UpdateSparseAxes(format_descs, f->sp_axes);
+    Array<SparseIteration> format_rewrite_blks, compute_blks;
+    // generate format rewrite blocks and compute blocks for each rule
+    for (const FormatRewriteRule& rule : format_rewrite_rules) {
+      SparseFormatRewriter rewriter(rule);
+      rewriter(f->body);
+      for (const SparseIteration& sp_iteration : rewriter.format_rewrites_blks) {
+        format_rewrite_blks.push_back(sp_iteration);
+      }
+      for (const SparseIteration& sp_iteration : rewriter.compute_blks) {
+        compute_blks.push_back(sp_iteration);
+      }
+    }
+    // collect all blocks.
+    Array<Stmt> all_blks;
+    if (include_format_rewrite_blks) {
+      for (const SparseIteration& sp_iteration : format_rewrite_blks) {
+        all_blks.push_back(sp_iteration);
+      }
+    }
+    for (const SparseIteration& sp_iteration : compute_blks) {
+      all_blks.push_back(sp_iteration);
+    }
+    fptr->body =
+        BlockRealize({}, const_true(), Block({}, {}, {}, "root", SeqStmt(all_blks), NullOpt, {}));
     return f;
   } else {
     return f;
