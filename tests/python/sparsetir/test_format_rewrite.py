@@ -21,13 +21,6 @@ from sparse_tir_scripts import csrmm
 from sparse_tir_format_rewrite_scripts import bsr
 
 
-def csr2bsr_index_map(block_size):
-    def func(i, j):
-        return i // block_size, j // block_size, i % block_size, j % block_size
-
-    return func
-
-
 def csr2bsr_inv_index_map(block_size):
     def func(io, jo, ii, ji):
         return io * block_size + ii, jo * block_size + ji
@@ -41,7 +34,6 @@ def test_declare_format_rewrite_rule():
         bsr,
         ["A"],
         {"I": ["IO", "II"], "J": ["JO", "JI"]},
-        csr2bsr_index_map(32),
         csr2bsr_inv_index_map(32),
     )
     print(csr2bsr_32)
@@ -50,7 +42,6 @@ def test_declare_format_rewrite_rule():
     print(csr2bsr_32.buffers_to_rewrite)
     print(csr2bsr_32.axis_map)
     print(csr2bsr_32.idx_map)
-    print(csr2bsr_32.inv_idx_map)
 
 
 def test_csrmm_bsr_rewrite():
@@ -63,7 +54,6 @@ def test_csrmm_bsr_rewrite():
                 bsr.specialize({block_size_symbol: block_size}),
                 ["A"],
                 {"I": ["IO", "II"], "J": ["JO", "JI"]},
-                csr2bsr_index_map(block_size),
                 csr2bsr_inv_index_map(block_size),
             )
         )

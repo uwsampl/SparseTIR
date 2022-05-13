@@ -38,7 +38,6 @@ class FormatRewriteRuleNode : public Object {
   Array<String> buffers_to_rewrite;
   Map<String, Array<String>> axis_map;
   IndexMap idx_map;
-  IndexMap inv_idx_map;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("name", &name);
@@ -46,7 +45,6 @@ class FormatRewriteRuleNode : public Object {
     v->Visit("buffers_to_rewrite", &buffers_to_rewrite);
     v->Visit("axis_map", &axis_map);
     v->Visit("idx_map", &idx_map);
-    v->Visit("inv_idx_map", &inv_idx_map);
   }
 
   static constexpr const char* _type_key = "tir.sparse.FormatRewriteRule";
@@ -57,8 +55,7 @@ class FormatRewriteRule : public ObjectRef {
  public:
   TVM_DLL explicit FormatRewriteRule(String name, PrimFunc new_format_desc,
                                      Array<String> buffers_to_rewrite,
-                                     Map<String, Array<String>> axis_map, IndexMap idx_map,
-                                     IndexMap inv_idx_map);
+                                     Map<String, Array<String>> axis_map, IndexMap idx_map);
 
   TVM_DEFINE_OBJECT_REF_METHODS(FormatRewriteRule, ObjectRef, FormatRewriteRuleNode);
 };

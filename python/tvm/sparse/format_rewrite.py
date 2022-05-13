@@ -39,10 +39,7 @@ class FormatRewriteRule(Object):
     axis_map : Dict[str, List[str]]
         The axis mapping from the old format to the new format.
     idx_map_func : Callable
-        A function describing the coordinate mapping from indices in old format.
-        to indices in new format.
-    inv_idx_map_func : Callable
-        A function describing the coordinate mapping frmo indices in new format.
+        A function describing the coordinate mapping from indices in new format.
         to indices in old format.
     """
 
@@ -53,7 +50,6 @@ class FormatRewriteRule(Object):
         buffers_to_rewrite: List[str],
         axis_map: Dict[str, List[str]],
         idx_map_func: Callable,
-        inv_idx_map_func: Callable,
     ) -> None:
         self.__init_handle_by_constructor__(
             _ffi_api.FormatRewriteRule,
@@ -62,5 +58,4 @@ class FormatRewriteRule(Object):
             buffers_to_rewrite,
             axis_map,
             IndexMap.from_func(idx_map_func),
-            IndexMap.from_func(inv_idx_map_func),
         )  # type: ignore

@@ -78,50 +78,6 @@ class Axis(Object):
     def __init__(self, name, parent, length, nnz, nnz_cols, indptr, indices, idtype) -> None:
         self.__init_handle_by_constructor__(_ffi_api.Axis, name, parent, length, nnz, nnz_cols, indptr, indices, idtype)  # type: ignore
 
-    @property
-    def name(self):
-        return _ffi_api.GetAxisName(self)
-
-    @property
-    def length(self):
-        return _ffi_api.GetAxisLength(self)
-
-    @property
-    def idtype(self):
-        return _ffi_api.GetAxisIndexType(self)
-
-    @property
-    def nnz(self):
-        return _ffi_api.GetNNZ(self)
-
-    @property
-    def nnz_cols(self):
-        return _ffi_api.GetNNZCols(self)
-
-    @property
-    def parent(self):
-        return _ffi_api.GetParent(self)
-
-    @property
-    def indptr(self):
-        return _ffi_api.GetIndPtr(self)
-
-    @property
-    def indices(self):
-        return _ffi_api.GetIndices(self)
-
-    @property
-    def kind(self):
-        return AxisKind(_ffi_api.GetAxisKind(self))
-
-    @property
-    def is_sparse(self):
-        return _ffi_api.IsSparseAxis(self)
-
-    @property
-    def is_variable(self):
-        return _ffi_api.IsVariableAxis(self)
-
 
 def dense_fixed_axis(name: str, length: PrimExpr, idtype: str) -> Axis:
     """Dense-fixed axis creator.
@@ -244,14 +200,6 @@ class FusedAxis(Axis):
 
     def __init__(self, group, index):
         self.__init_handle_by_constructor__(_ffi_api.FusedAxis, group, index)  # type: ignore
-
-    @property
-    def group(self):
-        return _ffi_api.GetFusedAxisGroup(self)
-
-    @property
-    def index(self):
-        return _ffi_api.GetFusedAxisIndex(self)
 
 
 @tvm._ffi.register_object("tir.sparse.FlattenedAxis")
