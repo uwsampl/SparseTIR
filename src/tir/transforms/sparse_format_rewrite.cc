@@ -32,10 +32,72 @@
 namespace tvm {
 namespace tir {
 
+namespace {
+
+Array<Var> UpdateParams(const Array<FormatRewriteRule>& format_rewrite_rules,
+                        const Array<Var>& orig_params) {
+  Array<Var> ret;
+  for (const Var& param : orig_params) {
+    ret.push_back(param);
+  }
+  for (const FormatRewriteRule& rule : format_rewrite_rules) {
+    for (const Var& param : rule->new_format_desc->params) {
+      ret.push_back(param);
+    }
+  }
+  return ret;
+}
+
+Map<Var, Buffer> UpdateBufferMap(const Array<FormatRewriteRule>& format_rewrite_rules,
+                                 const Map<Var, Buffer>& buffer_map) {
+  Map<Var, Buffer> ret;
+  for (const auto& kv : buffer_map) {
+    ret.Set(kv.first, kv.second);
+  }
+  for (const FormatRewriteRule& rule : format_rewrite_rules) {
+    for (const auto& kv : rule->new_format_desc->buffer_map) {
+      ret.Set(kv.first, kv.second);
+    }
+  }
+  return ret;
+}
+
+Array<Axis> UpdateSparseAxes(const Array<FormatRewriteRule>& format_rewrite_rules,
+                             const Array<Axis>& sp_axes) {
+  Array<Axis> ret;
+  for (const Axis& axis : sp_axes) {
+    ret.push_back(axis);
+  }
+  for (const FormatRewriteRule& rule : format_rewrite_rules) {
+    for (const Axis& axis : rule->new_format_desc->sp_axes) {
+      ret.push_back(axis);
+    }
+  }
+  return ret;
+}
+
+}  // namespace
+
+class SparseFormatRewriter : public StmtExprMutator {
+ public:
+  explicit SparseFormatRewriter(Array<FormatRewriteRule> format_rewrite_rules)
+      : format_rewrite_rules_(std::move(format_rewrite_rules)) {
+    // CHECK
+  }
+
+ private:
+  Array<FormatRewriteRule> format_rewrite_rules_;
+};
+
 PrimFunc SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules, PrimFunc f) {
   // Only apply this pass to TIR that is not from TE schedules
   if (!IsFromLegacyTESchedule(f)) {
-    // TODO(zihao)
+    SparseFormatRewriter rewriter(format_rewrite_rules);
+    PrimFuncNode* fptr = f.CopyOnWrite();
+    fptr->params = UpdateParams(format_rewrite_rules, f->params);
+    fptr->body = rewriter(f->body);
+    fptr->buffer_map = UpdateBufferMap(format_rewrite_rules, f->buffer_map);
+    fptr->sp_axes = UpdateSparseAxes(format_rewrite_rules, f->sp_axes);
     return f;
   } else {
     return f;
@@ -50,6 +112,8 @@ Pass SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules) {
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.SparseFormatRewrite", {});
 }
+
+TVM_REGISTER_GLOBAL("tir.transform.SparseFormatRewrite").set_body_typed(SparseFormatRewrite);
 
 }  // namespace transform
 

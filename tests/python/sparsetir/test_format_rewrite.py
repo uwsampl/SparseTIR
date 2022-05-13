@@ -15,8 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
-
+import tvm
 from tvm.sparse import FormatRewriteRule
+from sparse_tir_scripts import csrmm
 from sparse_tir_format_rewrite_scripts import bsr
 
 
@@ -52,5 +53,25 @@ def test_declare_format_rewrite_rule():
     print(csr2bsr_32.inv_idx_map)
 
 
+def test_csrmm_bsr_rewrite():
+    block_size_symbol = bsr.params[-1]
+    rewrites = []
+    for block_size in [4, 16, 32]:
+        rewrites.append(
+            FormatRewriteRule(
+                "csr2bsr_{}".format(block_size),
+                bsr.specialize({block_size_symbol: block_size}),
+                ["A"],
+                {"I": ["IO", "II"], "J": ["JO", "JI"]},
+                csr2bsr_index_map(block_size),
+                csr2bsr_inv_index_map(block_size),
+            )
+        )
+    mod = tvm.IRModule.from_expr(csrmm)
+    mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
+    print(mod["main"].script())
+
+
 if __name__ == "__main__":
     test_declare_format_rewrite_rule()
+    test_csrmm_bsr_rewrite()

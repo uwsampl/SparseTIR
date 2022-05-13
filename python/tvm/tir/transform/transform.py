@@ -850,7 +850,6 @@ def LowerAtomic():
 
 def SparseFormatRewrite(
     rewrite_rules: List['FormatRewriteRule'],
-    horizontal_fuse: bool = True, 
 ):
     """Rewrite the sparse format of sparse buffers in the TIR scripts.
 
