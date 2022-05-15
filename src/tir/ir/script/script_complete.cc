@@ -39,9 +39,17 @@ class ScriptCompleter : public StmtMutator {
   explicit ScriptCompleter(Map<Var, Buffer>* buffer_var_map) : buffer_var_map_(buffer_var_map) {}
   /*! \brief Whether the stmt contains at least one block. */
   bool contains_block = false;
+  /*! \brief Whether the stmt contains at least one sparse iteration. */
+  bool contains_sp_iteration = false;
 
  private:
   Map<Var, Buffer>* buffer_var_map_;
+
+  Stmt VisitStmt_(const SparseIterationNode* op) override {
+    contains_sp_iteration = true;
+    return GetRef<SparseIteration>(op);
+  }
+
   Stmt VisitStmt_(const BlockRealizeNode* op) override {
     contains_block = true;
     for (const PrimExpr& value : op->iter_values) {
@@ -112,7 +120,9 @@ PrimFunc ScriptComplete(PrimFunc func, const Array<Buffer>& root_allocates) {
   // generate surrounding loops automatically
   Stmt res = script_completer(func->body);
   // generate root block automatically
-  if ((script_completer.contains_block || root_allocates.size()) && !contain_root) {
+  if ((script_completer.contains_block || script_completer.contains_sp_iteration ||
+       root_allocates.size()) &&
+      !contain_root) {
     res = Block({}, {}, {}, "root", res, NullOpt, root_allocates);
     res = BlockRealize({}, Bool(true), Downcast<Block>(res));
   }
