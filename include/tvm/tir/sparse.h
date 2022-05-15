@@ -337,7 +337,7 @@ class SpIterVarNode : public Object {
       dom = Range::FromMinExtent(Integer(0), axis->nnz_cols.value());
     }
 
-    return IterVar(dom, var, is_reduction ? kCommReduce : kDataPar, "");
+    return IterVar(dom, Var("v" + var->name_hint, var->dtype), is_reduction ? kCommReduce : kDataPar, "");
   };
 
   static constexpr const char* _type_key = "tir.sparse.SpIterVar";

@@ -202,12 +202,12 @@ class LowerSparseIterContext {
   std::unordered_map<const VarNode*, arith::IntSet>& GetDomMap() { return top()->dom_map_; };
 
   /*! \brief Add an axis-itervar mapping to the context. */
-  void AddAxisIterVar(Axis axis, SpIterVar iter_var) {
+  void AddAxisIterVar(Axis axis, IterVar iter_var) {
     top()->axis_itervar_map_[axis.get()] = iter_var;
   }
 
   /*! \brief Return the itervar corresponding to an axis. */
-  Optional<SpIterVar> GetIterVarFromAxis(Axis axis) {
+  Optional<IterVar> GetIterVarFromAxis(Axis axis) {
     for (int i = stack_.size() - 1; i >= 0; i--) {
       auto it = stack_[i].axis_itervar_map_.find(axis.get());
       if (it != stack_[i].axis_itervar_map_.end()) {
@@ -269,8 +269,8 @@ class LowerSparseIterContext {
     std::vector<std::vector<tvm::arith::IntSet>> read_regions_;
     /*! \brief The write regions of the current block */
     std::vector<std::vector<tvm::arith::IntSet>> write_regions_;
-    /*! \brief The map from axis to corresponding sparse iter var. */
-    std::unordered_map<const AxisNode*, SpIterVar> axis_itervar_map_;
+    /*! \brief The map from axis to corresponding iter var. */
+    std::unordered_map<const AxisNode*, IterVar> axis_itervar_map_;
     /*! \brief The map from Var to corresponding Sparse IterVar. */
     std::unordered_map<const VarNode*, SpIterVar> var_itervar_map_;
     /*! \brief Allocated blocks for binary search. */
@@ -488,7 +488,7 @@ class IterTransformer : public StmtExprMutator {
         }
 
         Axis parent_axis = GetParentAxis(axis);
-        Optional<SpIterVar> parent_iter_var = ctx->GetIterVarFromAxis(parent_axis);
+        Optional<IterVar> parent_iter_var = ctx->GetIterVarFromAxis(parent_axis);
         CHECK(parent_iter_var.defined())
             << "ValueError: The parent axis of " << axis << " does not appear.";
 
@@ -510,16 +510,22 @@ class IterTransformer : public StmtExprMutator {
 
     // Create the new loop variables, and update axis_itervar and var_itervar map in the
     // context.
+    Map<Var, PrimExpr> var_map;
+    Array<IterVar> new_iter_vars;
     for (const SpIterVar& sp_iter_var : sp_iteration->sp_iter_vars) {
-      Var loop_var("_" + sp_iter_var->var->name_hint, sp_iter_var->var->dtype);
+      Var loop_var = sp_iter_var->var;
       loop_vars.push_back(loop_var);
-      ctx_.AddAxisIterVar(GetAxisBeforeFuse(sp_iter_var->axis), sp_iter_var);
-      ctx_.AddVarIterVar(sp_iter_var->var, sp_iter_var);
+      IterVar iter_var = sp_iter_var->as_iter_var();
+      new_iter_vars.push_back(iter_var);
+      ctx_.AddAxisIterVar(GetAxisBeforeFuse(sp_iter_var->axis), iter_var);
+      ctx_.AddVarIterVar(iter_var->var, sp_iter_var);
+      var_map.Set(sp_iter_var->var, iter_var->var);
     }
 
     // Mutate the `init` field.
-    Optional<Stmt> init = sp_iteration->init.defined() ? VisitStmt(sp_iteration->init.value())
-                                                       : Optional<Stmt>(NullOpt);
+    Optional<Stmt> init = sp_iteration->init.defined()
+                              ? VisitStmt(Substitute(sp_iteration->init.value(), var_map))
+                              : Optional<Stmt>(NullOpt);
 
     // Gather the information of the blocks to be generated.
     std::vector<BlockInfo> block_infos(1);
@@ -541,7 +547,7 @@ class IterTransformer : public StmtExprMutator {
         }
       }
       PrimExpr iter_binding = remove_loop_var ? Integer(0) : PrimExpr(loop_vars[i]);
-      block_infos.back().Push(sp_iter_var->as_iter_var(), iter_binding, sp_iter_var->axis);
+      block_infos.back().Push(new_iter_vars[i], iter_binding, sp_iter_var->axis);
       if (!has_reduction_var && sp_iter_var->is_reduction) {
         block_infos.back().init = std::move(init);
         has_reduction_var = true;
@@ -549,7 +555,7 @@ class IterTransformer : public StmtExprMutator {
     }
 
     // Recursively mutate the block body.
-    Stmt body = VisitStmt(sp_iteration->body);
+    Stmt body = VisitStmt(Substitute(sp_iteration->body, var_map));
 
     // Generate nested blocks and loops from innermost to outermost.
     for (int i = static_cast<int>(block_infos.size()) - 1; i >= 0; --i) {

@@ -27,21 +27,21 @@ def csrmm(
     indices: T.handle,
     m: T.int32,
     n: T.int32,
-    k: T.int32,
+    feat_size: T.int32,
     nnz: T.int32,
 ) -> None:
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
     I = T.dense_fixed(m)
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
     J_detach = T.dense_fixed(n)
-    K = T.dense_fixed(k)
+    K = T.dense_fixed(feat_size)
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (J_detach, K), "float32")
     C = T.match_sparse_buffer(c, (I, K), "float32")
-    with T.iter([I, K, J], "SSR", "csrmm") as [vi, vk, vj]:
+    with T.iter([I, J, K], "SRS", "csrmm") as [i, j, k]:
         with T.init():
-            C[vi, vk] = 0.0
-        C[vi, vk] = C[vi, vk] + A[vi, vj] * B[vj, vk]
+            C[i, k] = 0.0
+        C[i, k] = C[i, k] + A[i, j] * B[j, k]
 
 
 @T.prim_func
@@ -53,21 +53,21 @@ def csrmm_dense_iter(
     indices: T.handle,
     m: T.int32,
     n: T.int32,
-    k: T.int32,
+    feat_size: T.int32,
     nnz: T.int32,
 ) -> None:
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
     I = T.dense_fixed(m)
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
     J_detach = T.dense_fixed(n)
-    K = T.dense_fixed(k)
+    K = T.dense_fixed(feat_size)
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (J_detach, K), "float32")
     C = T.match_sparse_buffer(c, (I, K), "float32")
-    with T.iter([I, J_detach, K], "SRS", "csrmm") as [vi, vj, vk]:
+    with T.iter([I, J_detach, K], "SRS", "csrmm") as [i, j, k]:
         with T.init():
-            C[vi, vk] = 0.0
-        C[vi, vk] = C[vi, vk] + A[vi, vj] * B[vj, vk]
+            C[i, k] = 0.0
+        C[i, k] = C[i, k] + A[i, j] * B[j, k]
 
 
 @T.prim_func
@@ -83,10 +83,10 @@ def segment_reduce(
     J = T.dense_variable(I, (100, nnz), indptr, "int32")
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (I,), "float32")
-    with T.iter([I, J], "SR", "segment_reduce") as [vi, vj]:
+    with T.iter([I, J], "SR", "segment_reduce") as [i, j]:
         with T.init():
-            B[vi] = 0.0
-        B[vi] = B[vi] + A[vi, vj]
+            B[i] = 0.0
+        B[i] = B[i] + A[i, j]
 
 
 @T.prim_func
@@ -104,10 +104,10 @@ def csr_reduce(
     J = T.sparse_variable(I, (m, nnz), (indptr, indices), "int32")
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (I,), "float32")
-    with T.iter([I, J], "SR", "csr_reduce") as [vi, vj]:
+    with T.iter([I, J], "SR", "csr_reduce") as [i, j]:
         with T.init():
-            B[vi] = 0.0
-        B[vi] = B[vi] + A[vi, vj]
+            B[i] = 0.0
+        B[i] = B[i] + A[i, j]
 
 
 @T.prim_func
@@ -135,15 +135,15 @@ def bsrmm(
     C = T.match_sparse_buffer(c, (I, BI, F), "float32")
 
     with T.iter([I, BI, BJ, F, J], "SSRSR", "bsrmm") as [
-        vi,
-        vbi,
-        vbj,
-        vf,
-        vj,
+        i,
+        bi,
+        bj,
+        f,
+        j,
     ]:
         with T.init():
-            C[vi, vbi, vf] = 0.0
-        C[vi, vbi, vf] = C[vi, vbi, vf] + A[vi, vj, vbi, vbj] * B[vj, vbj, vf]
+            C[i, bi, f] = 0.0
+        C[i, bi, f] = C[i, bi, f] + A[i, j, bi, bj] * B[j, bj, f]
 
 
 @T.prim_func
@@ -170,15 +170,15 @@ def ellmm(
     C = T.match_sparse_buffer(c, (I, BI, F), "float32")
 
     with T.iter([I, J, BI, BJ, F], "SRSRS", "ellmm") as [
-        vi,
-        vj,
-        vbi,
-        vbj,
-        vf,
+        i,
+        j,
+        bi,
+        bj,
+        f,
     ]:
         with T.init():
-            C[vi, vbi, vf] = 0.0
-        C[vi, vbi, vf] = C[vi, vbi, vf] + A[vi, vj, vbi, vbj] * B[vj, vbj, vf]
+            C[i, bi, f] = 0.0
+        C[i, bi, f] = C[i, bi, f] + A[i, j, bi, bj] * B[j, bj, f]
 
 
 @T.prim_func
@@ -197,8 +197,8 @@ def csr_element_wise(
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (I, J), "float32")
 
-    with T.iter([I, J], "SS", "csr_element_wise") as [vi, vj]:
-        B[vi, vj] = A[vi, vj] * 2.5
+    with T.iter([I, J], "SS", "csr_element_wise") as [i, j]:
+        B[i, j] = A[i, j] * 2.5
 
 
 @T.prim_func
@@ -222,10 +222,10 @@ def hyper_gnn(
     I_T = T.sparse_variable(J_detach, (n, nnz), (indptr_T, indices_T), "int32")
     X = T.match_sparse_buffer(x, (I, F), "float32")
     Y = T.match_sparse_buffer(y, (I, F), "float32")
-    with T.iter([I, F, J, T.attach(I_T, J)], "SSRR", "hyper_gnn") as [vi, vf, vj, vi_t]:
+    with T.iter([I, F, J, T.attach(I_T, J)], "SSRR", "hyper_gnn") as [i, f, j, i_t]:
         with T.init():
-            Y[vi, vf] = T.float32(0)
-        Y[vi, vf] = Y[vi, vf] + X[vi_t, vf]
+            Y[i, f] = T.float32(0)
+        Y[i, f] = Y[i, f] + X[i_t, f]
 
 
 # @T.prim_func
@@ -273,22 +273,22 @@ def sddmm(
     indices: T.handle,
     m: T.int32,
     n: T.int32,
-    k: T.int32,
+    feat_size: T.int32,
     nnz: T.int32,
 ) -> None:
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
     I = T.dense_fixed(m)
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
     J_detach = T.dense_fixed(n)
-    K = T.dense_fixed(k)
+    K = T.dense_fixed(feat_size)
     A = T.match_sparse_buffer(a, (I, K), "float32")
     B = T.match_sparse_buffer(b, (J_detach, K), "float32")
     C = T.match_sparse_buffer(c, (I, J), "float32")
 
-    with T.iter([I, J, K], "SSR", "sddmm") as [vi, vj, vk]:
+    with T.iter([I, J, K], "SSR", "sddmm") as [i, j, k]:
         with T.init():
-            C[vi, vj] = 0.0
-        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
+            C[i, j] = 0.0
+        C[i, j] = C[i, j] + A[i, k] * B[j, k]
 
 
 @T.prim_func
@@ -300,22 +300,22 @@ def fused_sddmm(
     indices: T.handle,
     m: T.int32,
     n: T.int32,
-    k: T.int32,
+    feat_size: T.int32,
     nnz: T.int32,
 ) -> None:
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
     I = T.dense_fixed(m)
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
     J_detach = T.dense_fixed(n)
-    K = T.dense_fixed(k)
+    K = T.dense_fixed(feat_size)
     A = T.match_sparse_buffer(a, (I, K), "float32")
     B = T.match_sparse_buffer(b, (J_detach, K), "float32")
     C = T.match_sparse_buffer(c, (I, J), "float32")
 
-    with T.iter([T.fuse(I, J), K], "SSR", "sddmm") as [vi, vj, vk]:
+    with T.iter([T.fuse(I, J), K], "SSR", "sddmm") as [i, j, k]:
         with T.init():
-            C[vi, vj] = 0.0
-        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
+            C[i, j] = 0.0
+        C[i, j] = C[i, j] + A[i, k] * B[j, k]
 
 
 @T.prim_func
@@ -339,10 +339,10 @@ def square_sum(
     A = T.match_sparse_buffer(a, (I, J, K), "float32")
     B = T.match_sparse_buffer(b, (I,), "float32")
 
-    with T.iter([I, J, K], "SRR", "square_sum") as [vi, vj, vk]:
+    with T.iter([I, J, K], "SRR", "square_sum") as [i, j, k]:
         with T.init():
-            B[vi] = 0.0
-        B[vi] = B[vi] + A[vi, vj, vk]
+            B[i] = 0.0
+        B[i] = B[i] + A[i, j, k]
 
 
 @T.prim_func
@@ -372,10 +372,10 @@ def square_sum_two_K(
     A = T.match_sparse_buffer(a, (I, J, K0), "float32")
     B = T.match_sparse_buffer(b, (I,), "float32")
 
-    with T.iter([I, J, K1], "SRR", "square_sum") as [vi, vj, vk]:
+    with T.iter([I, J, K1], "SRR", "square_sum") as [i, j, k]:
         with T.init():
-            B[vi] = 0.0
-        B[vi] = B[vi] + A[vi, vj, vk]
+            B[i] = 0.0
+        B[i] = B[i] + A[i, j, k]
 
 
 @T.prim_func
@@ -397,10 +397,10 @@ def fused_reduction_4d_2d(
     L = T.dense_variable(K, (32768, nnz_l), indptr_l, "int32")
     X = T.match_sparse_buffer(x, (I, J, K, L), "float32")
     Y = T.match_sparse_buffer(y, (I, J), "float32")
-    with T.iter([T.fuse(I, J), K, L], "SSRR", "reduction_4d_2d") as [vi, vj, vk, vl]:
+    with T.iter([T.fuse(I, J), K, L], "SSRR", "reduction_4d_2d") as [i, j, k, l]:
         with T.init():
-            Y[vi, vj] = 0.0
-        Y[vi, vj] = Y[vi, vj] + X[vi, vj, vk, vl]
+            Y[i, j] = 0.0
+        Y[i, j] = Y[i, j] + X[i, j, k, l]
 
 
 @T.prim_func
@@ -422,10 +422,10 @@ def fused_reduction_4d_3d(
     L = T.dense_variable(K, (32768, nnz_l), indptr_l, "int32")
     X = T.match_sparse_buffer(x, (I, J, K, L), "float32")
     Y = T.match_sparse_buffer(y, (I, J, K), "float32")
-    with T.iter([T.fuse(I, J, K), L], "SSSR", "reduction_4d_3d") as [vi, vj, vk, vl]:
+    with T.iter([T.fuse(I, J, K), L], "SSSR", "reduction_4d_3d") as [i, j, k, l]:
         with T.init():
-            Y[vi, vj, vk] = 0.0
-        Y[vi, vj, vk] = Y[vi, vj, vk] + X[vi, vj, vk, vl]
+            Y[i, j, k] = 0.0
+        Y[i, j, k] = Y[i, j, k] + X[i, j, k, l]
 
 
 @T.prim_func
@@ -453,14 +453,14 @@ def rgcn_forward(
     X = T.match_sparse_buffer(x, (J_detach, F_in), "float32")
     Y = T.match_sparse_buffer(y, (I, F_out), "float32")
     with T.iter([I, F_out, J, F_in], "SSRR", "rgcn-forward") as [
-        vi,
-        vout,
-        vj,
-        vin,
+        i,
+        fo,
+        j,
+        fi,
     ]:
         with T.init():
-            Y[vi, vout] = 0.0
-        Y[vi, vout] = Y[vi, vout] + W[E[vi, vj], vout, vin] * X[vj, vin]
+            Y[i, fo] = 0.0
+        Y[i, fo] = Y[i, fo] + W[E[i, j], fo, fi] * X[j, fi]
 
 
 @T.prim_func
@@ -489,10 +489,10 @@ def rgcn_hetero_forward(
     W = T.match_sparse_buffer(w, (R, F_out, F_in), "float32")
     X = T.match_sparse_buffer(x, (J_detach, F_in), "float32")
     Y = T.match_sparse_buffer(y, (I_detach, F_out), "float32")
-    with T.iter([F_out, R, I, J, F_in], "SSSRR", "rgcn-hetero-forward") as [vout, vr, vi, vj, vin]:
+    with T.iter([F_out, R, I, J, F_in], "SSSRR", "rgcn-hetero-forward") as [fo, r, i, j, fi]:
         with T.init():
-            Y[vi, vout] = 0.0
-        Y[vi, vout] = Y[vi, vout] + W[vr, vout, vin] * X[vj, vin]
+            Y[i, fo] = 0.0
+        Y[i, fo] = Y[i, fo] + W[r, fo, fi] * X[j, fi]
 
 
 @T.prim_func
@@ -512,7 +512,7 @@ def rgcn_hetero_forward_2(
     nnz_i: T.int32,
     nnz_j: T.int32,
 ):
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
+    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2, "horizontal_fuse": 1})
     R = T.dense_fixed(r)
     G = T.dense_fixed(group)
     I = T.sparse_variable(G, (n, nnz_i), (indptr_i, indices_i), "int32")
@@ -525,10 +525,10 @@ def rgcn_hetero_forward_2(
     X = T.match_sparse_buffer(x, (J_detach, F_in), "float32")
     Y = T.match_sparse_buffer(y, (I_detach, F_out), "float32")
     E = T.match_sparse_buffer(etypes, (G,), "int32")
-    with T.iter([F_out, G, I, J, F_in], "SSSRR", "rgcn-hetero-forward") as [vout, vg, vi, vj, vin]:
+    with T.iter([F_out, G, I, J, F_in], "SSSRR", "rgcn-hetero-forward") as [fo, g, i, j, fi]:
         with T.init():
-            Y[vi, vout] = 0.
-        Y[vi, vout] = Y[vi, vout] + W[E[vg], vout, vin] * X[vj, vin]
+            Y[i, fo] = 0.
+        Y[i, fo] = Y[i, fo] + W[E[g], fo, fi] * X[j, fi]
 
 
 @T.prim_func
@@ -547,17 +547,17 @@ def sparse_softmax(
     B = T.match_sparse_buffer(b, (I, J), "float32")
     TMP = T.alloc_sparse_buffer((I,), "float32", "global")
     TMP1 = T.alloc_sparse_buffer((I,), "float32", "global")
-    with T.iter([I], "S", "sparse_softmax") as [vi]:
-        with T.iter([J], "R", "computer_max") as [vj]:
+    with T.iter([I], "S", "sparse_softmax") as [i]:
+        with T.iter([J], "R", "computer_max") as [j]:
             with T.init():
-                TMP[vi] = T.float32(-100000)
-            TMP[vi] = T.max(TMP[vi], A[vi, vj])
-        with T.iter([J], "R", "exp_and_sum") as [vj]:
+                TMP[i] = T.float32(-100000)
+            TMP[i] = T.max(TMP[i], A[i, j])
+        with T.iter([J], "R", "exp_and_sum") as [j]:
             with T.init():
-                TMP1[vi] = T.float32(-100000)
-            TMP1[vi] = TMP1[vi] + T.exp(A[vi, vj] - TMP[vi], dtype="float32")
-        with T.iter([J], "S", "div") as [vj]:
-            B[vi, vj] = T.exp(A[vi, vj], dtype="float32") / TMP1[vi]
+                TMP1[i] = T.float32(-100000)
+            TMP1[i] = TMP1[i] + T.exp(A[i, j] - TMP[i], dtype="float32")
+        with T.iter([J], "S", "div") as [j]:
+            B[i, j] = T.exp(A[i, j], dtype="float32") / TMP1[i]
 
 
 @T.prim_func
@@ -585,6 +585,6 @@ def csr2bsr(
     BJ = T.dense_fixed(blk_size)
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (I_bsr, J_bsr, BI, BJ), "float32")
-    with T.iter([I, J], "SS", "csr2bsr") as [vi, vj]:
-        B[vi // blk_size, vj // blk_size, vi % blk_size, vj % blk_size] = A[vi, vj]
+    with T.iter([I, J], "SS", "csr2bsr") as [i, j]:
+        B[i // blk_size, j // blk_size, i % blk_size, j % blk_size] = A[i, j]
  
