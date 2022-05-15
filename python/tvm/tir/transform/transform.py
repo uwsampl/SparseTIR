@@ -838,6 +838,7 @@ def HorizontalFusion():
     """
     return _ffi_api.HorizontalFusion()  # type: ignore
 
+
 def LowerAtomic():
     """Lower the atomic operations in the program.
 
@@ -848,8 +849,9 @@ def LowerAtomic():
     """
     return _ffi_api.LowerAtomic()  # type: ignore
 
+
 def SparseFormatRewrite(
-    rewrite_rules: List['FormatRewriteRule'],
+    rewrite_rules: List["FormatRewriteRule"], include_format_rewrite_blks: bool = True
 ):
     """Rewrite the sparse format of sparse buffers in the TIR scripts.
 
@@ -857,13 +859,13 @@ def SparseFormatRewrite(
     ----------
     rewrite_rules : List[FormatRewriteRule]
         The rewrite rules to perform.
-    
+    include_format_rewrite_blks : bool
+        Whether to include format rewrite blocks in the output.
+
     Returns
     ------
     fpass : tvm.transform.Pass
         The result pass
     """
     # TODO(zihao)
-    return _ffi_api.SparseFormatRewrite(
-        rewrite_rules
-    )  # type: ignore
+    return _ffi_api.SparseFormatRewrite(rewrite_rules, include_format_rewrite_blks)  # type: ignore

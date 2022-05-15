@@ -170,12 +170,16 @@ class IndexRewriter {
     old_axis_var_map_.Set(axis, var);
   }
 
+  PrimExpr Rewrite(const Axis& axis) {
+    PrimExpr final_indices_template = axis_final_indices_template_map_.Get(axis).value();
+    return Substitute(final_indices_template, var_map_);
+  }
+
   PrimExpr Rewrite(const Var& var) {
     Optional<Axis> maybe_axis = old_var_axis_map_.Get(var);
     if (maybe_axis.defined()) {
       Axis axis = maybe_axis.value();
-      PrimExpr final_indices_template = axis_final_indices_template_map_.Get(axis).value();
-      return Substitute(final_indices_template, var_map_);
+      return Rewrite(axis);
     } else {
       return var;
     }
@@ -197,7 +201,7 @@ class IndexRewriter {
 class SparseFormatRewriter : public StmtExprMutator {
  public:
   explicit SparseFormatRewriter(const FormatRewriteRule& rule, const PrimFunc& new_func,
-                                Array<Axis> old_axes, Array<Buffer> old_buffers)
+                                Array<Axis> old_axes, Array<SparseBuffer> old_buffers)
       : rule_(std::move(rule)) {
     rewrite_suffix = "_" + rule_->name;
     Array<Axis> old_axes_to_rewrite;
@@ -219,13 +223,14 @@ class SparseFormatRewriter : public StmtExprMutator {
       }
       axis_rewrite_map_.Set(k, v);
     }
-    for (const Buffer& buf : old_buffers) {
+    for (const SparseBuffer& buf : old_buffers) {
       name_buf_map_.Set(buf->name, buf);
     }
     auto it = new_func->buffer_map.begin();
     for (size_t i = 0; i < rule->buffers_to_rewrite.size(); ++i, ++it) {
       String name = rule->buffers_to_rewrite[i];
-      buffer_rewrite_map_.Set(name_buf_map_.Get(name).value(), (*it).second);
+      buffer_rewrite_map_.Set(name_buf_map_.Get(name).value(),
+                              Downcast<SparseBuffer>((*it).second));
     }
     GenerateFormatRewriteBlock();
   }
@@ -236,7 +241,27 @@ class SparseFormatRewriter : public StmtExprMutator {
 
  private:
   void GenerateFormatRewriteBlock() {
-    // TODO(zihao)
+    for (const auto& kv : buffer_rewrite_map_) {
+      const SparseBuffer& before_rewrite = kv.first;
+      const SparseBuffer& after_rewrite = kv.second;
+
+      index_rewriter_.Clear();
+      Array<SpIterVar> sp_iter_vars;
+      Array<PrimExpr> after_indices;
+      for (const Axis& axis : after_rewrite->axes) {
+        Var var(GetVarNameFromAxis(axis), axis->idtype);
+        after_indices.push_back(var);
+        sp_iter_vars.push_back(SpIterVar(var, false, axis));
+        index_rewriter_.AddNewSpIterVar(sp_iter_vars.back());
+      }
+      Array<PrimExpr> before_indices;
+      for (const Axis& axis : before_rewrite->axes) {
+        before_indices.push_back(index_rewriter_.Rewrite(axis));
+      }
+      format_rewrites_blks.push_back(SparseIteration(
+          sp_iter_vars, "rewrite_" + after_rewrite->name,
+          BufferStore(after_rewrite, BufferLoad(before_rewrite, before_indices), after_indices)));
+    }
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
@@ -284,8 +309,9 @@ class SparseFormatRewriter : public StmtExprMutator {
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
-    if (buffer_rewrite_map_.count(op->buffer)) {
-      Buffer new_buf = buffer_rewrite_map_.Get(op->buffer).value();
+    SparseBuffer buf = Downcast<SparseBuffer>(op->buffer);
+    if (buffer_rewrite_map_.count(buf)) {
+      Buffer new_buf = buffer_rewrite_map_.Get(buf).value();
       const SparseBufferNode* sp_buf = op->buffer.as<SparseBufferNode>();
       const SparseBufferNode* new_sp_buf = new_buf.as<SparseBufferNode>();
       // check old indices.
@@ -310,19 +336,18 @@ class SparseFormatRewriter : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
-    if (buffer_rewrite_map_.count(op->buffer)) {
-      Buffer new_buf = buffer_rewrite_map_.Get(op->buffer).value();
-      const SparseBufferNode* sp_buf = op->buffer.as<SparseBufferNode>();
-      const SparseBufferNode* new_sp_buf = new_buf.as<SparseBufferNode>();
+    SparseBuffer buf = Downcast<SparseBuffer>(op->buffer);
+    if (buffer_rewrite_map_.count(buf)) {
+      SparseBuffer new_buf = buffer_rewrite_map_.Get(buf).value();
       // check old indices.
       for (size_t i = 0; i < op->indices.size(); ++i) {
         const PrimExpr& idx = op->indices[i];
-        CHECK(idx.same_as(index_rewriter_.GetOldVarFromAxis(sp_buf->axes[i])))
+        CHECK(idx.same_as(index_rewriter_.GetOldVarFromAxis(buf->axes[i])))
             << "Invalid sparse buffer access to rewrite, TODO(zihao): support in the future.";
       }
       // create new indices.
       Array<PrimExpr> new_indices;
-      for (const Axis& axis : new_sp_buf->axes) {
+      for (const Axis& axis : new_buf->axes) {
         new_indices.push_back(index_rewriter_.GetNewVarFromAxis(axis));
       }
       return BufferStore(new_buf, VisitExpr(op->value), new_indices);
@@ -339,23 +364,23 @@ class SparseFormatRewriter : public StmtExprMutator {
 
   FormatRewriteRule rule_;
   Map<String, Axis> name_axis_map_;
-  Map<String, Buffer> name_buf_map_;
+  Map<String, SparseBuffer> name_buf_map_;
   Map<Axis, Array<Axis>> axis_rewrite_map_;
-  Map<Buffer, Buffer> buffer_rewrite_map_;
+  Map<SparseBuffer, SparseBuffer> buffer_rewrite_map_;
   IndexRewriter index_rewriter_;
 };
 
 PrimFunc SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules, PrimFunc f,
-                             bool include_format_rewrite_blks = false) {
+                             bool include_format_rewrite_blks = true) {
   // Only apply this pass to TIR that is not from TE schedules
   if (!IsFromLegacyTESchedule(f)) {
     // SparseFormatRewriter rewriter(format_rewrite_rules);
     PrimFuncNode* fptr = f.CopyOnWrite();
     Array<PrimFunc> format_descs;
     Array<Axis> old_sp_axes = f->sp_axes;
-    Array<Buffer> old_buffers;
+    Array<SparseBuffer> old_buffers;
     for (const auto& kv : f->buffer_map) {
-      old_buffers.push_back(kv.second);
+      old_buffers.push_back(Downcast<SparseBuffer>(kv.second));
     }
     for (const FormatRewriteRule& rule : format_rewrite_rules) {
       format_descs.push_back(AddSuffix(rule->new_format_desc, "_" + rule->name));
@@ -396,9 +421,11 @@ PrimFunc SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules, Prim
 
 namespace transform {
 
-Pass SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules) {
+Pass SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules,
+                         bool include_format_rewrite_blks) {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
-    return SparseFormatRewrite(std::move(format_rewrite_rules), std::move(f));
+    return SparseFormatRewrite(std::move(format_rewrite_rules), std::move(f),
+                               include_format_rewrite_blks);
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.SparseFormatRewrite", {});
 }

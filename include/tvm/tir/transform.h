@@ -652,9 +652,12 @@ TVM_DLL Pass LowerAtomic();
 /*!
  * \brief Sparse format rewrite pass.
  * \param format_rewrite_rules The list of format rewrite rules to perform.
+ * \param include_format_rewrite_blks Whether to include format rewrite blocks in the output TIR
+ * scripts.
  * \return The pass.
  */
-TVM_DLL Pass SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules);
+TVM_DLL Pass SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules,
+                                 bool include_format_rewrite_blks);
 
 }  // namespace transform
 }  // namespace tir
