@@ -489,5 +489,11 @@ void TracedScheduleNode::SparseFuse(const SparseIterationRV& block_rv,
   // Do not support traced schedule so far.
 }
 
+void TracedScheduleNode::HideBufAccess(const BlockRV& block_rv, const String& buf_type,
+                                       const Array<PrimExpr>& buf_index_array) {
+  ConcreteScheduleNode::HideBufAccess(block_rv, buf_type, buf_index_array);
+  // Do not support traced schedule so far.
+}
+
 }  // namespace tir
 }  // namespace tvm

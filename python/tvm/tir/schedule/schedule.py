@@ -2305,3 +2305,22 @@ class Schedule(Object):
             block,
             iters_to_fuse,
         )
+
+    def hide_buffer_access(self, block: BlockRV, buf_type: str, buf_index_array: List[int]) -> None:
+        """Hide some buffer access in a given block.
+
+        Parameters
+        ----------
+        block : BlockRV
+            The block where we hide read access.
+        buf_type : str
+            The buffer type: "read"/"write".
+        buf_index_array : List[int]
+            The array of buffer indices we hide access.
+        """
+        _ffi_api.ScheduleHideBufAccess(  # type: ignore # pylint: disable=no-member
+            self,
+            block,
+            buf_type,
+            buf_index_array,
+        )

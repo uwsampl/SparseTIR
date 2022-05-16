@@ -764,5 +764,13 @@ void ConcreteScheduleNode::SparseFuse(const SparseIterationRV& block_rv,
   this->UpdateRV(block_rv, new_block);
 }
 
+void ConcreteScheduleNode::HideBufAccess(const BlockRV& block_rv, const String& buf_type,
+                                         const Array<PrimExpr>& buf_index_array) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::HideBufAccess(state_, this->GetSRef(block_rv), buf_type, buf_index_array);
+  this->state_->DebugVerify();
+  TVM_TIR_SCHEDULE_END("hide-buf-access", this->error_render_level_);
+}
+
 }  // namespace tir
 }  // namespace tvm

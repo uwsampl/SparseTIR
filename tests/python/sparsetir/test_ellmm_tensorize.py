@@ -80,16 +80,9 @@ def test_blocked_ellmm_tensorize():
     A_local = sch.cache_read(blk_inner, 1, "local")
     B_local = sch.cache_read(blk_inner, 2, "local")
     C_local = sch.cache_write(blk_inner, 0, "local")
-    # mod = tvm.tir.transform.LowerInitBlock()(sch.mod)
-    # mod = tvm.tir.transform.ConvertBlocksToOpaque()(mod)
-    # mod = tvm.tir.transform.CompactBufferAllocation()(mod) 
-    # mod = tvm.tir.transform.Simplify()(mod)
-    # sch = tvm.tir.Schedule(mod)
-    # sch.compute_at(A_local, fi)
-    # sch.compute_at(B_local, fi)
+    sch.hide_buffer_access(blk_inner, "read", [3])
     sch.tensorize(bi, "wmma_intrin")
     print(sch.mod["main"].script())
-    # print(sch.mod["main"].script())
 
 
 if __name__ == "__main__":

@@ -260,6 +260,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSparseReorder")
     .set_body_method<Schedule>(&ScheduleNode::SparseReorder);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSparseFuse")
     .set_body_method<Schedule>(&ScheduleNode::SparseFuse);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleHideBufAccess")
+    .set_body_method<Schedule>(&ScheduleNode::HideBufAccess);
 
 }  // namespace tir
 }  // namespace tvm

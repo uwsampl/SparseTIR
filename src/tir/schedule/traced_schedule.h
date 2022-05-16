@@ -106,6 +106,8 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   Array<SpIterVar> GetSpIters(const SparseIterationRV& block_rv) final;
   void SparseReorder(const SparseIterationRV& block, const Array<SpIterVar>& new_order) final;
   void SparseFuse(const SparseIterationRV& block, const Array<SpIterVar>& iters_to_fuse) final;
+  void HideBufAccess(const BlockRV& block_rv, const String& buf_type,
+                     const Array<PrimExpr>& buf_index_array) final;
 };
 
 }  // namespace tir

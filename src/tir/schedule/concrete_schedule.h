@@ -148,6 +148,8 @@ class ConcreteScheduleNode : public ScheduleNode {
   void SparseReorder(const SparseIterationRV& block_rv, const Array<SpIterVar>& new_order) override;
   void SparseFuse(const SparseIterationRV& block_rv,
                   const Array<SpIterVar>& iters_to_fuse) override;
+  void HideBufAccess(const BlockRV& block_rv, const String& buf_type,
+                     const Array<PrimExpr>& buf_index_array) override;
 
  protected:
   /******** Utility functions ********/

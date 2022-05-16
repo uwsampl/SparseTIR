@@ -465,6 +465,16 @@ TVM_DLL SparseIteration SparseReorder(ScheduleState self, const SparseIteration&
 TVM_DLL SparseIteration SparseFuse(ScheduleState self, const SparseIteration& block,
                                    const Array<SpIterVar>& iters_to_fuse);
 
+/*!
+ * \brief Hide some buffer access in the given block.
+ * \param self The state of the schedule.
+ * \param block_rv The sref of the block we hide access.
+ * \param buf_type The buffer type: read/write
+ * \param buf_index_array The array of buffer indices we hide access.
+ */
+TVM_DLL void HideBufAccess(ScheduleState self, const StmtSRef& block_sref, const String& buf_type,
+                           const Array<PrimExpr>& buf_index_array);
+
 }  // namespace tir
 }  // namespace tvm
 

@@ -620,6 +620,15 @@ class ScheduleNode : public runtime::Object {
    */
   virtual void SparseFuse(const SparseIterationRV& block_rv,
                           const Array<SpIterVar>& iters_to_fuse) = 0;
+
+  /*!
+   * \brief Hide some buffer access in the given block.
+   * \param block_rv The block where we hide buffer access.
+   * \param buf_type The buffer type: read/write
+   * \param buf_index_array The array of buffer indices we hide access.
+   */
+  virtual void HideBufAccess(const BlockRV& block, const String& buf_type,
+                             const Array<PrimExpr>& buf_index_array) = 0;
 };
 
 /*!
