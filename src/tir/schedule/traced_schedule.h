@@ -64,7 +64,6 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factor_rvs) final;
   void Reorder(const Array<LoopRV>& ordered_loop_rvs) final;
   void LiftLoop(const LoopRV& loop_rv) final;
-  void PlaceUnder(const BlockRV& block_rv, const LoopRV& loop_rv) final;
   /******** Schedule: Manipulate ForKind ********/
   void Parallel(const LoopRV& loop_rv) final;
   void Vectorize(const LoopRV& loop_rv) final;
@@ -104,7 +103,6 @@ class TracedScheduleNode : public ConcreteScheduleNode {
   void EnterPostproc() final;
   /******** Schedule: SparseTIR schedules ********/
   SparseIterationRV GetSparseIteration(const String& name, const String& func_name = "main") final;
-  Array<AxisRV> GetAxes(const String& func_name = "main") final;
   Array<SpIterVar> GetSpIters(const SparseIterationRV& block_rv) final;
   void SparseReorder(const SparseIterationRV& block, const Array<SpIterVar>& new_order) final;
   void SparseFuse(const SparseIterationRV& block, const Array<SpIterVar>& iters_to_fuse) final;

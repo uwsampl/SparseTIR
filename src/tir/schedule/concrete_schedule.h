@@ -71,7 +71,6 @@ class ConcreteScheduleNode : public ScheduleNode {
   inline For Get(const LoopRV& loop_rv) const final;
   inline PrimExpr Get(const ExprRV& expr_rv) const final;
   inline SparseIteration Get(const SparseIterationRV& sp_iteration_rv) const final;
-  inline Axis Get(const AxisRV& axis_rv) const final;
   inline StmtSRef GetSRef(const BlockRV& block_rv) const final;
   inline StmtSRef GetSRef(const LoopRV& loop_rv) const final;
   inline bool HasBlock(const BlockRV& block_rv) const final;
@@ -83,7 +82,6 @@ class ConcreteScheduleNode : public ScheduleNode {
   void RemoveRV(const SparseIterationRV& sp_iteration_rv) final {
     RemoveFromSymbolTable(sp_iteration_rv);
   }
-  void RemoveRV(const AxisRV& axis_rv) final { RemoveFromSymbolTable(axis_rv); }
   using ScheduleNode::GetSRef;
 
  public:
@@ -106,7 +104,6 @@ class ConcreteScheduleNode : public ScheduleNode {
   Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) override;
   void Reorder(const Array<LoopRV>& ordered_loop_rvs) override;
   void LiftLoop(const LoopRV& loop_rv) override;
-  void PlaceUnder(const BlockRV& block, const LoopRV& loop) override;
   /******** Schedule: Manipulate ForKind ********/
   void Parallel(const LoopRV& loop_rv) override;
   void Vectorize(const LoopRV& loop_rv) override;
@@ -147,7 +144,6 @@ class ConcreteScheduleNode : public ScheduleNode {
   /******** Schedule: SparseTIR schedules ********/
   SparseIterationRV GetSparseIteration(const String& name,
                                        const String& func_name = "main") override;
-  Array<AxisRV> GetAxes(const String& func_name = "main") override;
   Array<SpIterVar> GetSpIters(const SparseIterationRV& block_rv) override;
   void SparseReorder(const SparseIterationRV& block_rv, const Array<SpIterVar>& new_order) override;
   void SparseFuse(const SparseIterationRV& block_rv,
@@ -195,12 +191,6 @@ class ConcreteScheduleNode : public ScheduleNode {
    * \return SparseIterationRV
    */
   inline SparseIterationRV CreateRV(const SparseIteration& sp_iteration);
-  /*!
-   * \brief Add an axis as a random variable into the symbol table
-   * \param axis
-   * \return AxisRV
-   */
-  inline AxisRV CreateRV(const Axis& axis);
   /*!
    * \brief Update the value of the input SparseIterationRV to the input block.
    * \param sp_iteration_rv The random variable to be updated
@@ -252,13 +242,6 @@ inline SparseIteration ConcreteScheduleNode::Get(const SparseIterationRV& sp_ite
   CHECK(it != this->symbol_table_.end())
       << "IndexError: Cannot find corresponding SparseIterationRV: " << sp_iteration_rv;
   return Downcast<SparseIteration>((*it).second);
-}
-
-inline Axis ConcreteScheduleNode::Get(const AxisRV& axis_rv) const {
-  auto it = this->symbol_table_.find(axis_rv);
-  CHECK(it != this->symbol_table_.end())
-      << "IndexError: Cannot find corresponding AxisRV: " << axis_rv;
-  return Downcast<Axis>((*it).second);
 }
 
 inline bool ConcreteScheduleNode::HasBlock(const BlockRV& block_rv) const {
@@ -373,12 +356,6 @@ inline Array<ExprRV> ConcreteScheduleNode::CreateRV(const std::vector<int64_t>& 
 inline SparseIterationRV ConcreteScheduleNode::CreateRV(const SparseIteration& block) {
   SparseIterationRV rv;
   this->symbol_table_.Set(rv, block);
-  return rv;
-}
-
-inline AxisRV ConcreteScheduleNode::CreateRV(const Axis& axis) {
-  AxisRV rv;
-  this->symbol_table_.Set(rv, axis);
   return rv;
 }
 

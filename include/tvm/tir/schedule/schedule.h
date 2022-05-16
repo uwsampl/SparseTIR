@@ -117,27 +117,6 @@ class SparseIterationRV : public runtime::ObjectRef {
                                             SparseIterationRVNode);
 };
 
-/**************** Random variable: AxisRV ****************/
-
-/*! \brief A random variable that evaluates to a TensorIR axis. */
-class AxisRVNode : public runtime::Object {
- public:
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-  static constexpr const char* _type_key = "tir.AxisRV";
-  TVM_DECLARE_FINAL_OBJECT_INFO(AxisRVNode, runtime::Object);
-};
-
-/*!
- * \brief Managed reference to AxisRVNode
- * \sa AxisRVNode
- */
-class AxisRV : public runtime::ObjectRef {
- public:
-  /*! \brief Constructor*/
-  TVM_DLL AxisRV();
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(AxisRV, runtime::ObjectRef, AxisRVNode);
-};
-
 /**************** The Schedule class ****************/
 
 class Schedule;
@@ -203,12 +182,6 @@ class ScheduleNode : public runtime::Object {
    */
   virtual SparseIteration Get(const SparseIterationRV& sp_iteration_rv) const = 0;
   /*!
-   * \brief Get the axis corresponding to the specific random variable
-   * \param axis_rv The random variable to be looked up
-   * \return Axis The corresponding axis
-   */
-  virtual Axis Get(const AxisRV& axis_rv) const = 0;
-  /*!
    * \brief Get the block sref corresponding to the specific BlockRV
    * \param block_rv The BlockRV to be looked up
    * \return The corresponding block sref
@@ -258,11 +231,6 @@ class ScheduleNode : public runtime::Object {
    * \param sp_iteration_rv The random variable to be removed
    */
   virtual void RemoveRV(const SparseIterationRV& sp_iteration_rv) = 0;
-  /*!
-   * \brief Remove an axis random variable from the symbol table
-   * \param axis_rv The random variable to be removed
-   */
-  virtual void RemoveRV(const AxisRV& axis_rv) = 0;
 
  public:
   /******** Schedule: Sampling ********/
@@ -374,11 +342,6 @@ class ScheduleNode : public runtime::Object {
    * \note TODO(zihao): write something about requirements.
    */
   virtual void LiftLoop(const LoopRV& loop_rv) = 0;
-  /*!
-   * \brief Place a block under loop.
-   * \note TODO(zihao): write something about requirements.
-   */
-  virtual void PlaceUnder(const BlockRV& block, const LoopRV& loop) = 0;
   /******** Schedule: Manipulate ForKind ********/
   /*!
    * \brief Parallelize the input loop. It requires:
@@ -634,12 +597,6 @@ class ScheduleNode : public runtime::Object {
    */
   virtual SparseIterationRV GetSparseIteration(const String& name,
                                                const String& func_name = "main") = 0;
-  /*!
-   * \brief Retrive the axis random variable defined in a specific function.
-   * \param func_name The name of the function.
-   * \return The list of axes retrieved.
-   */
-  virtual Array<AxisRV> GetAxes(const String& func_name = "main") = 0;
   /*!
    * \brief Retrieve the sparse iterators of a given sparse iteration
    * \param block_rv The block to be queried

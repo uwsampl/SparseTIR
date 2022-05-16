@@ -29,8 +29,6 @@ LoopRV::LoopRV() { this->data_ = make_object<LoopRVNode>(); }
 
 SparseIterationRV::SparseIterationRV() { this->data_ = make_object<SparseIterationRVNode>(); }
 
-AxisRV::AxisRV() { this->data_ = make_object<AxisRVNode>(); }
-
 /**************** GetSRef ****************/
 
 StmtSRef ScheduleNode::GetSRef(const StmtNode* stmt) const {
@@ -47,7 +45,6 @@ StmtSRef ScheduleNode::GetSRef(const StmtNode* stmt) const {
 TVM_REGISTER_NODE_TYPE(BlockRVNode);
 TVM_REGISTER_NODE_TYPE(LoopRVNode);
 TVM_REGISTER_NODE_TYPE(SparseIterationRVNode);
-TVM_REGISTER_NODE_TYPE(AxisRVNode);
 TVM_REGISTER_OBJECT_TYPE(ScheduleNode);
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetMod")  //
@@ -70,7 +67,6 @@ TVM_REGISTER_GLOBAL("tir.schedule.LoopRV").set_body_typed([]() { return LoopRV()
 TVM_REGISTER_GLOBAL("tir.schedule.SparseIterationRV").set_body_typed([]() {
   return SparseIterationRV();
 });
-TVM_REGISTER_GLOBAL("tir.schedule.AxisRV").set_body_typed([]() { return AxisRV(); });
 TVM_REGISTER_GLOBAL("tir.schedule.ConcreteSchedule")
     .set_body_typed([](IRModule mod, support::LinearCongruentialEngine::TRandState seed,
                        int debug_mask, int error_render_level) -> Schedule {
@@ -171,8 +167,6 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReorder")
     .set_body_method<Schedule>(&ScheduleNode::Reorder);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleLiftLoop")
     .set_body_method<Schedule>(&ScheduleNode::LiftLoop);
-TVM_REGISTER_GLOBAL("tir.schedule.SchedulePlaceUnder")
-    .set_body_method<Schedule>(&ScheduleNode::PlaceUnder);
 /******** (FFI) Manipulate ForKind ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel")
     .set_body_method<Schedule>(&ScheduleNode::Parallel);

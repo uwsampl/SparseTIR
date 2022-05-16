@@ -208,16 +208,6 @@ void TracedScheduleNode::LiftLoop(const LoopRV& loop_rv) {
                                       /*outputs=*/{}));
 }
 
-void TracedScheduleNode::PlaceUnder(const BlockRV& block_rv, const LoopRV& loop_rv) {
-  ConcreteScheduleNode::PlaceUnder(block_rv, loop_rv);
-
-  static const InstructionKind& kind = InstructionKind::Get("PlaceUnder");
-  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
-                                      /*inputs=*/{block_rv, loop_rv},
-                                      /*attrs=*/{},
-                                      /*outputs=*/{}));
-}
-
 /******** Schedule: Manipulate ForKind ********/
 
 void TracedScheduleNode::Parallel(const LoopRV& loop_rv) {
@@ -477,12 +467,6 @@ void TracedScheduleNode::EnterPostproc() {
 SparseIterationRV TracedScheduleNode::GetSparseIteration(const String& name,
                                                          const String& func_name) {
   SparseIterationRV result = ConcreteScheduleNode::GetSparseIteration(name, func_name);
-  // Do not support traced schedule so far.
-  return result;
-}
-
-Array<AxisRV> TracedScheduleNode::GetAxes(const String& func_name) {
-  Array<AxisRV> result = ConcreteScheduleNode::GetAxes(func_name);
   // Do not support traced schedule so far.
   return result;
 }

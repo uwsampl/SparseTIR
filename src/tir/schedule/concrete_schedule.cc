@@ -461,15 +461,6 @@ void ConcreteScheduleNode::LiftLoop(const LoopRV& loop_rv) {
   this->state_->DebugVerify();
 }
 
-void ConcreteScheduleNode::PlaceUnder(const BlockRV& block, const LoopRV& loop) {
-  TVM_TIR_SCHEDULE_BEGIN();
-  StmtSRef block_sref = this->GetSRef(block);
-  StmtSRef loop_sref = this->GetSRef(loop);
-  tir::PlaceUnder(state_, block_sref, loop_sref);
-  TVM_TIR_SCHEDULE_END("place_under", this->error_render_level_);
-  this->state_->DebugVerify();
-}
-
 /******** Schedule: Manipulate ForKind ********/
 
 void ConcreteScheduleNode::Parallel(const LoopRV& loop_rv) {
@@ -747,17 +738,6 @@ SparseIterationRV ConcreteScheduleNode::GetSparseIteration(const String& name,
   }
 
   return CreateRV(GetRef<SparseIteration>(block));
-}
-
-Array<AxisRV> ConcreteScheduleNode::GetAxes(const String& func_name) {
-  BaseFunc func = this->state_->mod->Lookup(func_name);
-  const auto* prim_func = TVM_TYPE_AS(prim_func, func, PrimFuncNode);
-
-  Array<AxisRV> axes;
-  for (const Axis& axis: prim_func->sp_axes) {
-    axes.push_back(CreateRV(axis));
-  }
-  return axes;
 }
 
 Array<SpIterVar> ConcreteScheduleNode::GetSpIters(const SparseIterationRV& block_rv) {

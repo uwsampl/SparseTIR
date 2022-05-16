@@ -69,17 +69,6 @@ class SparseIterationRV(Object):
         )
 
 
-@_register_object("tir.AxisRV")
-class AxisRV(Object):
-    """A random variable that refers to an axis."""
-
-    def __init__(self) -> None:
-        """Construct a new AxisRV."""
-        self.__init_handle_by_consturctor__(
-            _ffi_api.AxisRV  # type: ignore # pylint: disable=no-member
-        )
-
-
 # It is a workaround for mypy: https://github.com/python/mypy/issues/7866#issuecomment-549454370
 # This feature is not supported until python 3.10:
 # https://docs.python.org/3.10/whatsnew/3.10.html#pep-613-typealias
@@ -723,24 +712,6 @@ class Schedule(Object):
         TODO(zihao)
         """
         _ffi_api.ScheduleLiftLoop(self, loop)  # type: ignore # pylint: disable=no-member
-
-    @type_checked
-    def place_under(self, block: BlockRV, loop: LoopRV) -> None:
-        """Place a block under a loop.
-
-        Parameters
-        ----------
-        block : BlockRV
-            The block to place.
-
-        loop : LoopRV
-            The loop to place under.
-
-        Examples
-        --------
-        TODO(zihao)
-        """
-        _ffi_api.SchedulePlaceUnder(self, block, loop)  # type: ignore # pylint: disable=no-member
 
     ########## Schedule: Manipulate ForKind ##########
 
@@ -2281,23 +2252,6 @@ class Schedule(Object):
             name,
             func_name,
         )
-
-    def get_axes(
-        self,
-        func_name: str = "main",
-    ) -> List[AxisRV]:
-        """Retrieve an axis RV in a specific function.
-
-        Parameters
-        ----------
-        func_name : str = "main"
-            The name of the function
-
-        Returns
-        -------
-        List[AxisRV]
-        """
-        return _ffi_api.ScheduleGetAxes(self, func_name)  # type: ignore # pylint: disable=no-member
 
     def get_sp_iters(self, block: SparseIterationRV) -> List[SpIterVar]:
         """Retrieve the sparse iterators of a given sparse iteration
