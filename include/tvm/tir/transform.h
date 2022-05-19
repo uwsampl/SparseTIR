@@ -659,6 +659,18 @@ TVM_DLL Pass LowerAtomic();
 TVM_DLL Pass SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules,
                                  bool include_format_rewrite_blks);
 
+/*!
+ * \brief Extract the preprocess blocks/sparse iterations in the module.
+ * \return The pass.
+ */
+TVM_DLL Pass ExtractPreprocess();
+
+/*!
+ * \brief Remove the preprocess blocks/sparse iterations in the module.
+ * \return The pass.
+ */
+TVM_DLL Pass RemovePreprocess();
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm

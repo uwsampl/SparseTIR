@@ -446,6 +446,41 @@ class BlockAttr(SpecialStmt):
         super().__init__(block_attr, def_symbol=False)
 
 
+@register
+class IterAttr(SpecialStmt):
+    """Special function iter_attr({attr_key: attr_value})
+
+    Example
+    -------
+    .. code-block:: python
+
+        T.iter_attr({"preprocess": True})
+    """
+
+    def __init__(self):
+        def iter_attr(attrs: Mapping[str, Object], span: Span = None):
+            assert self.context, "call 'exit_scope' before 'enter_scope'"
+            block_scope = self.context.current_block_scope()
+            if block_scope is None:
+                self.context.report_error(
+                    "Expected to declare block annotations inside a block.",
+                    span,
+                )
+            if block_scope.annotations is not None:
+                self.context.report_error(
+                    "Duplicate block annotations declaration, "
+                    + "previous one is "
+                    + str(block_scope.annotations),
+                    span,
+                )
+            attrs = {
+                key: String(val) if isinstance(val, str) else val for key, val in attrs.items()
+            }
+            block_scope.annotations = attrs
+
+        super().__init__(iter_attr, def_symbol=False)
+
+
 class BlockAxis(SpecialStmt):
     """Special stmt for defining a spatial block axis
     axis.S(dom, iter_value)

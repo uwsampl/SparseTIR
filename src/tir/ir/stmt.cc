@@ -1062,20 +1062,22 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     });
 
 SparseIteration::SparseIteration(Array<SpIterVar> sp_iter_vars, String name, Stmt body,
-                                 Optional<Stmt> init, Span span) {
+                                 Optional<Stmt> init, Map<String, ObjectRef> annotations,
+                                 Span span) {
   ObjectPtr<SparseIterationNode> node = make_object<SparseIterationNode>();
   node->sp_iter_vars = std::move(sp_iter_vars);
   node->name = std::move(name);
   node->body = std::move(body);
   node->init = std::move(init);
+  node->annotations = std::move(annotations);
   node->span = std::move(span);
   data_ = std::move(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.SparseIteration")
     .set_body_typed([](Array<SpIterVar> sp_iter_vars, String name, Stmt body, Optional<Stmt> init,
-                       Span span) {
-      return SparseIteration(sp_iter_vars, name, body, init, span);
+                       Map<String, ObjectRef> annotations, Span span) {
+      return SparseIteration(sp_iter_vars, name, body, init, annotations, span);
     });
 
 TVM_REGISTER_NODE_TYPE(SparseIterationNode);
@@ -1105,9 +1107,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       PrintSparseIterationTitle(op, p);
       p->stream << " {\n";
       p->indent += 2;
-
       PrintSparseIterationBody(op, p);
-
       p->indent -= 2;
       p->PrintIndent();
       p->stream << "}\n";

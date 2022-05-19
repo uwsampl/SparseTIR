@@ -436,6 +436,7 @@ class SparseIteration(WithScopeHandler):
                 name_hint,
                 self.body,
                 block_info.init,
+                block_info.annotations,
                 span,
             )
             return block
@@ -456,7 +457,10 @@ class SparseIteration(WithScopeHandler):
         ), f"SparseIteration ScopeHandler expected to work on synr.ast.With but got {type(node)}"
 
         vars = WithScopeHandler.get_optional_vars(node, context)
-        self.sp_iters = [tvm.te.var(var.id.name, "int32") for var in vars]
+        axes = flatten_axes(arg_list[0])
+        self.sp_iters = [
+            tvm.tir.Var(var.id.name, dtype=axis.idtype) for var, axis in zip(vars, axes)
+        ]
         for sp_iter in self.sp_iters:
             context.update_symbol(sp_iter.name, sp_iter, node)
 

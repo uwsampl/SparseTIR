@@ -86,10 +86,10 @@ PrimFunc AddSuffix(PrimFunc func, String suffix) {
     for (const Axis& buf_axis : old_buf->axes) {
       new_buf_axes.push_back(axis_map.Get(buf_axis).value());
     }
-    new_buffer_map.Set(
-        Downcast<Var>(Substitute(kv.first, var_map)),
-        SparseBuffer(Downcast<Var>(Substitute(old_buf->data, var_map)), new_buf_axes,
-                     old_buf->dtype, old_buf->name + suffix, old_buf->extra_storage));
+    Var new_data(old_buf->name + suffix, old_buf->data->type_annotation);
+    new_buffer_map.Set(Downcast<Var>(Substitute(kv.first, var_map)),
+                       SparseBuffer(new_data, new_buf_axes, old_buf->dtype, old_buf->name + suffix,
+                                    old_buf->extra_storage));
   }
   fptr->buffer_map = new_buffer_map;
   return func;
@@ -260,7 +260,8 @@ class SparseFormatRewriter : public StmtExprMutator {
       }
       format_rewrites_blks.push_back(SparseIteration(
           sp_iter_vars, "rewrite_" + after_rewrite->name,
-          BufferStore(after_rewrite, BufferLoad(before_rewrite, before_indices), after_indices)));
+          BufferStore(after_rewrite, BufferLoad(before_rewrite, before_indices), after_indices),
+          NullOpt, {{"preprocess", Bool(true)}}));
     }
   }
 
@@ -286,6 +287,7 @@ class SparseFormatRewriter : public StmtExprMutator {
 
   Stmt VisitStmt_(const SparseIterationNode* op) final {
     Array<SpIterVar> new_sp_iter_vars;
+    Map<Var, PrimExpr> var_map;
     for (const SpIterVar& sp_iter_var : op->sp_iter_vars) {
       if (axis_rewrite_map_.count(sp_iter_var->axis)) {
         index_rewriter_.AddOldSpIterVar(sp_iter_var);
@@ -297,15 +299,19 @@ class SparseFormatRewriter : public StmtExprMutator {
           index_rewriter_.AddNewSpIterVar(new_sp_iter_var);
         }
       } else {
-        new_sp_iter_vars.push_back(sp_iter_var);
+        Var new_var(sp_iter_var->var->name_hint, sp_iter_var->var->dtype);
+        var_map.Set(sp_iter_var->var, new_var);
+        SpIterVar new_sp_iter_var(new_var, sp_iter_var->is_reduction, sp_iter_var->axis);
+        new_sp_iter_vars.push_back(new_sp_iter_var);
       }
     }
-    Stmt body = VisitStmt(op->body);
+    Stmt body = VisitStmt(Substitute(op->body, var_map));
     Optional<Stmt> init = NullOpt;
     if (op->init.defined()) {
-      init = VisitStmt(op->init.value());
+      init = VisitStmt(Substitute(op->init.value(), var_map));
     }
-    return SparseIteration(new_sp_iter_vars, op->name + rewrite_suffix, body, init);
+    return SparseIteration(new_sp_iter_vars, op->name + rewrite_suffix, body, init,
+                           op->annotations);
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {

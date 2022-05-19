@@ -669,6 +669,9 @@ class SparseIteration(Stmt):
 
     init : Optional[Stmt]
         The init statement of the block.
+    
+    annotations : Optional[Mapping[str, Object]]
+        Additional annotation hints.
 
     span : Optional[Span]
         The location of this block in the source code.
@@ -678,6 +681,7 @@ class SparseIteration(Stmt):
     name: str
     body: Stmt
     init: Optional[Stmt]
+    annotations: Optional[Mapping[str, Object]]
     span: Optional[Span]
 
     def __init__(
@@ -686,14 +690,18 @@ class SparseIteration(Stmt):
         name: str,
         body: Stmt,
         init: Optional[Stmt] = None,
+        annotations: Optional[Mapping[str, Object]] = None,
         span: Optional[Span] = None,
     ):
+        if annotations is None:
+            annotations = {}
         self.__init_handle_by_constructor__(
             _ffi_api.SparseIteration,  # type: ignore
             sp_iter_vars,
             name,
             body,
             init,
+            annotations,
             span,
         )  # type: ignore
 

@@ -18,7 +18,7 @@
 import tvm
 from tvm.sparse import FormatRewriteRule
 from sparse_tir_scripts import csrmm
-from sparse_tir_format_rewrite_scripts import bsr
+from sparse_tir_format_rewrite_scripts import bsr, bsr_rewrite_with_preprocess
 
 
 def csr2bsr_inv_index_map(block_size):
@@ -59,7 +59,7 @@ def test_csrmm_bsr_rewrite():
         )
     mod = tvm.IRModule.from_expr(csrmm)
     mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
-    print(mod["main"].script())
+    tvm.ir.assert_structural_equal(mod["main"], bsr_rewrite_with_preprocess, True)
 
 
 if __name__ == "__main__":

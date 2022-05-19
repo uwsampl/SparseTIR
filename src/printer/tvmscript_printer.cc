@@ -1568,6 +1568,10 @@ Doc TVMScriptPrinter::VisitStmt_(const SparseIterationNode* op) {
   doc << PrintSparseIterationName(op);
 
   Doc body;
+  if (!op->annotations.empty()) {
+    body << tir_prefix_ << ".iter_attr({" << PrintAnnotations(op->annotations) << "})";
+    body << Doc::NewLine();
+  }
   if (op->init.defined()) {
     Doc init;
     init << "with " << tir_prefix_ << ".init():";

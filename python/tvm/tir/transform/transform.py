@@ -869,3 +869,23 @@ def SparseFormatRewrite(
     """
     # TODO(zihao)
     return _ffi_api.SparseFormatRewrite(rewrite_rules, include_format_rewrite_blks)  # type: ignore
+
+def ExtractPreprocess():
+    """Extract the preprocess blocks/sparse iterations in the module.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.ExtractPreprocess()  # type: ignore
+
+def RemovePreprocess():
+    """Remove the preprocess blocks/sparse iterations in the module.
+    
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.RemovePreprocess()  # type: ignore

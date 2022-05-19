@@ -1331,17 +1331,21 @@ class SparseIterationNode : public StmtNode {
   Stmt body;
   /*! \brief The init statement of the block */
   Optional<Stmt> init;
+  /*! \brief The annotation of the block. */
+  Map<String, ObjectRef> annotations;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("sp_iter_vars", &sp_iter_vars);
     v->Visit("name", &name);
     v->Visit("body", &body);
     v->Visit("init", &init);
+    v->Visit("annotations", &annotations);
   }
 
   bool SEqualReduce(const SparseIterationNode* other, SEqualReducer equal) const {
     return equal(sp_iter_vars, other->sp_iter_vars) && equal(name, other->name) &&
-           equal(body, other->body) && equal(init, other->init);
+           equal(body, other->body) && equal(init, other->init) &&
+           equal(annotations, other->annotations);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
@@ -1349,6 +1353,7 @@ class SparseIterationNode : public StmtNode {
     hash_reduce(name);
     hash_reduce(body);
     hash_reduce(init);
+    hash_reduce(annotations);
   }
 
   static constexpr const char* _type_key = "tir.SparseIteration";
@@ -1362,7 +1367,8 @@ class SparseIterationNode : public StmtNode {
 class SparseIteration : public Stmt {
  public:
   TVM_DLL explicit SparseIteration(Array<SpIterVar> sp_iter_vars, String name, Stmt body,
-                                   Optional<Stmt> init = NullOpt, Span span = Span());
+                                   Optional<Stmt> init = NullOpt,
+                                   Map<String, ObjectRef> annotations = {}, Span span = Span());
 
   TVM_DEFINE_OBJECT_REF_METHODS(SparseIteration, Stmt, SparseIterationNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(SparseIterationNode);

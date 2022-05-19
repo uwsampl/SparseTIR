@@ -593,6 +593,8 @@ class IterTransformer : public StmtExprMutator {
       ctx_.CollectRegion(false);  // update is_collecting_regions flag to false
 
       // Create new block.
+      Map<String, ObjectRef> annotations = sp_iteration->annotations;
+      annotations.Set("sparse", Bool(true));
       Block block(/*iter_vars=*/info.block_iters,
                   /*reads=*/reads_new,
                   /*writes=*/writes_new,
@@ -601,7 +603,7 @@ class IterTransformer : public StmtExprMutator {
                   /*init=*/init,
                   /*alloc_buffers=*/{},
                   /*match_buffers=*/{},
-                  /*annotations=*/{{"sparse", Bool(true)}});
+                  /*annotations=*/annotations);
 
       // Update var dom.
       for (const IterVar& iter_var : info.block_iters) {
@@ -706,7 +708,7 @@ class IterTransformer : public StmtExprMutator {
             // if dense, return offset
             return offset;
           } else {
-            // if sparse, get indices accoring to offset.
+            // if sparse, get indices according to offset.
             Optional<Buffer> maybe_indices_buf = axis_indices_map_.Get(original_axis);
             ICHECK(maybe_indices_buf.defined()) << "Not a sparse axis.";
             Buffer indices_buf = maybe_indices_buf.value();
@@ -867,7 +869,7 @@ class IterTransformer : public StmtExprMutator {
       for (size_t i = 0; i < iter_vars.size(); ++i) {
         const IterVar& iter_var = iter_vars[i];
         if (visitor.used_var.count(iter_var->var.get())) {
-          Var new_var("ax" + std::to_string(i), iter_var->var->dtype);
+          Var new_var(iter_var->var->name_hint, iter_var->var->dtype);
           IterVar new_iter_var(iter_var->dom, new_var, IterVarType::kDataPar);
           block_var_map[iter_var->var] = new_var;
           new_iter_vars.push_back(std::move(new_iter_var));
