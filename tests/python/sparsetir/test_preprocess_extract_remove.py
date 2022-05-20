@@ -19,26 +19,29 @@ from sparse_tir_format_rewrite_scripts import bsr_rewrite_with_preprocess
 from sparse_tir_lowered_iter_scripts import fused_sddmm
 import tvm
 
+
 def test_extract_preprocess_bsr_rewrite():
     mod = tvm.IRModule.from_expr(bsr_rewrite_with_preprocess)
     mod_preprocess = tvm.tir.transform.ExtractPreprocess()(mod)
     print(mod_preprocess["main"].script())
+
 
 def test_extract_preprocess_fused_sddmm():
     mod = tvm.IRModule.from_expr(fused_sddmm)
     mod_preprocess = tvm.tir.transform.ExtractPreprocess()(mod)
     print(mod_preprocess["main"].script())
 
+
 def test_remove_preprocess_bsr_rewrite():
     mod = tvm.IRModule.from_expr(bsr_rewrite_with_preprocess)
     mod_preprocess = tvm.tir.transform.RemovePreprocess()(mod)
     print(mod_preprocess["main"].script())
 
+
 def test_remove_preprocess_fused_sddmm():
     mod = tvm.IRModule.from_expr(fused_sddmm)
     mod_preprocess = tvm.tir.transform.RemovePreprocess()(mod)
     print(mod_preprocess["main"].script())
-
 
 
 if __name__ == "__main__":
