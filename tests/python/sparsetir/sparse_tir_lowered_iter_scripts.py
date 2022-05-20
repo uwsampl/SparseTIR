@@ -71,7 +71,7 @@ def csrmm_dense_iter(
     indices: T.handle,
     m: T.int32,
     n: T.int32,
-    k: T.int32,
+    feat_size: T.int32,
     nnz: T.int32,
 ) -> None:
     # function attr dict
@@ -80,7 +80,7 @@ def csrmm_dense_iter(
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
     J_dense = T.dense_variable(I, (n, nnz), indptr, "int32")
     J_detach = T.dense_fixed(n, "int32")
-    K = T.dense_fixed(k, "int32")
+    K = T.dense_fixed(feat_size, "int32")
     A = T.match_sparse_buffer(a, [I, J], dtype="float32")
     B = T.match_sparse_buffer(b, [J_detach, K], dtype="float32")
     C = T.match_sparse_buffer(c, [I, K], dtype="float32")
@@ -88,31 +88,32 @@ def csrmm_dense_iter(
     J_indices = T.match_sparse_buffer(indices, [I, J_dense], dtype="int32")
     # body
     # with T.block("root")
-    low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
-    high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
-    mid_0 = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
-    for v_vi, v_vj, v_vk in T.grid(m, n, k):
-        with T.block("binary_search_0"):
-            ax0, ax1 = T.axis.remap("SS", [v_vi, v_vj])
-            T.reads(J_indices[ax0, 0 : J_indptr[ax0 + 1] - J_indptr[ax0]])
-            T.writes(mid_0[0])
-            T.block_attr({"sparse": True})
+    mid_0 = T.alloc_sparse_buffer([I, J_detach], dtype="int32")
+    for i, j in T.grid(m, n):
+        with T.block("binary_search_block_0_0"):
+            vi, vj = T.axis.remap("SR", [i, j])
+            T.reads()
+            T.writes()
+            T.block_attr({"preprocess": True, "sparse": True})
+            low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
+            high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
             low[0] = 0
-            high[0] = J_indptr[ax0 + 1] - J_indptr[ax0]
+            high[0] = J_indptr[vi + 1] - J_indptr[vi]
             while low[0] < high[0]:
-                mid_0[0] = low[0] + (high[0] - low[0]) // 2
-                if J_indices[ax0, mid_0[0]] < ax1:
-                    low[0] = mid_0[0] + 1
+                mid_0[vi, vj] = low[0] + (high[0] - low[0]) // 2
+                if J_indices[vi, mid_0[vi, vj]] < vj:
+                    low[0] = mid_0[vi, vj] + 1
                 else:
-                    high[0] = mid_0[0]
+                    high[0] = mid_0[vi, vj]
+    for i, j, k in T.grid(m, n, feat_size):
         with T.block("csrmm0"):
-            vi, vj, vk = T.axis.remap("SRS", [v_vi, v_vj, v_vk])
-            T.reads(A[vi, mid_0[0]], mid_0[0], B[vj, vk])
+            vi, vj, vk = T.axis.remap("SRS", [i, j, k])
+            T.reads(A[vi, mid_0[vi, vj]], mid_0[vi, vj], B[vj, vk])
             T.writes(C[vi, vk])
             T.block_attr({"sparse": True})
             with T.init():
                 C[vi, vk] = T.float32(0)
-            C[vi, vk] = C[vi, vk] + A[vi, mid_0[0]] * B[vj, vk]
+            C[vi, vk] = C[vi, vk] + A[vi, mid_0[vi, vj]] * B[vj, vk]
 
 
 @T.prim_func
@@ -443,33 +444,37 @@ def fused_sddmm(
     J_indices = T.match_sparse_buffer(indices, [I, J_dense], dtype="int32")
     # body
     # with T.block("root")
-    mid_0 = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
-    for j, k in T.grid(nnz, feat_size):
-        with T.block("binary_search_0"):
-            ax1 = T.axis.spatial(nnz, j)
-            T.reads(J_indptr[0 : m + 1])
-            T.writes(mid_0[0])
-            T.block_attr({"sparse": True})
+    mid_0 = T.alloc_sparse_buffer([I, J], dtype="int32", extra_storage=0)
+    for j in T.serial(nnz):
+        with T.block("binary_search_block_0_0"):
+            vi = T.axis.spatial(1, 0)
+            vj = T.axis.spatial(nnz, j)
+            T.reads()
+            T.writes()
+            T.block_attr({"preprocess": True, "sparse": True})
             low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
             high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
             low[0] = 0
             high[0] = m + 1
             while low[0] < high[0]:
-                mid_0[0] = low[0] + (high[0] - low[0]) // 2
-                if J_indptr[mid_0[0]] > ax1:
-                    high[0] = mid_0[0]
+                mid_0[vi, vj] = low[0] + (high[0] - low[0]) // 2
+                if J_indptr[mid_0[vi, vj]] > vj:
+                    high[0] = mid_0[vi, vj]
                 else:
-                    low[0] = mid_0[0] + 1
-            mid_0[0] = mid_0[0] - 1
+                    low[0] = mid_0[vi, vj] + 1
+            mid_0[vi, vj] = mid_0[vi, vj] - 1
+    for j, k in T.grid(nnz, feat_size):
         with T.block("sddmm0"):
             vi = T.axis.spatial(1, 0)
             vj, vk = T.axis.remap("SR", [j, k])
-            T.reads(A[mid_0[0], vk], mid_0[0], B[J_indices[vi, vj], vk], J_indices[vi, vj])
+            T.reads(
+                A[mid_0[vi, vj], vk], mid_0[vi, vj], B[J_indices[vi, vj], vk], J_indices[vi, vj]
+            )
             T.writes(C[vi, vj])
             T.block_attr({"sparse": True})
             with T.init():
                 C[vi, vj] = T.float32(0)
-            C[vi, vj] = C[vi, vj] + A[mid_0[0], vk] * B[J_indices[vi, vj], vk]
+            C[vi, vj] = C[vi, vj] + A[mid_0[vi, vj], vk] * B[J_indices[vi, vj], vk]
 
 
 @T.prim_func
@@ -559,54 +564,65 @@ def square_sum_two_K(
     K1_indices = T.match_sparse_buffer(indices_k1, [I, J, K1_dense], dtype="int32")
     # body
     # with T.block("root")
-    mid_0 = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
+    mid_0 = T.alloc_sparse_buffer([I, J, K1], dtype="int32", extra_storage=0)
     for i in T.serial(M):
-        with T.block("square_sum0"):
+        with T.block("binary_search_block_0_0"):
             vi = T.axis.spatial(M, i)
-            T.reads(
-                J_indptr[vi : vi + 2],
-                K1_indptr[vi, 0 : N1 + 1],
-                K0_indices[vi, 0:N1, 0:N2],
-                A[vi, 0:N1, 0:N2],
-            )
-            T.writes(B[vi], mid_0[0])
-            T.block_attr({"sparse": True})
+            T.reads()
+            T.writes()
+            T.block_attr({"preprocess": True, "sparse": True})
             for j in T.serial(J_indptr[vi + 1] - J_indptr[vi]):
-                with T.block("square_sum1"):
+                with T.block("binary_search_block_0_1"):
                     vj = T.axis.reduce(N1, j)
-                    T.reads(
-                        K1_indptr[vi, vj : vj + 2],
-                        K0_indices[vi, vj, 0 : K0_indptr[vi, vj + 1] - K0_indptr[vi, vj]],
-                        A[vi, vj, 0:N2],
-                    )
-                    T.writes(B[vi], mid_0[0])
-                    T.block_attr({"sparse": True})
-                    with T.init():
-                        B[vi] = T.float32(0)
+                    T.reads()
+                    T.writes()
+                    T.block_attr({"preprocess": True, "sparse": True})
                     for k in T.serial(K1_indptr[vi, vj + 1] - K1_indptr[vi, vj]):
-                        with T.block("binary_search_0"):
-                            ax0 = T.axis.spatial(N2, k)
-                            T.reads(
-                                K0_indices[vi, vj, 0 : K0_indptr[vi, vj + 1] - K0_indptr[vi, vj]]
-                            )
-                            T.writes(mid_0[0])
-                            T.block_attr({"sparse": True})
+                        with T.block("binary_search_block_0_2"):
+                            vk = T.axis.reduce(N2, k)
+                            T.reads()
+                            T.writes()
+                            T.block_attr({"preprocess": True, "sparse": True})
                             low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
                             high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
                             low[0] = 0
                             high[0] = K0_indptr[vi, vj + 1] - K0_indptr[vi, vj]
                             while low[0] < high[0]:
-                                mid_0[0] = low[0] + (high[0] - low[0]) // 2
-                                if K0_indices[vi, vj, mid_0[0]] < K1_indices[vi, vj, ax0]:
-                                    low[0] = mid_0[0] + 1
+                                mid_0[vi, vj, vk] = low[0] + (high[0] - low[0]) // 2
+                                if K0_indices[vi, vj, mid_0[vi, vj, vk]] < K1_indices[vi, vj, vk]:
+                                    low[0] = mid_0[vi, vj, vk] + 1
                                 else:
-                                    high[0] = mid_0[0]
+                                    high[0] = mid_0[vi, vj, vk]
+    for i in T.serial(M):
+        with T.block("square_sum0"):
+            vi_1 = T.axis.spatial(M, i)
+            T.reads(
+                J_indptr[vi_1 : vi_1 + 2],
+                K1_indptr[vi_1, 0 : N1 + 1],
+                A[vi_1, 0:N1, 0:N2],
+                mid_0[vi_1, 0:N1, 0:N2],
+            )
+            T.writes(B[vi_1])
+            T.block_attr({"sparse": True})
+            for j in T.serial(J_indptr[vi_1 + 1] - J_indptr[vi_1]):
+                with T.block("square_sum1"):
+                    vj_1 = T.axis.reduce(N1, j)
+                    T.reads(
+                        K1_indptr[vi_1, vj_1 : vj_1 + 2],
+                        A[vi_1, vj_1, 0:N2],
+                        mid_0[vi_1, vj_1, 0:N2],
+                    )
+                    T.writes(B[vi_1])
+                    T.block_attr({"sparse": True})
+                    with T.init():
+                        B[vi_1] = T.float32(0)
+                    for k in T.serial(K1_indptr[vi_1, vj_1 + 1] - K1_indptr[vi_1, vj_1]):
                         with T.block("square_sum2"):
                             vk = T.axis.reduce(N2, k)
-                            T.reads(A[vi, vj, mid_0[0]], mid_0[0])
-                            T.writes(B[vi])
+                            T.reads(A[vi_1, vj_1, mid_0[vi_1, vj_1, vk]], mid_0[vi_1, vj_1, vk])
+                            T.writes(B[vi_1])
                             T.block_attr({"sparse": True})
-                            B[vi] = B[vi] + A[vi, vj, mid_0[0]]
+                            B[vi_1] = B[vi_1] + A[vi_1, vj_1, mid_0[vi_1, vj_1, vk]]
 
 
 @T.prim_func
@@ -773,14 +789,14 @@ def rgcn_hetero_forward(
     indptr_j: T.handle,
     indices_j: T.handle,
     n: T.int32,
-    r: T.int32,
+    num_rels: T.int32,
     feat_size: T.int32,
     nnz_i: T.int32,
     nnz_j: T.int32,
 ) -> None:
     # function attr dict
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
-    R = T.dense_fixed(r, "int32")
+    R = T.dense_fixed(num_rels, "int32")
     I = T.sparse_variable(R, (n, nnz_i), (indptr_i, indices_i), "int32")
     I_dense = T.dense_variable(R, (n, nnz_i), indptr_i, "int32")
     J = T.sparse_variable(I, (n, nnz_j), (indptr_j, indices_j), "int32")
@@ -798,9 +814,9 @@ def rgcn_hetero_forward(
     J_indices = T.match_sparse_buffer(indices_j, [R, I, J_dense], dtype="int32")
     # body
     # with T.block("root")
-    for fo, r_1 in T.grid(feat_size, r):
+    for fo, r in T.grid(feat_size, num_rels):
         with T.block("rgcn-hetero-forward0"):
-            vfo, vr = T.axis.remap("SS", [fo, r_1])
+            vfo, vr = T.axis.remap("SS", [fo, r])
             T.reads(
                 I_indptr[vr : vr + 2],
                 J_indptr[vr, 0 : n + 1],
@@ -927,45 +943,44 @@ def csr2bsr(
     J_bsr_indices = T.match_sparse_buffer(indices_out, [I_bsr, J_bsr_dense], dtype="int32")
     # body
     # with T.block("root")
-    mid_0 = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
+    mid_0 = T.alloc_sparse_buffer([I, J], dtype="int32", extra_storage=0)
     for i in T.serial(m_in):
-        with T.block("csr2bsr0"):
+        with T.block("binary_search_block_0_0"):
             vi = T.axis.spatial(m_in, i)
-            T.reads(
-                J_indptr[vi : vi + 2],
-                J_bsr_indices[0:m_out, 0:n_out],
-                A[vi, 0:n_in],
-                mid_0[0],
-                J_indices[vi, 0:n_in],
-            )
-            T.writes(mid_0[0], B[0:m_out, 0:n_out, 0:blk_size, 0:blk_size])
-            T.block_attr({"sparse": True})
+            T.reads()
+            T.writes()
+            T.block_attr({"preprocess": True, "sparse": True})
             for j in T.serial(J_indptr[vi + 1] - J_indptr[vi]):
-                with T.block("binary_search_0"):
-                    ax0 = T.axis.spatial(n_in, j)
-                    T.reads(
-                        J_bsr_indices[
-                            vi // blk_size,
-                            0 : J_bsr_indptr[vi // blk_size + 1] - J_bsr_indptr[vi // blk_size],
-                        ]
-                    )
-                    T.writes(mid_0[0])
-                    T.block_attr({"sparse": True})
+                with T.block("binary_search_block_0_1"):
+                    vj = T.axis.spatial(n_in, j)
+                    T.reads()
+                    T.writes()
+                    T.block_attr({"preprocess": True, "sparse": True})
                     low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
                     high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
                     low[0] = 0
                     high[0] = J_bsr_indptr[vi // blk_size + 1] - J_bsr_indptr[vi // blk_size]
                     while low[0] < high[0]:
-                        mid_0[0] = low[0] + (high[0] - low[0]) // 2
-                        if J_bsr_indices[vi // blk_size, mid_0[0]] < J_indices[vi, ax0] // blk_size:
-                            low[0] = mid_0[0] + 1
+                        mid_0[vi, vj] = low[0] + (high[0] - low[0]) // 2
+                        if (
+                            J_bsr_indices[vi // blk_size, mid_0[vi, vj]]
+                            < J_indices[vi, vj] // blk_size
+                        ):
+                            low[0] = mid_0[vi, vj] + 1
                         else:
-                            high[0] = mid_0[0]
+                            high[0] = mid_0[vi, vj]
+    for i in T.serial(m_in):
+        with T.block("csr2bsr0"):
+            vi = T.axis.spatial(m_in, i)
+            T.reads(J_indptr[vi : vi + 2], A[vi, 0:n_in], mid_0[vi, 0:n_in], J_indices[vi, 0:n_in])
+            T.writes(B[0:m_out, 0:n_out, 0:blk_size, 0:blk_size])
+            T.block_attr({"sparse": True})
+            for j in T.serial(J_indptr[vi + 1] - J_indptr[vi]):
                 with T.block("csr2bsr1"):
                     vj = T.axis.spatial(n_in, j)
-                    T.reads(A[vi, vj], mid_0[0], J_indices[vi, vj])
-                    T.writes(B[0:m_out, mid_0[0], 0:blk_size, 0:blk_size])
+                    T.reads(A[vi, vj], mid_0[vi, vj], J_indices[vi, vj])
+                    T.writes(B[0:m_out, mid_0[vi, vj], 0:blk_size, 0:blk_size])
                     T.block_attr({"sparse": True})
-                    B[vi // blk_size, mid_0[0], vi % blk_size, J_indices[vi, vj] % blk_size] = A[
-                        vi, vj
-                    ]
+                    B[
+                        vi // blk_size, mid_0[vi, vj], vi % blk_size, J_indices[vi, vj] % blk_size
+                    ] = A[vi, vj]

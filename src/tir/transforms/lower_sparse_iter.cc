@@ -37,6 +37,21 @@ namespace tir {
 
 namespace {
 
+class VarCollector : public StmtExprVisitor {
+ public:
+  explicit VarCollector() {}
+  Array<Var> vars;
+  std::unordered_set<const VarNode*> var_set;
+
+ private:
+  void VisitExpr_(const VarNode* op) {
+    if (!var_set.count(op)) {
+      vars.push_back(GetRef<Var>(op));
+      var_set.insert(op);
+    }
+  }
+};
+
 /*!
  * \brief Collect the ancestors of the given axis along the path to the root.
  * \note self not included.
@@ -231,20 +246,6 @@ class LowerSparseIterContext {
     return NullOpt;
   }
 
-  /*! \brief Add emitted binary-search blocks, and corresonding buffer/range to the context. */
-  void AddBinarySearch(BlockRealize blk, const Buffer& buf, const Range& range) {
-    top()->bsearch_blks.push_back(std::move(blk));
-    top()->bsearch_ranges.push_back({buf, Var(buf->name, buf->dtype), range});
-  }
-
-  /*! \brief Return the emitted blocks for binary search in the context. */
-  std::vector<BlockRealize>& GetBinarySearchBlocks() const { return top()->bsearch_blks; }
-
-  /*! \brief Return the buffer-variable-ranges for binary search in the context. */
-  std::vector<std::tuple<Buffer, Var, Range>>& GetBinarySearchRanges() const {
-    return top()->bsearch_ranges;
-  }
-
   /*!
    * \brief Clear read/write buffers and regions in the context.
    */
@@ -273,10 +274,6 @@ class LowerSparseIterContext {
     std::unordered_map<const AxisNode*, IterVar> axis_itervar_map_;
     /*! \brief The map from Var to corresponding Sparse IterVar. */
     std::unordered_map<const VarNode*, SpIterVar> var_itervar_map_;
-    /*! \brief Allocated blocks for binary search. */
-    std::vector<BlockRealize> bsearch_blks;
-    /*! \brief Buffer-variable-ranges for binary search. */
-    std::vector<std::tuple<Buffer, Var, Range>> bsearch_ranges;
   };
 
   /*! \brief Get the information corresponding to the top sparse-iteration in the stack. */
@@ -324,33 +321,6 @@ class LowerSparseIterContext {
 };
 
 /*!
- * \brief Rewrite buffer load to variable, for buffer region analysis regarding binary search
- * results.
- */
-class BufVarRewriter : public ExprMutator {
- public:
-  explicit BufVarRewriter(LowerSparseIterContext* ctx) {
-    std::vector<std::tuple<Buffer, Var, Range>>& bsearch_ranges = ctx->GetBinarySearchRanges();
-    for (auto& it : bsearch_ranges) {
-      Buffer buf;
-      Var var;
-      Range range;
-      std::tie(buf, var, range) = it;
-      buf_var_map_[buf.get()] = var;
-    }
-  }
-
- private:
-  PrimExpr VisitExpr_(const BufferLoadNode* op) {
-    if (buf_var_map_.count(op->buffer.get())) {
-      return buf_var_map_[op->buffer.get()];
-    }
-    return GetRef<BufferLoad>(op);
-  }
-  std::unordered_map<const BufferNode*, Var> buf_var_map_;
-};
-
-/*!
  * \brief Lower sparse iterations by rewriting AST.
  */
 class IterTransformer : public StmtExprMutator {
@@ -363,7 +333,16 @@ class IterTransformer : public StmtExprMutator {
     CreateBaseDomMap(sp_axes);
   }
 
-  Array<Buffer> root_alloc_buffers;  // allocated buffers in root block.
+  struct BinarySearchStructure {
+    String name;
+    Stmt body;
+    Map<Var, SpIterVar> var_map;
+    Map<SpIterVar, Var> inv_var_map;
+    Array<Buffer> alloc_buffers;
+  };
+
+  std::vector<BinarySearchStructure> bsearch_structures;  // binary search related structures.
+  Array<Buffer> root_alloc_buffers;                       // allocated buffers in the root block.
  private:
   /*! \brief Create base dom map: each axis parameters should be greater than 0. */
   void CreateBaseDomMap(const Array<Axis>& axes) {
@@ -557,6 +536,40 @@ class IterTransformer : public StmtExprMutator {
     // Recursively mutate the block body.
     Stmt body = VisitStmt(Substitute(sp_iteration->body, var_map));
 
+    // Process binary search blocks.
+    std::vector<std::vector<BlockInfo>> bsearch_block_infos(bsearch_structures.size());
+    std::vector<Map<Var, PrimExpr>> bsearch_var_maps;
+    for (size_t j = 0; j < bsearch_structures.size(); ++j) {
+      BinarySearchStructure& bsearch_structure = bsearch_structures[j];
+      std::vector<BlockInfo>& bsearch_block_info = bsearch_block_infos[j];
+      bsearch_block_info.push_back(BlockInfo());
+      Map<Var, PrimExpr> var_map;
+      for (int i = 0; i < n_iters; ++i) {
+        SpIterVar sp_iter_var = sp_iteration->sp_iter_vars[i];
+        if (bsearch_structure.inv_var_map.count(sp_iter_var)) {
+          Var old_var = bsearch_structure.inv_var_map.Get(sp_iter_var).value();
+          IterVar new_iter_var = sp_iter_var->as_iter_var();
+          var_map.Set(old_var, new_iter_var->var);
+          Var loop_var(sp_iter_var->var->name_hint, sp_iter_var->var->dtype);
+          if (bsearch_block_info.back().NeedCreateNewBlock(&ctx_, sp_iter_var->axis)) {
+            // Create a new BlockInfo;
+            bsearch_block_info.emplace_back();
+          }
+          // Create loop information
+          bool remove_loop_var = false;
+          if (const FusedAxisNode* fused_axis = sp_iter_var->axis.as<FusedAxisNode>()) {
+            if (!fused_axis->IsLastAxis()) {
+              remove_loop_var = true;
+            }
+          }
+          PrimExpr iter_binding = remove_loop_var ? Integer(0) : PrimExpr(loop_var);
+          bsearch_block_info.back().Push(new_iter_var, iter_binding, sp_iter_var->axis);
+        }
+      }
+      bsearch_structure.body = Substitute(bsearch_structure.body, var_map);
+      bsearch_var_maps.emplace_back(std::move(var_map));
+    }
+
     // Generate nested blocks and loops from innermost to outermost.
     for (int i = static_cast<int>(block_infos.size()) - 1; i >= 0; --i) {
       BlockInfo info = std::move(block_infos[i]);
@@ -567,7 +580,7 @@ class IterTransformer : public StmtExprMutator {
       if (info.init.defined()) {
         init = VisitStmt(info.init.value());
       }
-      body = VisitStmt(body);
+      VisitStmt(body);
 
       // Update read/writes regions.
       Array<BufferRegion> writes_new = ctx_.CollectWriteRegions();
@@ -617,24 +630,37 @@ class IterTransformer : public StmtExprMutator {
 
       // Create loops
       body = std::move(block_realize);
-      std::vector<BlockRealize>& bsearch_blocks = ctx_.GetBinarySearchBlocks();
-      if (!bsearch_blocks.empty()) {
-        Array<Stmt> blocks =
-            RewriteBinarySearchBlocks(bsearch_blocks, info.block_iters, info.iter_bindings);
-        blocks.push_back(std::move(body));
-        body = SeqStmt(blocks);
-        std::vector<std::tuple<Buffer, Var, Range>>& bsearch_ranges = ctx_.GetBinarySearchRanges();
-        for (auto& it : bsearch_ranges) {
-          Buffer buf;
-          Var var;
-          Range range;
-          std::tie(buf, var, range) = it;
-          ctx_.AddVarDom(var, arith::IntSet::FromRange(range));
-        }
-        bsearch_blocks.clear();  // only insert the blocks once.
-      }
       Stmt loop = GenerateLoops(body, info.block_iters, info.iter_bindings, info.block_axes);
       body = std::move(loop);
+    }
+
+    // Wrap binary search with outer blocks and loops.
+    for (size_t j = 0; j < bsearch_structures.size(); ++j) {
+      BinarySearchStructure& bsearch_structure = bsearch_structures[j];
+      const std::vector<BlockInfo>& bsearch_block_info = bsearch_block_infos[j];
+      for (int i = static_cast<int>(bsearch_block_info.size()) - 1; i >= 0; --i) {
+        BlockInfo info = std::move(bsearch_block_info[i]);
+        Map<String, ObjectRef> annotations;
+        annotations.Set("sparse", Bool(true));
+        annotations.Set("preprocess", Bool(true));
+        Block block(/*iter_vars=*/info.block_iters,
+                    /*reads=*/{},
+                    /*writes=*/{},
+                    /*name_hint=*/bsearch_structure.name + "_" + std::to_string(i),
+                    /*body=*/bsearch_structure.body,
+                    /*init=*/{},
+                    /*alloc_buffers=*/bsearch_structure.alloc_buffers,
+                    /*match_buffers=*/{},
+                    /*annotations=*/annotations);
+        bsearch_structure.alloc_buffers = {};
+        BlockRealize block_realize(
+            /*iter_values=*/info.iter_bindings,
+            /*predicate=*/const_true(),
+            /*block=*/std::move(block));
+        bsearch_structure.body = Substitute(
+            GenerateLoops(block_realize, info.block_iters, info.iter_bindings, info.block_axes),
+            bsearch_var_maps[j]);
+      }
     }
 
     // Exit the context.
@@ -652,23 +678,22 @@ class IterTransformer : public StmtExprMutator {
       }
       return VisitStmt(op->block->body);
     }
-    BufVarRewriter rewrite(&ctx_);
     /*! \note detector will not visit child block recursively, so it will stop here */
     for (const BufferRegion& read_access : op->block->reads) {
       std::vector<arith::IntSet> relaxed_region;
       for (const auto& range : read_access->region) {
-        relaxed_region.push_back(arith::EvalSet(arith::IntSet::FromRange(Range::FromMinExtent(
-                                                    rewrite(range->min), rewrite(range->extent))),
-                                                ctx_.GetDomMap()));
+        relaxed_region.push_back(arith::EvalSet(
+            arith::IntSet::FromRange(Range::FromMinExtent(range->min, range->extent)),
+            ctx_.GetDomMap()));
       }
       ctx_.UpdateRead(read_access->buffer, relaxed_region);
     }
     for (const BufferRegion& write_access : op->block->writes) {
       std::vector<arith::IntSet> relaxed_region;
       for (const auto& range : write_access->region) {
-        relaxed_region.push_back(arith::EvalSet(arith::IntSet::FromRange(Range::FromMinExtent(
-                                                    rewrite(range->min), rewrite(range->extent))),
-                                                ctx_.GetDomMap()));
+        relaxed_region.push_back(arith::EvalSet(
+            arith::IntSet::FromRange(Range::FromMinExtent(range->min, range->extent)),
+            ctx_.GetDomMap()));
       }
       ctx_.UpdateWrite(write_access->buffer, relaxed_region);
     }
@@ -800,14 +825,59 @@ class IterTransformer : public StmtExprMutator {
     DataType dtype = buf->dtype;
     Buffer low = MakeScratchpad("low", dtype);
     Buffer high = MakeScratchpad("high", dtype);
-    Buffer mid = MakeScratchpad("mid_" + std::to_string(bsearch_blk_counter), dtype);
+
+    VarCollector collector;
+    for (const PrimExpr& idx : prefix_indices) {
+      collector(idx);
+    }
+    collector(lb);
+    collector(ub);
+    collector(val);
+    Array<Axis> axes;
+    Array<PrimExpr> mid_indices;
+    Map<Var, SpIterVar> var_map;
+    Map<SpIterVar, Var> inv_var_map;
+    std::unordered_set<const AxisNode*> visited;
+    for (const Var& var : collector.vars) {
+      Optional<SpIterVar> maybe_sp_iter_var = ctx_.GetSpIterVarFromVar(var);
+      if (maybe_sp_iter_var.defined()) {
+        SpIterVar sp_iter_var = maybe_sp_iter_var.value();
+        Axis axis = sp_iter_var->axis;
+        if (const FusedAxisNode* fused_axis = axis.as<FusedAxisNode>()) {
+          for (const Axis& ax : fused_axis->group) {
+            if (visited.count(ax.get())) {
+              continue;
+            }
+            IterVar iter_var = ctx_.GetIterVarFromAxis(ax).value();
+            sp_iter_var = ctx_.GetSpIterVarFromVar(iter_var->var).value();
+            axes.push_back(ax);
+            mid_indices.push_back(iter_var->var);
+            var_map.Set(iter_var->var, sp_iter_var);
+            inv_var_map.Set(sp_iter_var, iter_var->var);
+            visited.insert(ax.get());
+          }
+        } else {
+          if (visited.count(axis.get())) {
+            continue;
+          }
+          axes.push_back(axis);
+          mid_indices.push_back(var);
+          var_map.Set(var, sp_iter_var);
+          inv_var_map.Set(sp_iter_var, var);
+          visited.insert(axis.get());
+        }
+      }
+    }
+    String mid_buf_name = "mid_" + std::to_string(bsearch_blk_counter);
+    SparseBuffer mid = SparseBuffer(Var(mid_buf_name, PointerType(PrimType(dtype), "global")), axes,
+                                    dtype, mid_buf_name, Integer(0));
 
     Stmt low_store = BufferStore(low, lb, {Integer(0)});
     Stmt high_store = BufferStore(high, ub, {Integer(0)});
     PrimExpr low_val = BufferLoad(low, {Integer(0)}), high_val = BufferLoad(high, {Integer(0)}),
-             mid_val = BufferLoad(mid, {Integer(0)});
+             mid_val = BufferLoad(mid, mid_indices);
     PrimExpr while_cond = low_val < high_val;
-    Stmt mid_store = BufferStore(mid, low_val + floordiv(high_val - low_val, 2), {Integer(0)});
+    Stmt mid_store = BufferStore(mid, low_val + floordiv(high_val - low_val, 2), mid_indices);
     Array<PrimExpr> indices = prefix_indices;
     indices.push_back(mid_val);
     PrimExpr pivot = BufferLoad(buf, indices);
@@ -822,77 +892,17 @@ class IterTransformer : public StmtExprMutator {
     Array<Stmt> body_stmts({low_store, high_store, while_});
     if (minus_one) {
       body_stmts.push_back(
-          BufferStore(mid, BufferLoad(mid, {Integer(0)}) - Integer(1), {Integer(0)}));
+          BufferStore(mid, BufferLoad(mid, mid_indices) - Integer(1), mid_indices));
     }
     SeqStmt body(body_stmts);
 
-    /* read/write region update. */
-    Array<Range> regions;
-    for (const PrimExpr& index : prefix_indices) {
-      regions.push_back(Range::FromMinExtent(index, Integer(1)));
-    }
-    regions.push_back(Range::FromMinExtent(lb, ub - lb));
-    Array<BufferRegion> reads = {BufferRegion(buf, regions)};
-    Array<BufferRegion> writes = {BufferRegion(
-        mid,
-        {Range::FromMinExtent(Integer(0), Integer(1))})};  // hide accesses to low/high buffers.
-
-    Block new_block(/*iter_vars=*/{},
-                    /*reads=*/reads,
-                    /*writes=*/writes,
-                    /*name_hint=*/"binary_search_" + std::to_string(bsearch_blk_counter),
-                    /*body=*/body,
-                    /*init=*/{},
-                    /*alloc_buffers=*/{low, high},
-                    /*match_buffers=*/{},
-                    /*annotations=*/{{"sparse", Bool(true)}});
-
+    String name = "binary_search_block_" + std::to_string(bsearch_blk_counter);
     bsearch_blk_counter++;
     root_alloc_buffers.push_back(mid);
-    BlockRealize block_realize({}, const_true(), std::move(new_block));
-    ctx_.AddBinarySearch(block_realize, mid, Range::FromMinExtent(Integer(0), buf->shape.back()));
+    bsearch_structures.push_back(
+        BinarySearchStructure({name, body, var_map, inv_var_map, {low, high}}));
     bsearch_map_[args] = mid_val;
     return mid_val;
-  }
-
-  /*! \brief Rewrite binary search blocks, bind with itervars. */
-  Array<Stmt> RewriteBinarySearchBlocks(const std::vector<BlockRealize>& block_realizes,
-                                        const Array<IterVar>& iter_vars,
-                                        const Array<PrimExpr>& iter_bindings) {
-    Array<Stmt> new_block_realizes;
-    for (const BlockRealize& block_realize : block_realizes) {
-      Array<IterVar> new_iter_vars;
-      Array<PrimExpr> new_iter_bindings;
-      std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> block_var_map;
-      VarUsedVisitor visitor;
-      visitor(block_realize);
-      for (size_t i = 0; i < iter_vars.size(); ++i) {
-        const IterVar& iter_var = iter_vars[i];
-        if (visitor.used_var.count(iter_var->var.get())) {
-          Var new_var(iter_var->var->name_hint, iter_var->var->dtype);
-          IterVar new_iter_var(iter_var->dom, new_var, IterVarType::kDataPar);
-          block_var_map[iter_var->var] = new_var;
-          new_iter_vars.push_back(std::move(new_iter_var));
-          new_iter_bindings.push_back(iter_bindings[i]);
-        }
-      }
-      ObjectPtr<BlockNode> block_node = CopyOnWrite(block_realize->block.get());
-      block_node->iter_vars = std::move(new_iter_vars);
-      block_node->body = Substitute(block_node->body, block_var_map);
-      Array<BufferRegion> new_reads;
-      for (const BufferRegion& read : block_node->reads) {
-        new_reads.push_back(BufferRegion(read->buffer, Substitute(read->region, block_var_map)));
-      }
-      block_node->reads = std::move(new_reads);
-      // NOTE(zihao): no need to modify writes.
-      Block new_block = Block(block_node);
-
-      ObjectPtr<BlockRealizeNode> block_realize_node = CopyOnWrite(block_realize.get());
-      block_realize_node->block = std::move(new_block);
-      block_realize_node->iter_values = new_iter_bindings;
-      new_block_realizes.push_back(BlockRealize(block_realize_node));
-    }
-    return new_block_realizes;
   }
 
   /*! \brief Return indices viewed in a given buffer. */
@@ -1041,7 +1051,15 @@ PrimFunc LowerSparseIter(PrimFunc f) {
     // Step 2. Lower iterations.
     IterTransformer lower_sparse(axis_indptr_map, axis_indices_map, fptr->sp_axes);
     Stmt body = lower_sparse(std::move(fptr->body));
-    // Step 3. Wrap with root block.
+    // Step 3. Wrap with root block, insert bsearch blocks and allocated buffers.
+    if (!lower_sparse.bsearch_structures.empty()) {
+      Array<Stmt> seq;
+      for (const auto& bsearch_struct : lower_sparse.bsearch_structures) {
+        seq.push_back(bsearch_struct.body);
+      }
+      seq.push_back(body);
+      body = SeqStmt(seq);
+    }
     Block root_block({}, {}, {}, "root", body, NullOpt, lower_sparse.root_alloc_buffers);
     fptr->body = BlockRealize({}, const_true(), std::move(root_block));
     // Step 4. Lower sparse tir level.
