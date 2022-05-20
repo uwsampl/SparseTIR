@@ -23,49 +23,70 @@
 
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
-#include "ir_utils.h"
 
+#include "ir_utils.h"
 
 namespace tvm {
 namespace tir {
-
-namespace {
-  String ToLowerCase(String name) {
-    std::string ret = name;
-    std::transform(ret.begin(), ret.end(), ret.begin(),
-                  [](unsigned char c) { return std::tolower(c); });
-    return ret;
-  }
-
-}  // namespace
-
 
 class PreprocessExtractor : public StmtExprMutator {
  public:
   explicit PreprocessExtractor() {}
   Map<Var, Buffer> extra_buffer_map;
+
  private:
   Stmt VisitStmt_(const BlockNode* op) final {
     if (op->name_hint == "root") {
       auto n = CopyOnWrite(op);
-      for (const Buffer& buf: op->alloc_buffers) {
+      for (const Buffer& buf : op->alloc_buffers) {
         root_alloc_buffers.insert(buf.get());
       }
-      n->body = VisitStmt(op->body);
+      CHECK(op->body->IsInstance<SeqStmtNode>()) << "The body to perform extract preprocessing "
+                                                    "must contain mutiple block/sparse iterations";
+      SeqStmt body = Downcast<SeqStmt>(op->body);
+      Array<Stmt> seq;
+      for (const Stmt& stmt : body->seq) {
+        inside_preprocess_blk_ = false;
+        VisitStmt(stmt);
+        if (inside_preprocess_blk_) {
+          seq.push_back(stmt);
+        }
+      }
+      n->body = SeqStmt(seq);
       Array<Buffer> new_alloc_buffers;
-      for (const Buffer& buf: op->alloc_buffers) {
+      for (const Buffer& buf : op->alloc_buffers) {
         if (!buffers_to_materialize.count(buf.get())) {
           new_alloc_buffers.push_back(buf);
         } else {
-          Var new_var(ToLowerCase(buf->name), DataType::Handle());
+          Var new_var(buf->name + "_ptr", DataType::Handle());
           extra_buffer_map.Set(new_var, buf);
         }
       }
-      // return 
+      n->alloc_buffers = new_alloc_buffers;
+      return Block(n);
     } else {
+      if (op->annotations.count("preprocess")) {
+        inside_preprocess_blk_ = true;
+      }
       return StmtExprMutator::VisitStmt_(op);
     }
   }
+
+  Stmt VisitStmt_(const SparseIterationNode* op) final {
+    if (op->annotations.count("preprocess")) {
+      inside_preprocess_blk_ = true;
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  Stmt VisitStmt_(const BufferStoreNode* op) final {
+    if (inside_preprocess_blk_) {
+      buffers_to_materialize.insert(op->buffer.get());
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  bool inside_preprocess_blk_ = false;
   std::unordered_set<const BufferNode*> root_alloc_buffers;
   std::unordered_set<const BufferNode*> buffers_to_materialize;
 };
@@ -73,10 +94,10 @@ class PreprocessExtractor : public StmtExprMutator {
 PrimFunc ExtractPreprocess(PrimFunc f) {
   if (!IsFromLegacyTESchedule(f)) {
     PrimFuncNode* fptr = f.CopyOnWrite();
-    PreprocessExtractor extractor; 
+    PreprocessExtractor extractor;
     fptr->body = extractor(fptr->body);
     // insert extra parameters
-    for (const auto& kv: extractor.extra_buffer_map) {
+    for (const auto& kv : extractor.extra_buffer_map) {
       fptr->params.push_back(kv.first);
       fptr->buffer_map.Set(kv.first, kv.second);
     }
@@ -94,6 +115,8 @@ Pass ExtractPreprocess() {
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.ExtractPreprocess", {});
 }
+
+TVM_REGISTER_GLOBAL("tir.transform.ExtractPreprocess").set_body_typed(ExtractPreprocess);
 
 }  // namespace transform
 

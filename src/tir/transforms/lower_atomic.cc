@@ -38,10 +38,9 @@ namespace tir {
 
 class LowerAtomicTransformer : public StmtExprMutator {
  public:
-  explicit LowerAtomicTransformer(): is_atomic_block(false) {}
+  explicit LowerAtomicTransformer() : is_atomic_block(false) {}
 
  private:
-
   Stmt VisitStmt_(const BlockNode* op) final {
     if (op->annotations.Get("atomic").defined()) {
       is_atomic_block = true;
@@ -81,6 +80,8 @@ Pass LowerAtomic() {
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.LowerAtomic", {});
 }
+
+TVM_REGISTER_GLOBAL("tir.transform.LowerAtomic").set_body_typed(LowerAtomic);
 
 }  // namespace transform
 
