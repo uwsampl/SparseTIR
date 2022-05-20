@@ -339,6 +339,8 @@ class IterTransformer : public StmtExprMutator {
     Map<Var, SpIterVar> var_map;
     Map<SpIterVar, Var> inv_var_map;
     Array<Buffer> alloc_buffers;
+    BufferRegion read;
+    BufferRegion write;
   };
 
   std::vector<BinarySearchStructure> bsearch_structures;  // binary search related structures.
@@ -643,9 +645,23 @@ class IterTransformer : public StmtExprMutator {
         Map<String, ObjectRef> annotations;
         annotations.Set("sparse", Bool(true));
         annotations.Set("preprocess", Bool(true));
+        Array<BufferRegion> reads, writes;
+        if (i + 1 == bsearch_block_info.size()) {
+          // innermost
+          reads = {bsearch_structure.read};
+          writes = {bsearch_structure.write};
+        } else {
+          ctx_.CollectRegion(true);  // update is_collecting_regions flag to true;
+          VisitStmt(bsearch_structure.body);
+          // Update read/writes regions.
+          writes = ctx_.CollectWriteRegions();
+          reads = ctx_.CollectReadRegions();
+          ctx_.ClearReadWriteBufferRegions();
+          ctx_.CollectRegion(false);  // update is_collecting_regions flag to false
+        }
         Block block(/*iter_vars=*/info.block_iters,
-                    /*reads=*/{},
-                    /*writes=*/{},
+                    /*reads=*/reads,
+                    /*writes=*/writes,
                     /*name_hint=*/bsearch_structure.name + "_" + std::to_string(i),
                     /*body=*/bsearch_structure.body,
                     /*init=*/{},
@@ -660,6 +676,10 @@ class IterTransformer : public StmtExprMutator {
         bsearch_structure.body = Substitute(
             GenerateLoops(block_realize, info.block_iters, info.iter_bindings, info.block_axes),
             bsearch_var_maps[j]);
+        // Update var dom.
+        for (const IterVar& iter_var : info.block_iters) {
+          ctx_.AddVarDom(iter_var->var, arith::IntSet::FromRange(iter_var->dom));
+        }
       }
     }
 
@@ -899,8 +919,18 @@ class IterTransformer : public StmtExprMutator {
     String name = "binary_search_block_" + std::to_string(bsearch_blk_counter);
     bsearch_blk_counter++;
     root_alloc_buffers.push_back(mid);
+    Array<Range> read_regions, write_regions;
+    for (const PrimExpr& index : prefix_indices) {
+      read_regions.push_back(Range::FromMinExtent(index, Integer(1)));
+    }
+    read_regions.push_back(Range::FromMinExtent(lb, ub - lb));
+    for (const PrimExpr& mid_index : mid_indices) {
+      write_regions.push_back(Range::FromMinExtent(mid_index, Integer(1)));
+    }
+    BufferRegion read = BufferRegion(buf, read_regions);
+    BufferRegion write = BufferRegion(mid, write_regions);
     bsearch_structures.push_back(
-        BinarySearchStructure({name, body, var_map, inv_var_map, {low, high}}));
+        BinarySearchStructure({name, body, var_map, inv_var_map, {low, high}, read, write}));
     bsearch_map_[args] = mid_val;
     return mid_val;
   }
