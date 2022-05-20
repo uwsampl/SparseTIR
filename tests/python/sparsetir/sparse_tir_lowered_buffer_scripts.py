@@ -94,7 +94,7 @@ def csrmm_dense_iter(
     mid_0_data = T.alloc_buffer([m * n], dtype="int32", strides=[1])
     for i, j in T.grid(m, n):
         with T.block("binary_search_block_0_0"):
-            vi, vj = T.axis.remap("SR", [i, j])
+            vi, vj = T.axis.remap("SS", [i, j])
             T.reads(J_indices_data[0:nnz])
             T.writes(mid_0_data[vi * n + vj])
             T.block_attr({"preprocess": True, "sparse": True})
@@ -593,7 +593,7 @@ def square_sum_two_K(
             T.block_attr({"preprocess": True, "sparse": True})
             for j in T.serial(J_indptr_data[vi + 1] - J_indptr_data[vi]):
                 with T.block("binary_search_block_0_1"):
-                    vj = T.axis.reduce(N1, j)
+                    vj = T.axis.spatial(N1, j)
                     T.reads(K1_indptr_data[0 : nnz_j + 1], K0_indices_data[0:nnz_k])
                     T.writes(mid_0_data[0:nnz_k])
                     T.block_attr({"preprocess": True, "sparse": True})
@@ -602,7 +602,7 @@ def square_sum_two_K(
                         - K1_indptr_data[vj + J_indptr_data[vi]]
                     ):
                         with T.block("binary_search_block_0_2"):
-                            vk = T.axis.reduce(N2, k)
+                            vk = T.axis.spatial(N2, k)
                             T.reads(K0_indices_data[0:nnz_k])
                             T.writes(mid_0_data[vk + K1_indptr_data[vj + J_indptr_data[vi]]])
                             T.block_attr({"preprocess": True, "sparse": True})

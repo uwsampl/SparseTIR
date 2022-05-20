@@ -22,11 +22,12 @@ import tvm
 def test_binary_search():
     M, N, K, NNZ = csrmm_dense_iter.params[-4:]
     mod = tvm.IRModule.from_expr(csrmm_dense_iter.specialize({M: 128, N: 128, K: 128, NNZ: 1024}))
+    mod = tvm.tir.transform.ExtractPreprocess()(mod)
     sch = tvm.tir.Schedule(mod)
-    blk = sch.get_block("csrmm0")
-    i, j, k = sch.get_loops(blk) 
+    blk = sch.get_block("binary_search_block_0_0")
+    i, j = sch.get_loops(blk) 
     sch.bind(i, "blockIdx.x") 
-    sch.bind(k, "threadIdx.x")
+    sch.bind(j, "threadIdx.x")
     mod = tvm.tir.transform.LowerSparseBuffer()(sch.mod) 
     f = tvm.build(sch.mod["main"], target="cuda")
     print(f.imported_modules[0].get_source())

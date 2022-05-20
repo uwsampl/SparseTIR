@@ -551,6 +551,8 @@ class IterTransformer : public StmtExprMutator {
         if (bsearch_structure.inv_var_map.count(sp_iter_var)) {
           Var old_var = bsearch_structure.inv_var_map.Get(sp_iter_var).value();
           IterVar new_iter_var = sp_iter_var->as_iter_var();
+          auto n = new_iter_var.CopyOnWrite();
+          n->iter_type = kDataPar;  // change iter_type to data parallel
           var_map.Set(old_var, new_iter_var->var);
           Var loop_var(sp_iter_var->var->name_hint, sp_iter_var->var->dtype);
           if (bsearch_block_info.back().NeedCreateNewBlock(&ctx_, sp_iter_var->axis)) {
