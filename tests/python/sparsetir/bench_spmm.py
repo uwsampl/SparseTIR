@@ -393,7 +393,6 @@ def bench_hyb(g, feat_size=128):
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     # print(mod["main"].script())
     f = tvm.build(mod, target="cuda")
-    print(f.imported_modules[0].get_source())
 
     b_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
     c_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
@@ -584,7 +583,7 @@ if __name__ == "__main__":
     # reddit = dgl.data.RedditDataset()
     # g = reddit[0]
 
-    # bench_hyb(g, feat_size=128)
-    for feat_size in [32, 64, 128, 256, 512]:
-        print("feat_size=", feat_size)
-        bench_tir_csrmm(g, feat_size=feat_size)
+    bench_hyb(g, feat_size=128)
+    # for feat_size in [32, 64, 128, 256, 512]:
+    #     print("feat_size=", feat_size)
+    #     bench_tir_csrmm(g, feat_size=feat_size)
