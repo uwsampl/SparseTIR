@@ -36,9 +36,15 @@ class FormatRewriteRule(Object):
         A TIR script describing the new format.
     buffers_to_rewrite: List[str]
         The list of sparse buffers we need to rewrite.
+    axes_before_rewrite : List[str]
+        The list of axes before the rewrite.
+    axes_after_rewrite : List[str]
+        The list of axes after the rewrite.
     axis_map : Dict[str, List[str]]
         The axis mapping from the old format to the new format.
     idx_map_func : Callable
+        A function describing the index mapping from the old format to indices in new format.
+    inv_idx_map_func : Callable
         A function describing the coordinate mapping from indices in new format.
         to indices in old format.
     """
@@ -48,14 +54,20 @@ class FormatRewriteRule(Object):
         name: str,
         new_format_desc: tvm.tir.PrimFunc,
         buffers_to_rewrite: List[str],
+        axes_before_rewrite: List[str],
+        axes_after_rewrite: List[str],
         axis_map: Dict[str, List[str]],
         idx_map_func: Callable,
+        inv_idx_map_func: Callable,
     ) -> None:
         self.__init_handle_by_constructor__(
             _ffi_api.FormatRewriteRule,
             name,
             new_format_desc,
             buffers_to_rewrite,
+            axes_before_rewrite,
+            axes_after_rewrite,
             axis_map,
             IndexMap.from_func(idx_map_func),
+            IndexMap.from_func(inv_idx_map_func),
         )  # type: ignore

@@ -18,7 +18,12 @@
 import tvm
 from tvm.sparse import FormatRewriteRule
 from sparse_tir_scripts import csrmm
-from sparse_tir_format_rewrite_scripts import bsr, bsr_rewrite_with_preprocess
+from sparse_tir_format_rewrite_scripts import (
+    bsr,
+    bsr_rewrite_with_preprocess,
+    ell,
+    ell_rewrite_with_preprocess,
+)
 
 
 def csr2bsr_inv_index_map(block_size):
@@ -27,21 +32,18 @@ def csr2bsr_inv_index_map(block_size):
 
     return func
 
+def csr2bsr_index_map(block_size):
+    def func(i, j):
+        return i // block_size, j // block_size, i % block_size, j % block_size
 
-def test_declare_format_rewrite_rule():
-    csr2bsr_32 = FormatRewriteRule(
-        "csr2bsr",
-        bsr,
-        ["A"],
-        {"I": ["IO", "II"], "J": ["JO", "JI"]},
-        csr2bsr_inv_index_map(32),
-    )
-    print(csr2bsr_32)
-    print(csr2bsr_32.name)
-    print(csr2bsr_32.new_format_desc)
-    print(csr2bsr_32.buffers_to_rewrite)
-    print(csr2bsr_32.axis_map)
-    print(csr2bsr_32.idx_map)
+    return func
+
+
+def csr2ell_inv_index_map(o, i, j):
+    return i, j
+
+def csr2ell_index_map(i, j):
+    return 0, i, j
 
 
 def test_csrmm_bsr_rewrite():
@@ -53,15 +55,40 @@ def test_csrmm_bsr_rewrite():
                 str(block_size),
                 bsr.specialize({block_size_symbol: block_size}),
                 ["A"],
+                ["I", "J"],
+                ["IO", "JO", "II", "JI"],
                 {"I": ["IO", "II"], "J": ["JO", "JI"]},
+                csr2bsr_index_map(block_size),
                 csr2bsr_inv_index_map(block_size),
             )
         )
     mod = tvm.IRModule.from_expr(csrmm)
     mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
+    print(mod["main"].script())
     tvm.ir.assert_structural_equal(mod["main"], bsr_rewrite_with_preprocess, True)
 
 
+def test_csrmm_ell_rewrite():
+    nnz_cols_symbol = ell.params[-1]
+    rewrites = []
+    for nnz_cols in [4, 8, 16, 32, 64, 128, 512]:
+        rewrites.append(
+            FormatRewriteRule(
+                str(nnz_cols),
+                ell.specialize({nnz_cols_symbol: nnz_cols}),
+                ["A"],
+                ["I", "J"],
+                ["O", "I", "J"],
+                {"I": ["O", "I"], "J": ["J"]},
+                csr2ell_index_map,
+                csr2ell_inv_index_map,
+            )
+        )
+    mod = tvm.IRModule.from_expr(csrmm)
+    mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
+    tvm.ir.assert_structural_equal(mod["main"], ell_rewrite_with_preprocess, True)
+
+
 if __name__ == "__main__":
-    test_declare_format_rewrite_rule()
     test_csrmm_bsr_rewrite()
+    test_csrmm_ell_rewrite()
