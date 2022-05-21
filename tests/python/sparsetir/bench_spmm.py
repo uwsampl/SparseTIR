@@ -584,7 +584,7 @@ if __name__ == "__main__":
     # reddit = dgl.data.RedditDataset()
     # g = reddit[0]
 
-    bench_hyb(g, feat_size=128)
-    # for feat_size in [128]:  # [32, 64, 128, 256, 512]:
-    #     print("feat_size=", feat_size)
-    #     bench_tir_csrmm(g, feat_size=feat_size)
+    # bench_hyb(g, feat_size=128)
+    for feat_size in [32, 64, 128, 256, 512]:
+        print("feat_size=", feat_size)
+        bench_tir_csrmm(g, feat_size=feat_size)

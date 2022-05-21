@@ -671,6 +671,12 @@ TVM_DLL Pass ExtractPreprocess();
  */
 TVM_DLL Pass RemovePreprocess();
 
+/*!
+ * \brief Inject scope to avoid duplicate computation (e.g. in atomic operators)
+ * \return The pass.
+ */
+TVM_DLL Pass InjectScope();
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm

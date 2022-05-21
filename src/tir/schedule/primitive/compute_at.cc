@@ -262,6 +262,7 @@ class ScopeReconstructor : private StmtMutator {
         }
       }
     }
+    LOG(INFO) << iter_values;
     this->new_block_realize_ =
         BlockRealize(std::move(iter_values), analyzer->Simplify(predicate), std::move(block_));
     Stmt new_subtree = this->new_block_realize_;
@@ -363,6 +364,7 @@ void RelaxBufferRegions(const Map<Var, PrimExpr>& binding,
     // Relax the region
     Array<arith::IntSet> relaxed_region =
         arith::EvalSet(Substitute(region, binding), var_dom.value());
+    LOG(INFO) << relaxed_region;
     relaxed_regions.push_back({relaxed_region.begin(), relaxed_region.end()});
   }
 }

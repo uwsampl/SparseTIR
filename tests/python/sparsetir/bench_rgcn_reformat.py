@@ -141,7 +141,6 @@ def test_lower_rgcn_hetero(
     )
     mod = lower_sparse_iter(mod)
     sch = tir.Schedule(mod)
-
     blk0 = sch.get_block("rgcn-hetero-forward0")
     blk1 = sch.get_block("rgcn-hetero-forward1")
     blk2 = sch.get_block("rgcn-hetero-forward2")
