@@ -82,7 +82,6 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
             if epoch >= cold_start:
                 accum += timer.time
         print("dgl-lowmem:\t\t {}ms".format(accum / (total - cold_start)))
-        y_dgl_lowmem = None
     except RuntimeError as err:
         print("dgl-lowmem: OOM")
         y_dgl_lowmem = None
@@ -160,8 +159,8 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
 
 
 if __name__ == "__main__":
-    for feat_size in [4, 8, 16, 32]:
-        for name in ["aifb", "mutag", "bgs", "am"]:
+    for feat_size in [32]:  # [4, 8, 16, 32]:
+        for name in ["aifb"]:  # ["aifb", "mutag", "bgs", "am"]:
             print("dataset {}, feat_size={}:".format(name, feat_size))
             dataset = get_dataset_by_name(name)
             g = dataset[0]

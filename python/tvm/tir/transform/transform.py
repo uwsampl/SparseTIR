@@ -889,3 +889,8 @@ def RemovePreprocess():
         The result pass
     """
     return _ffi_api.RemovePreprocess()  # type: ignore
+
+def InjectScope():
+    """
+    """
+    return _ffi_api.InjectScope()  # type: ignore

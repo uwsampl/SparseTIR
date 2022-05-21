@@ -43,40 +43,44 @@ class VarCollector : public StmtExprVisitor {
 
 class ScopeInjector : public StmtExprMutator {
  public:
-  explicit ScopeInjector() : loop_stack_(1) {}
+  explicit ScopeInjector() {}
 
  private:
   Stmt VisitStmt_(const ForNode* op) final {
-    loop_stack_.back().push_back(GetRef<For>(op));
-    return StmtExprMutator::VisitStmt_(op);
-  }
-
-  Stmt VisitStmt_(const BlockNode* op) final {
-    loop_stack_.push_back({});
+    bool is_thread_binding = op->kind == ForKind::kThreadBinding;
+    if (is_thread_binding) {
+      outer_loops_.push_back(GetRef<For>(op));
+    }
     Stmt ret = StmtExprMutator::VisitStmt_(op);
-    loop_stack_.pop_back();
+    if (is_thread_binding) {
+      outer_loops_.pop_back();
+    }
     return ret;
   }
 
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
-    PrimExpr cond = const_true();
+    PrimExpr cond = Bool(true);
     arith::Analyzer ana;
     VarCollector collector;
     collector(GetRef<BlockRealize>(op));
     Stmt body = StmtExprMutator::VisitStmt_(op);
     if (op->block->annotations.count("atomic")) {
-      for (const For& loop : loop_stack_.back()) {
+      for (const For& loop : outer_loops_) {
         if (!collector.used.count(loop->loop_var.get())) {
           cond = cond && (loop->loop_var == loop->min);
         }
       }
-      return IfThenElse(ana.Simplify(cond), body);
+      if (ana.CanProveEqual(cond, Bool(true))) {
+        return body;
+      } else {
+        return IfThenElse(ana.Simplify(cond), body);
+      }
     } else {
       return body;
     }
   }
 
-  std::vector<Array<For>> loop_stack_;
+  Array<For> outer_loops_;
 };
 
 PrimFunc InjectScope(PrimFunc f) {
