@@ -29,8 +29,7 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     m = g.num_src_nodes()
     n = g.num_dst_nodes()
     nnz = g.number_of_edges()
-    src_ids, _, eids = g.edges("all", "srcdst")
-    
+
     M, N, F, NNZ = fused_sddmm.params[-4:]
     a = th.rand(m, feat_size).to(th.float32)
     b = th.rand(n, feat_size).to(th.float32)
@@ -73,22 +72,23 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     blk = sch.get_block("sddmm0")
     j, k = sch.get_loops(blk)
     ko, ki = sch.split(k, [None, 32])
+    jo, ji = sch.split(j, [None, 16])
     sch.bind(ki, "threadIdx.x")
     sch.unroll(ko)
-    sch.bind(j, "blockIdx.x")
+    sch.bind(jo, "blockIdx.x")
+    sch.bind(ji, "threadIdx.y")
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     sddmm = tvm.build(mod["main"], target="cuda")
 
     # compute mid
-    a_nd = tvm.nd.array(a.view(-1).numpy(), tvm.gpu())
-    b_nd = tvm.nd.array(b.view(-1).numpy(), tvm.gpu())
-    c_nd = tvm.nd.array(c.numpy(), tvm.gpu())
-    indptr_nd = tvm.nd.array(indptr.numpy(), tvm.gpu())
-    indices_nd = tvm.nd.array(indices.numpy(), tvm.gpu())
-    mid_nd = tvm.nd.array(np.zeros((nnz,), np.int32), tvm.gpu())
+    a_nd = tvm.nd.array(a.view(-1).numpy(), tvm.cuda())
+    b_nd = tvm.nd.array(b.view(-1).numpy(), tvm.cuda())
+    c_nd = tvm.nd.array(c.numpy(), tvm.cuda())
+    indptr_nd = tvm.nd.array(indptr.numpy(), tvm.cuda())
+    indices_nd = tvm.nd.array(indices.numpy(), tvm.cuda())
+    mid_nd = tvm.nd.array(np.zeros((nnz,), np.int32), tvm.cuda())
 
     preproc(a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd)
-    assert np.allclose(src_ids.numpy(), mid_nd.numpy())
 
     # compute
     accum_time = 0.0
@@ -98,7 +98,7 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
         with TorchOpTimer() as timer:
             sddmm(a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd)
         if i == 0:
-            tvm.testing.assert_allclose(c_nd.numpy(), c_golden.view(-1)[eids.long()].cpu())
+            tvm.testing.assert_allclose(c_nd.numpy(), c_golden.view(-1).cpu())
         if i >= cold_start_time:
             accum_time += timer.time
             runs += 1
@@ -109,5 +109,6 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
 if __name__ == "__main__":
     arxiv = DglNodePropPredDataset(name="ogbn-arxiv")
     g = arxiv[0][0]
+    g = dgl.graph(g.edges("uv", "srcdst"), num_nodes=g.num_nodes())
     for feat_size in [32, 64, 128, 256, 512]:
         bench_sddmm(g.int(), feat_size)
