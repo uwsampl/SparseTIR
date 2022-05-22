@@ -21,6 +21,23 @@
 namespace tvm {
 namespace tir {
 
+class SpIterationReplacer : public StmtMutator {
+ public:
+  explicit SpIterationReplacer(const SparseIteration& old_block, const SparseIteration& new_block)
+      : old_block_(old_block.get()), new_block_(new_block.get()) {}
+
+ private:
+  Stmt VisitStmt_(const SparseIterationNode* op) override {
+    if (op == old_block_) {
+      return GetRef<SparseIteration>(new_block_);
+    } else {
+      return StmtMutator::VisitStmt_(op);
+    }
+  }
+
+  const SparseIterationNode *old_block_, *new_block_;
+};
+
 /*!
  * \brief Check whether the new iterators are valid. We say they are valid if the new order is a
  * permutation of the old order
@@ -162,7 +179,8 @@ SparseIteration SparseReorder(ScheduleState self, const SparseIteration& block,
   ICHECK(ref_new_func.get() == g_func);
   PrimFuncNode* new_func = ref_new_func.CopyOnWrite();
 
-  new_func->body = new_block;
+  SpIterationReplacer replacer(block, new_block);
+  new_func->body = replacer(g_func->body);
   new_map->at(g_var) = std::move(ref_new_func);
   self->mod = GetRef<IRModule>(new_mod);
 
@@ -252,11 +270,39 @@ SparseIteration SparseFuse(ScheduleState self, const SparseIteration& block,
   ICHECK(ref_new_func.get() == g_func);
   PrimFuncNode* new_func = ref_new_func.CopyOnWrite();
 
-  new_func->body = new_block;
+  SpIterationReplacer replacer(block, new_block);
+  new_func->body = replacer(g_func->body);
   new_map->at(g_var) = std::move(ref_new_func);
   self->mod = GetRef<IRModule>(new_mod);
 
   return new_block;
+}
+
+SparseIteration GetSparseIteration(const ScheduleState& self, const String& name,
+                                   const String& func_name) {
+  class Finder : public StmtVisitor {
+   public:
+    explicit Finder(const ScheduleState& self, const String& name) : self_(self), name_(name) {}
+
+    void VisitStmt_(const SparseIterationNode* op) override {
+      if (op->name == name_) {
+        result_ = GetRef<SparseIteration>(op);
+      }
+      StmtVisitor::VisitStmt_(op);
+    }
+
+    const ScheduleState& self_;
+    const String& name_;
+    Optional<SparseIteration> result_;
+  };
+
+  BaseFunc func = self->mod->Lookup(func_name);
+  const auto* prim_func = TVM_TYPE_AS(prim_func, func, PrimFuncNode);
+
+  Finder finder(self, name);
+  finder(prim_func->body);
+  CHECK(finder.result_.defined()) << "Cannot find a sparse iteration with the name: " + name;
+  return finder.result_.value();
 }
 
 }  // namespace tir

@@ -6,8 +6,11 @@ import scipy.sparse as sp
 import numpy as np
 import torch as th
 from tvm.script import tir as T
+from tvm.sparse import FormatRewriteRule, lower_sparse_buffer, lower_sparse_iter
 import tvm.sparse
 from ogb.nodeproppred import DglNodePropPredDataset
+from sparse_tir_scripts import csrmm
+from sparse_tir_format_rewrite_scripts import ell
 
 
 class TorchOpTimer(object):
@@ -106,235 +109,99 @@ def csrmm_padding_tir(
                                 * B[A_indices[(vj + A_indptr[vi]) * tile_size + vt] * K + vk]
                             )
 
+def csr2ell_inv_index_map(o, i, j):
+    return i, j
 
-@T.prim_func
-def csrmm_hyb_tir(
-    b: T.handle,
-    c: T.handle,
-    placeholder: T.handle,
-    row_4: T.handle,
-    indices_4: T.handle,
-    a_4: T.handle,
-    row_8: T.handle,
-    indices_8: T.handle,
-    a_8: T.handle,
-    row_16: T.handle,
-    indices_16: T.handle,
-    a_16: T.handle,
-    row_32: T.handle,
-    indices_32: T.handle,
-    a_32: T.handle,
-    row_64: T.handle,
-    indices_64: T.handle,
-    a_64: T.handle,
-    row_128: T.handle,
-    indices_128: T.handle,
-    a_128: T.handle,
-    row_256: T.handle,
-    indices_256: T.handle,
-    a_256: T.handle,
-    row_512: T.handle,
-    indices_512: T.handle,
-    a_512: T.handle,
-    n4: T.int32,
-    n8: T.int32,
-    n16: T.int32,
-    n32: T.int32,
-    n64: T.int32,
-    n128: T.int32,
-    n256: T.int32,
-    n512: T.int32,
-    n: T.int32,
-    f: T.int32,
-):
-    T.func_attr(
-        {
-            "global_symbol": "main",
-            "tir.noalias": True,
-            "sparse_tir_level": 2,
-            "horizontal_fuse": True,
-        }
-    )
-    N = T.dense_fixed(n)
-    O = T.dense_fixed(1)
-    F = T.dense_fixed(f)
-    I4 = T.sparse_variable(O, (n, n4), (placeholder, row_4))
-    J4 = T.sparse_fixed(I4, (n, 4), indices_4)
-    A4 = T.match_sparse_buffer(a_4, [O, I4, J4], "float32")
-    I8 = T.sparse_variable(O, (n, n8), (placeholder, row_8))
-    J8 = T.sparse_fixed(I8, (n, 8), indices_8)
-    A8 = T.match_sparse_buffer(a_8, [O, I8, J8], "float32")
-    I16 = T.sparse_variable(O, (n, n16), (placeholder, row_16))
-    J16 = T.sparse_fixed(I16, (n, 16), indices_16)
-    A16 = T.match_sparse_buffer(a_16, [O, I16, J16], "float32")
-    I32 = T.sparse_variable(O, (n, n32), (placeholder, row_32))
-    J32 = T.sparse_fixed(I32, (n, 32), indices_32)
-    A32 = T.match_sparse_buffer(a_32, [O, I32, J32], "float32")
-    I64 = T.sparse_variable(O, (n, n64), (placeholder, row_64))
-    J64 = T.sparse_fixed(I64, (n, 64), indices_64)
-    A64 = T.match_sparse_buffer(a_64, [O, I64, J64], "float32")
-    I128 = T.sparse_variable(O, (n, n128), (placeholder, row_128))
-    J128 = T.sparse_fixed(I128, (n, 128), indices_128)
-    A128 = T.match_sparse_buffer(a_128, [O, I128, J128], "float32")
-    I256 = T.sparse_variable(O, (n, n256), (placeholder, row_256))
-    J256 = T.sparse_fixed(I256, (n, 256), indices_256)
-    A256 = T.match_sparse_buffer(a_256, [O, I256, J256], "float32")
-    I512 = T.sparse_variable(O, (n, n512), (placeholder, row_512))
-    J512 = T.sparse_fixed(I512, (n, 512), indices_512)
-    A512 = T.match_sparse_buffer(a_512, [O, I512, J512], "float32")
-    B = T.match_sparse_buffer(b, (N, F), "float32")
-    C = T.match_sparse_buffer(c, (N, F), "float32")
-    with T.iter([T.fuse(O, I4), J4, F], "SSRS", "csrmm_4") as [vo, vi, vj, vf]:
-        with T.init():
-            C[vi, vf] = 0.0
-        C[vi, vf] = C[vi, vf] + A4[vo, vi, vj] * B[vj, vf]
-    with T.iter([T.fuse(O, I8), J8, F], "SSRS", "csrmm_8") as [vo, vi, vj, vf]:
-        with T.init():
-            C[vi, vf] = 0.0
-        C[vi, vf] = C[vi, vf] + A8[vo, vi, vj] * B[vj, vf]
-    with T.iter([T.fuse(O, I16), J16, F], "SSRS", "csrmm_16") as [vo, vi, vj, vf]:
-        with T.init():
-            C[vi, vf] = 0.0
-        C[vi, vf] = C[vi, vf] + A16[vo, vi, vj] * B[vj, vf]
-    with T.iter([T.fuse(O, I32), J32, F], "SSRS", "csrmm_32") as [vo, vi, vj, vf]:
-        with T.init():
-            C[vi, vf] = 0.0
-        C[vi, vf] = C[vi, vf] + A32[vo, vi, vj] * B[vj, vf]
-    with T.iter([T.fuse(O, I64), J64, F], "SSRS", "csrmm_64") as [vo, vi, vj, vf]:
-        with T.init():
-            C[vi, vf] = 0.0
-        C[vi, vf] = C[vi, vf] + A64[vo, vi, vj] * B[vj, vf]
-    with T.iter([T.fuse(O, I128), J128, F], "SSRS", "csrmm_128") as [vo, vi, vj, vf]:
-        with T.init():
-            C[vi, vf] = 0.0
-        C[vi, vf] = C[vi, vf] + A128[vo, vi, vj] * B[vj, vf]
-    with T.iter([T.fuse(O, I256), J256, F], "SSRS", "csrmm_256") as [vo, vi, vj, vf]:
-        with T.init():
-            C[vi, vf] = 0.0
-        C[vi, vf] = C[vi, vf] + A256[vo, vi, vj] * B[vj, vf]
-    with T.iter([T.fuse(O, I512), J512, F], "SSRS", "csrmm_512") as [vo, vi, vj, vf]:
-        with T.init():
-            C[vi, vf] = 0.0
-        C[vi, vf] = C[vi, vf] + A512[vo, vi, vj] * B[vj, vf]
-
+def csr2ell_index_map(i, j):
+    return 0, i, j
 
 def bench_hyb(g, feat_size=128):
     # still work in progress
     in_degrees = g.in_degrees()
-    rows_4 = ((in_degrees <= 4)).nonzero().view(-1)
-    rows_8 = ((in_degrees <= 8) & (in_degrees > 4)).nonzero().view(-1)
-    rows_16 = ((in_degrees <= 16) & (in_degrees > 8)).nonzero().view(-1)
-    rows_32 = ((in_degrees <= 32) & (in_degrees > 16)).nonzero().view(-1)
-    rows_64 = ((in_degrees <= 64) & (in_degrees > 32)).nonzero().view(-1)
-    rows_128 = ((in_degrees <= 128) & (in_degrees > 64)).nonzero().view(-1)
-    rows_256 = ((in_degrees <= 256) & (in_degrees > 128)).nonzero().view(-1)
-    rows_512 = (in_degrees > 256).nonzero().view(-1)
-    n_4 = len(rows_4)
-    n_8 = len(rows_8)
-    n_16 = len(rows_16)
-    n_32 = len(rows_32)
-    n_64 = len(rows_64)
-    n_128 = len(rows_128)
-    n_256 = len(rows_256)
+    bucket_sizes = [4, 8, 16, 32, 64, 128, 256, 512]
+
+    # rewrite csrmm
+    nnz_cols_symbol = ell.params[-1]
+    rewrites = []
+    for bucket_size in bucket_sizes:
+        rewrites.append(
+            FormatRewriteRule(
+                str(bucket_size),
+                ell.specialize({nnz_cols_symbol: bucket_size}),
+                ["A"],
+                ["I", "J"],
+                ["O", "I", "J"],
+                {"I": ["O", "I"], "J": ["J"]},
+                csr2ell_index_map,
+                csr2ell_inv_index_map,
+            )
+        )
+    mod = tvm.IRModule.from_expr(csrmm)
+    mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
+    mod = tvm.tir.transform.RemovePreprocess()(mod)
+
+    ell_rows = {}
+    ell_n = {}
+    ell_rows[bucket_sizes[0]] = ((in_degrees <= 4)).nonzero().view(-1)
+    for i in range(1, len(bucket_sizes) - 1):
+        bucket_size = bucket_sizes[i]
+        ell_rows[bucket_size] = ((in_degrees <= bucket_size) & (in_degrees > bucket_sizes[i - 1])).nonzero().view(-1)
+    ell_rows[bucket_sizes[-1]] = (in_degrees > 256).nonzero().view(-1)
+    for bucket_size in bucket_sizes:
+        ell_n[bucket_size] = len(ell_rows[bucket_size])
     n = g.num_nodes()
 
-    indices_4 = []
-    a_4 = []
-    for row in rows_4:
+    ell_indices = {}
+    ell_a = {}
+    for bucket_size in bucket_sizes[:-1]:
+        indices = []
+        a = []
+        for row in ell_rows[bucket_size]:
+            in_edges = g.in_edges([row])[0]
+            indices.append(th.cat([in_edges, th.full((bucket_size - len(in_edges),), 0)]))
+            a.append(th.cat([th.ones(len(in_edges)), th.zeros(bucket_size - len(in_edges))]))
+        ell_indices[bucket_size] = th.stack(indices)
+        ell_a[bucket_size] = th.stack(a)
+
+    # split rows for bucket size 512
+    indices = []
+    a = []
+    new_rows = []
+    bucket_size = bucket_sizes[-1]
+    for row in ell_rows[bucket_size]:
         in_edges = g.in_edges([row])[0]
-        indices_4.append(th.cat([in_edges, th.full((4 - len(in_edges),), 0)]))
-        a_4.append(th.cat([th.ones(len(in_edges)), th.zeros(4 - len(in_edges))]))
-    indices_4 = th.stack(indices_4)
-    a_4 = th.stack(a_4)
+        for i in range((len(in_edges) + bucket_size - 1) // bucket_size):
+            in_edges_i = in_edges[i * bucket_size : (i + 1) * bucket_size]
+            indices.append(th.cat([in_edges_i, th.full((bucket_size - len(in_edges_i),), 0)]))
+            a.append(th.cat([th.ones(len(in_edges_i)), th.zeros(bucket_size - len(in_edges_i))]))
+            new_rows.append(row)
+    ell_indices[bucket_size] = th.stack(indices)
+    ell_a[bucket_size] = th.stack(a)
+    ell_rows[bucket_size] = th.tensor(new_rows).int()
+    ell_n[bucket_size] = len(new_rows)
 
-    indices_8 = []
-    a_8 = []
-    for row in rows_8:
-        in_edges = g.in_edges([row])[0]
-        indices_8.append(th.cat([in_edges, th.full((8 - len(in_edges),), 0)]))
-        a_8.append(th.cat([th.ones(len(in_edges)), th.zeros(8 - len(in_edges))]))
-    indices_8 = th.stack(indices_8)
-    a_8 = th.stack(a_8)
+    # N4, N8, N16, N32, N64, N128, N256, N512, N, F = csrmm_hyb_tir.params[-10:]
+    params = mod["main"].params
+    param_map = {
+        params[5]: g.num_dst_nodes(), # m
+        params[6]: g.num_src_nodes(), # n
+        params[7]: feat_size, # feat_size,
+        params[8]: g.num_edges(), # nnz
+    }
+    for i in range(len(bucket_sizes)):
+        bucket_size = len(bucket_sizes)
+        param_map[params[9 + 7 * i + 4]] = g.num_dst_nodes()
+        param_map[params[9 + 7 * i + 5]] = g.num_src_nodes()
+        param_map[params[9 + 7 * i + 6]] = ell_n[bucket_size]
 
-    indices_16 = []
-    a_16 = []
-    for row in rows_16:
-        in_edges = g.in_edges([row])[0]
-        indices_16.append(th.cat([in_edges, th.full((16 - len(in_edges),), 0)]))
-        a_16.append(th.cat([th.ones(len(in_edges)), th.zeros(16 - len(in_edges))]))
-    indices_16 = th.stack(indices_16)
-    a_16 = th.stack(a_16)
-
-    indices_32 = []
-    a_32 = []
-    for row in rows_32:
-        in_edges = g.in_edges([row])[0]
-        indices_32.append(th.cat([in_edges, th.full((32 - len(in_edges),), 0)]))
-        a_32.append(th.cat([th.ones(len(in_edges)), th.zeros(32 - len(in_edges))]))
-    indices_32 = th.stack(indices_32)
-    a_32 = th.stack(a_32)
-
-    indices_64 = []
-    a_64 = []
-    for row in rows_64:
-        in_edges = g.in_edges([row])[0]
-        indices_64.append(th.cat([in_edges, th.full((64 - len(in_edges),), 0)]))
-        a_64.append(th.cat([th.ones(len(in_edges)), th.zeros(64 - len(in_edges))]))
-    indices_64 = th.stack(indices_64)
-    a_64 = th.stack(a_64)
-
-    indices_128 = []
-    a_128 = []
-    for row in rows_128:
-        in_edges = g.in_edges([row])[0]
-        indices_128.append(th.cat([in_edges, th.full((128 - len(in_edges),), 0)]))
-        a_128.append(th.cat([th.ones(len(in_edges)), th.zeros(128 - len(in_edges))]))
-    indices_128 = th.stack(indices_128)
-    a_128 = th.stack(a_128)
-
-    indices_256 = []
-    a_256 = []
-    for row in rows_256:
-        in_edges = g.in_edges([row])[0]
-        indices_256.append(th.cat([in_edges, th.full((256 - len(in_edges),), 0)]))
-        a_256.append(th.cat([th.ones(len(in_edges)), th.zeros(256 - len(in_edges))]))
-    indices_256 = th.stack(indices_256)
-    a_256 = th.stack(a_256)
-
-    indices_512 = []
-    a_512 = []
-    new_rows_512 = []
-    for row in rows_512:
-        in_edges = g.in_edges([row])[0]
-        for i in range((len(in_edges) + 511) // 512):
-            in_edges_i = in_edges[i * 512 : (i + 1) * 512]
-            indices_512.append(th.cat([in_edges_i, th.full((512 - len(in_edges_i),), 0)]))
-            a_512.append(th.cat([th.ones(len(in_edges_i)), th.zeros(512 - len(in_edges_i))]))
-            new_rows_512.append(row)
-    indices_512 = th.stack(indices_512)
-    a_512 = th.stack(a_512)
-    rows_512 = th.tensor(new_rows_512).int()
-    n_512 = len(rows_512)
-
-    N4, N8, N16, N32, N64, N128, N256, N512, N, F = csrmm_hyb_tir.params[-10:]
-
-    mod = tvm.IRModule.from_expr(
-        csrmm_hyb_tir.specialize(
-            {
-                N4: n_4,
-                N8: n_8,
-                N16: n_16,
-                N32: n_32,
-                N64: n_64,
-                N128: n_128,
-                N256: n_256,
-                N512: n_512,
-                N: n,
-                F: feat_size,
-            }
-        )
-    )
-    print(n_4, n_8, n_16, n_32, n_64, n_128, n_256, n_512)
+    mod["main"] = mod["main"].specialize(param_map).with_attr("horizontal_fuse", True)
+    print(mod["main"].script())
+    sch = tvm.tir.Schedule(mod)
+    for sp_iter_name in ['csrmm_{}'.format(bucket_size) for bucket_size in bucket_sizes]:
+        sp_iteration = sch.get_sparse_iteration(sp_iter_name)
+        o, i, j, k = sch.get_sp_iters(sp_iteration)
+        sch.sparse_fuse(sp_iteration, [o, i])
+    mod = sch.mod
     mod = tvm.sparse.lower_sparse_iter(mod)
     sch = tvm.tir.Schedule(mod)
     # schedule 4
@@ -390,10 +257,11 @@ def bench_hyb(g, feat_size=128):
     _ = sch.blockize(j)
     write_blk = sch.cache_write(blk_512, 0, "local")
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
-    # print(mod["main"].script())
     f = tvm.build(mod, target="cuda")
+    print(f.imported_modules[0].get_source())
 
-    b_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
+    assert False
+    b_nd = tvm.nd.array(np.ones(n * feat_size,).astype("float32"), device=tvm.cuda(0))
     c_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
     placeholder = tvm.nd.array(np.zeros((2,)).astype("int32"), device=tvm.cuda(0))
     row_4_nd = tvm.nd.array(rows_4.numpy().astype("int32"), device=tvm.cuda(0))
@@ -420,6 +288,8 @@ def bench_hyb(g, feat_size=128):
     indices_128_nd = tvm.nd.array(indices_128.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
     indices_256_nd = tvm.nd.array(indices_256.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
     indices_512_nd = tvm.nd.array(indices_512.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
+    print(a_4_nd)
+    print(a_8_nd)
 
     accum_time = 0.0
     runs = 0
@@ -455,13 +325,12 @@ def bench_hyb(g, feat_size=128):
                 indices_512_nd,
                 a_512_nd,
             )
+        print(c_nd.numpy())
         if i >= cold_start_time:
             accum_time += timer.time
             runs += 1
 
     print(accum_time / runs * 1000)
-
-    print(c_nd.numpy())
 
 
 def bench_tir_csrmm(g, feat_size=128):

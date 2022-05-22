@@ -51,11 +51,27 @@ const PrimFuncNode* GetRootPrimFunc(const IRModule& mod, const StmtNode* root_bl
 const PrimFuncNode* GetPrimFuncFromSparseIteration(const IRModule& mod,
                                                    const SparseIterationNode* sp_iteration,
                                                    GlobalVar* result_g_var) {
+  class Finder : public StmtVisitor {
+   public:
+    explicit Finder(const SparseIterationNode* sp_iteration)
+        : found_(false), sp_iteration_(sp_iteration) {}
+    void VisitStmt_(const SparseIterationNode* op) override {
+      if (op == sp_iteration_) {
+        found_ = true;
+      }
+      StmtVisitor::VisitStmt_(op);
+    }
+
+    bool found_;
+    const SparseIterationNode* sp_iteration_;
+  };
   for (const auto& kv : mod->functions) {
     const GlobalVar& g_var = kv.first;
     const BaseFunc& base_func = kv.second;
     if (const auto* func = base_func.as<PrimFuncNode>()) {
-      if (func->body.get() == sp_iteration) {
+      Finder finder(sp_iteration);
+      finder(func->body);
+      if (finder.found_) {
         if (result_g_var != nullptr) {
           *result_g_var = g_var;
         }

@@ -442,6 +442,16 @@ TVM_DLL void TransformLayout(ScheduleState self, const StmtSRef& block_sref, int
 /******** Schedule: SparseTIR schedules ********/
 
 /*!
+ * \brief Retrieves sparse iteration in a specific function with its name
+ * \param self The schedule state
+ * \param name The name of the sparse iteration to be retrieved
+ * \param func_name The name of the function
+ * \return The sparse iteration with the specific name
+ */
+TVM_DLL SparseIteration GetSparseIteration(const ScheduleState& self, const String& name,
+                                           const String& func_name);
+
+/*!
  * \brief Reorder a list of sparse iterators. It requires the new order to not break the iterator
  * dependency.
  * \param self The state of the schedule

@@ -66,16 +66,16 @@ def test_get_sparse_iteration():
     block_rv = sch.get_sparse_iteration("csrmm")
     block = sch.get(block_rv)
     assert block.name == "csrmm"
-    assert block.same_as(csrmm.body)
+    assert block.same_as(csrmm.body.block.body)
 
 
 def test_get_sp_iters():
     sch = tir.Schedule(csrmm, debug_mask="all")
     block = sch.get_sparse_iteration("csrmm")
     vi, vj, vk = sch.get_sp_iters(block)
-    assert vi.same_as(csrmm.body.sp_iter_vars[0])
-    assert vj.same_as(csrmm.body.sp_iter_vars[1])
-    assert vk.same_as(csrmm.body.sp_iter_vars[2])
+    assert vi.same_as(csrmm.body.block.body.sp_iter_vars[0])
+    assert vj.same_as(csrmm.body.block.body.sp_iter_vars[1])
+    assert vk.same_as(csrmm.body.block.body.sp_iter_vars[2])
 
 
 def test_reorder():
