@@ -1,11 +1,10 @@
-from dgl._deprecate.graph import DGLGraph
+import dgl
 import tvm
 import tvm.testing
 import tvm.tir as tir
 import scipy.sparse as sp
 import numpy as np
 import torch as th
-import dgl
 from tvm.script import tir as T
 import tvm.sparse
 from ogb.nodeproppred import DglNodePropPredDataset
@@ -24,7 +23,7 @@ class TorchOpTimer(object):
         self.time = self.start_event.elapsed_time(self.end_event) / 1e3
 
 
-def pad_graph(g: DGLGraph, tile_size=32) -> DGLGraph:
+def pad_graph(g: dgl.DGLGraph, tile_size=32) -> dgl.DGLGraph:
     u, v = g.edges()
     rows = [u.flatten()]
     cols = [v.flatten()]

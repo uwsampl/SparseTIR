@@ -102,12 +102,13 @@ def csrmm_dense_iter(
             high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
             low[0] = 0
             high[0] = J_indptr_data[vi + 1] - J_indptr_data[vi]
+            mid_0_data[vi * n + vj] = low[0] + (high[0] - low[0]) // 2
             while low[0] < high[0]:
-                mid_0_data[vi * n + vj] = low[0] + (high[0] - low[0]) // 2
                 if J_indices_data[mid_0_data[vi * n + vj] + J_indptr_data[vi]] < vj:
                     low[0] = mid_0_data[vi * n + vj] + 1
                 else:
                     high[0] = mid_0_data[vi * n + vj]
+                mid_0_data[vi * n + vj] = low[0] + (high[0] - low[0]) // 2
     for i, j, k in T.grid(m, n, feat_size):
         with T.block("csrmm0"):
             vi, vj, vk = T.axis.remap("SRS", [i, j, k])
@@ -474,12 +475,13 @@ def fused_sddmm(
             high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
             low[0] = 0
             high[0] = m + 1
+            mid_0_data[vj] = low[0] + (high[0] - low[0]) // 2
             while low[0] < high[0]:
-                mid_0_data[vj] = low[0] + (high[0] - low[0]) // 2
                 if J_indptr_data[mid_0_data[vj]] > vj:
                     high[0] = mid_0_data[vj]
                 else:
                     low[0] = mid_0_data[vj] + 1
+                mid_0_data[vj] = low[0] + (high[0] - low[0]) // 2
             mid_0_data[vj] = mid_0_data[vj] - 1
     for j, k in T.grid(nnz, feat_size):
         with T.block("sddmm0"):
@@ -613,10 +615,10 @@ def square_sum_two_K(
                                 K0_indptr_data[vj + J_indptr_data[vi] + 1]
                                 - K0_indptr_data[vj + J_indptr_data[vi]]
                             )
+                            mid_0_data[vk + K1_indptr_data[vj + J_indptr_data[vi]]] = (
+                                low[0] + (high[0] - low[0]) // 2
+                            )
                             while low[0] < high[0]:
-                                mid_0_data[vk + K1_indptr_data[vj + J_indptr_data[vi]]] = (
-                                    low[0] + (high[0] - low[0]) // 2
-                                )
                                 if (
                                     K0_indices_data[
                                         mid_0_data[vk + K1_indptr_data[vj + J_indptr_data[vi]]]
@@ -631,6 +633,9 @@ def square_sum_two_K(
                                     high[0] = mid_0_data[
                                         vk + K1_indptr_data[vj + J_indptr_data[vi]]
                                     ]
+                                mid_0_data[vk + K1_indptr_data[vj + J_indptr_data[vi]]] = (
+                                    low[0] + (high[0] - low[0]) // 2
+                                )
     for i in T.serial(M):
         with T.block("square_sum0"):
             vi = T.axis.spatial(M, i)
@@ -1012,8 +1017,8 @@ def csr2bsr(
                     high[0] = (
                         J_bsr_indptr_data[vi // blk_size + 1] - J_bsr_indptr_data[vi // blk_size]
                     )
+                    mid_0_data[vj + J_indptr_data[vi]] = low[0] + (high[0] - low[0]) // 2
                     while low[0] < high[0]:
-                        mid_0_data[vj + J_indptr_data[vi]] = low[0] + (high[0] - low[0]) // 2
                         if (
                             J_bsr_indices_data[
                                 mid_0_data[vj + J_indptr_data[vi]]
@@ -1024,6 +1029,7 @@ def csr2bsr(
                             low[0] = mid_0_data[vj + J_indptr_data[vi]] + 1
                         else:
                             high[0] = mid_0_data[vj + J_indptr_data[vi]]
+                        mid_0_data[vj + J_indptr_data[vi]] = low[0] + (high[0] - low[0]) // 2
     for i in T.serial(m_in):
         with T.block("csr2bsr0"):
             vi = T.axis.spatial(m_in, i)

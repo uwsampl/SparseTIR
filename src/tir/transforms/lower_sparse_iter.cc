@@ -648,7 +648,7 @@ class IterTransformer : public StmtExprMutator {
         annotations.Set("sparse", Bool(true));
         annotations.Set("preprocess", Bool(true));
         Array<BufferRegion> reads, writes;
-        if (i + 1 == bsearch_block_info.size()) {
+        if (i == static_cast<int>(bsearch_block_info.size()) - 1) {
           // innermost
           reads = {bsearch_structure.read};
           writes = {bsearch_structure.write};
@@ -899,7 +899,9 @@ class IterTransformer : public StmtExprMutator {
     PrimExpr low_val = BufferLoad(low, {Integer(0)}), high_val = BufferLoad(high, {Integer(0)}),
              mid_val = BufferLoad(mid, mid_indices);
     PrimExpr while_cond = low_val < high_val;
-    Stmt mid_store = BufferStore(mid, low_val + floordiv(high_val - low_val, 2), mid_indices);
+    // Two store mid statements, one for init, another one inside while loop.
+    Stmt mid_store_init = BufferStore(mid, low_val + floordiv(high_val - low_val, 2), mid_indices);
+    Stmt mid_store_while = BufferStore(mid, low_val + floordiv(high_val - low_val, 2), mid_indices);
     Array<PrimExpr> indices = prefix_indices;
     indices.push_back(mid_val);
     PrimExpr pivot = BufferLoad(buf, indices);
@@ -909,9 +911,9 @@ class IterTransformer : public StmtExprMutator {
     Stmt if_false = left ? BufferStore(high, mid_val, {Integer(0)})
                          : BufferStore(low, mid_val + 1, {Integer(0)});
     Stmt if_then_else = IfThenElse(pivot_cmp_cond, if_true, if_false);
-    SeqStmt while_body({mid_store, if_then_else});
+    SeqStmt while_body({if_then_else, mid_store_while});
     Stmt while_ = While(while_cond, while_body);
-    Array<Stmt> body_stmts({low_store, high_store, while_});
+    Array<Stmt> body_stmts({low_store, high_store, mid_store_init, while_});
     if (minus_one) {
       body_stmts.push_back(
           BufferStore(mid, BufferLoad(mid, mid_indices) - Integer(1), mid_indices));

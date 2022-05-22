@@ -1,9 +1,9 @@
+import dgl
 import tvm
 import tvm.testing
 import tvm.tir as tir
 import scipy.sparse as sp
 import numpy as np
-import dgl
 import dgl.function as fn
 import torch as th
 from tvm.script import tir as T

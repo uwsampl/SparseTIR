@@ -512,7 +512,7 @@ def rgcn_hetero_forward_2(
     nnz_i: T.int32,
     nnz_j: T.int32,
 ):
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2, "horizontal_fuse": 1})
+    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
     R = T.dense_fixed(num_rels)
     G = T.dense_fixed(group)
     I = T.sparse_variable(G, (n, nnz_i), (indptr_i, indices_i), "int32")
