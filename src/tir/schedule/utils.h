@@ -447,6 +447,13 @@ inline String BufferIndexType2Str(BufferIndexType buffer_index_type) {
   }
 }
 
+/******** Whether it's horizontal fuse function. ********/
+
+inline bool IsHorizontalFuse(const ScheduleState& state) {
+  IRModule mod = state->mod;
+  return mod->functions.Get(mod->GetGlobalVar("main")).value()->attrs.GetAttr<Bool>("horizontal_fuse").value();
+}
+
 }  // namespace tir
 }  // namespace tvm
 

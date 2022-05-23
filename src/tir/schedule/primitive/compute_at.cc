@@ -140,8 +140,9 @@ int FindInsertionPoint(
     std::unordered_map<const BlockNode*, const BlockRealizeNode*>* block2realize) {
   ProducerConsumerSplit split =
       ProducerConsumerSplit::Find(self, subtrees, producer_srefs, consumer_srefs, block2realize);
+  bool horizontal_fuse = IsHorizontalFuse(self); 
   // Step 1. Check if all the producers are visited in the subtrees, if required to
-  if (require_all_producers_visited) {
+  if (require_all_producers_visited && !horizontal_fuse) {
     int num_producers = producer_srefs.size();
     if (split.n_producers_visited < num_producers) {
       throw NotAllRequiredBlocksAreVisitedError<false>(
@@ -149,7 +150,7 @@ int FindInsertionPoint(
     }
   }
   // Step 2. Check if all the consumers are visited in the subtrees, if required to
-  if (require_all_consumers_visited) {
+  if (require_all_consumers_visited && !horizontal_fuse) {
     int num_consumers = consumer_srefs.size();
     if (split.n_consumers_visited < num_consumers) {
       throw NotAllRequiredBlocksAreVisitedError<true>(
@@ -262,7 +263,6 @@ class ScopeReconstructor : private StmtMutator {
         }
       }
     }
-    LOG(INFO) << iter_values;
     this->new_block_realize_ =
         BlockRealize(std::move(iter_values), analyzer->Simplify(predicate), std::move(block_));
     Stmt new_subtree = this->new_block_realize_;
@@ -364,7 +364,6 @@ void RelaxBufferRegions(const Map<Var, PrimExpr>& binding,
     // Relax the region
     Array<arith::IntSet> relaxed_region =
         arith::EvalSet(Substitute(region, binding), var_dom.value());
-    LOG(INFO) << relaxed_region;
     relaxed_regions.push_back({relaxed_region.begin(), relaxed_region.end()});
   }
 }
@@ -537,12 +536,13 @@ void CalculateProvidedRequiredRegions(
   // Step 2. Calculate the region required by dependent blocks under `loop`
   for (const StmtSRef& required_block_sref : is_compute_at ? consumer_srefs : producer_srefs) {
     const BlockNode* required_block = TVM_SREF_TO_BLOCK(required_block, required_block_sref);
-    ICHECK(block2realize.count(required_block));
-    RelaxBufferRegions</*relax_storage_scope=*/is_compute_at>(
-        /*binding=*/GetBindings(GetRef<BlockRealize>(block2realize.at(required_block))),
-        /*buffer_regions=*/is_compute_at ? required_block->reads : required_block->writes,
-        /*relax_path_low_inclusive=*/GetRef<StmtSRef>(required_block_sref->parent),
-        /*relax_path_high_exclusive=*/loop_sref, /*relaxed=*/required_regions);
+    if (block2realize.count(required_block)) {
+      RelaxBufferRegions</*relax_storage_scope=*/is_compute_at>(
+          /*binding=*/GetBindings(GetRef<BlockRealize>(block2realize.at(required_block))),
+          /*buffer_regions=*/is_compute_at ? required_block->reads : required_block->writes,
+          /*relax_path_low_inclusive=*/GetRef<StmtSRef>(required_block_sref->parent),
+          /*relax_path_high_exclusive=*/loop_sref, /*relaxed=*/required_regions);
+    }
   }
 }
 

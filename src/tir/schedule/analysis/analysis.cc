@@ -256,7 +256,9 @@ int CheckCompleteBlockErrorCode(const ScheduleState& self, const StmtSRef& block
   // Cond 2. Dominant: the block is the only writer of its output,
   // dominating the reader of its output buffers
   if (!IsDominantBlock(self, scope_root_sref, block_sref)) {
-    return 2;
+    if (!IsHorizontalFuse(self)) {
+      return 2;
+    }
   }
   // Cond 3. No overlap between the buffers the block reads and writes
   std::unordered_set<const BufferNode*> written_buffers;

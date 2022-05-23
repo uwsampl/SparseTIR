@@ -118,7 +118,7 @@ def csr2ell_index_map(i, j):
 def bench_hyb(g, feat_size=128):
     # still work in progress
     in_degrees = g.in_degrees()
-    bucket_sizes = [4, 8, 16, 32, 64, 128, 256, 512]
+    bucket_sizes = [4, 16, 64, 256]
 
     # rewrite csrmm
     nnz_cols_symbol = ell.params[-1]
@@ -164,7 +164,7 @@ def bench_hyb(g, feat_size=128):
         ell_indices[bucket_size] = th.stack(indices)
         ell_a[bucket_size] = th.stack(a)
 
-    # split rows for bucket size 512
+    # split rows for the last bucket
     indices = []
     a = []
     new_rows = []
@@ -203,62 +203,27 @@ def bench_hyb(g, feat_size=128):
     mod = sch.mod
     mod = tvm.sparse.lower_sparse_iter(mod)
     sch = tvm.tir.Schedule(mod)
-    # schedule 4
-    blk_4 = sch.get_block("csrmm_40")
-    i, j, f = sch.get_loops(blk_4)
-    sch.bind(f, "threadIdx.x")
-    sch.unroll(j)
-    sch.bind(i, "blockIdx.x")
-    # schedule 8
-    blk_8 = sch.get_block("csrmm_80")
-    i, j, f = sch.get_loops(blk_8)
-    sch.bind(f, "threadIdx.x")
-    sch.unroll(j)
-    sch.bind(i, "blockIdx.x")
-    # schedule 16
-    blk_16 = sch.get_block("csrmm_160")
-    i, j, f = sch.get_loops(blk_16)
-    sch.bind(f, "threadIdx.x")
-    sch.unroll(j)
-    sch.bind(i, "blockIdx.x")
-    # schedule 32
-    blk_32 = sch.get_block("csrmm_320")
-    i, j, f = sch.get_loops(blk_32)
-    sch.bind(f, "threadIdx.x")
-    sch.unroll(j)
-    sch.bind(i, "blockIdx.x")
-    # schedule 64
-    blk_64 = sch.get_block("csrmm_640")
-    i, j, f = sch.get_loops(blk_64)
-    sch.bind(f, "threadIdx.x")
-    sch.unroll(j)
-    sch.bind(i, "blockIdx.x")
-    # schedule 128
-    blk_128 = sch.get_block("csrmm_1280")
-    i, j, f = sch.get_loops(blk_128)
-    sch.bind(f, "threadIdx.x")
-    sch.unroll(j)
-    sch.bind(i, "blockIdx.x")
-    # schedule 256
-    blk_256 = sch.get_block("csrmm_2560")
-    i, j, f = sch.get_loops(blk_256)
-    sch.bind(f, "threadIdx.x")
-    sch.unroll(j)
-    sch.bind(i, "blockIdx.x")
-    # schedule 512
-    blk_512 = sch.get_block("csrmm_5120")
-    i, j, f = sch.get_loops(blk_512)
+    for bucket_size in bucket_sizes[:-1]:
+        blk = sch.get_block("csrmm_{}0".format(bucket_size))
+        i, j, f = sch.get_loops(blk)
+        sch.bind(f, "threadIdx.x")
+        sch.unroll(j)
+        sch.bind(i, "blockIdx.x")
+
+    # schedule last bucket
+    blk = sch.get_block("csrmm_{}0".format(bucket_sizes[-1]))
+    i, j, f = sch.get_loops(blk)
     sch.reorder(f, j)
+    sch.annotate(blk, "atomic", True)
+    write_blk = sch.cache_write(blk, 0, "local")
+    sch.reverse_compute_at(write_blk, f)
     sch.bind(f, "threadIdx.x")
     sch.unroll(j)
     sch.bind(i, "blockIdx.x")
-    sch.annotate(blk_512, "atomic", True)
-    _ = sch.blockize(j)
-    write_blk = sch.cache_write(blk_512, 0, "local")
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
     f = tvm.build(mod, target="cuda")
-    # print(f.imported_modules[0].get_source())
+    print(f.imported_modules[0].get_source())
 
     b_nd = tvm.nd.array(np.ones(n * feat_size,).astype("float32"), device=tvm.cuda(0))
     c_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
@@ -276,10 +241,10 @@ def bench_hyb(g, feat_size=128):
     args = [b_nd, c_nd]
     for bucket_size in bucket_sizes:
         args += [ell_a_nd[bucket_size], ell_indices_i_nd[bucket_size], ell_indices_j_nd[bucket_size]]
+    print(ell_n)
     for i in range(10):
         with TorchOpTimer() as timer:
             f(*args)
-        print(c_nd.numpy())
         if i >= cold_start_time:
             accum_time += timer.time
             runs += 1

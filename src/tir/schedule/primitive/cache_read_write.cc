@@ -711,8 +711,9 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_bu
   info.annotations = block->annotations;
 
   // Step 3. Check the only writer block.
-  // NOTE(zihao): disable it for horizontal fuse
-  // ICHECK_EQ(block_sref.get(), GetOnlyWriteBlock(self, scope_sref, write_buffer).get());
+  if (!IsHorizontalFuse(self)) {
+    ICHECK_EQ(block_sref.get(), GetOnlyWriteBlock(self, scope_sref, write_buffer).get());
+  }
 
   // Step 4. Find the producing region and insert position
   BufferRegion region = GetBufferRegionFromBuffer(block->writes, write_buffer).value();
