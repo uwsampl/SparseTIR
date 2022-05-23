@@ -677,6 +677,12 @@ TVM_DLL Pass RemovePreprocess();
  */
 TVM_DLL Pass InjectScope();
 
+/*!
+ * \brief Remove unused arguments.
+ * \return The pass.
+ */
+TVM_DLL Pass RemovedUnusedArgs();
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm

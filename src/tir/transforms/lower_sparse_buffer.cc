@@ -64,9 +64,25 @@ Map<Var, Buffer> UpdateBufferMap(PrimFunc f) {
  */
 class BufferTransformer : public StmtExprMutator {
  public:
-  explicit BufferTransformer(Map<Var, Buffer> buffer_map) : buffer_map_(std::move(buffer_map)) {}
+  explicit BufferTransformer(const Array<Axis>& sp_axes, Map<Var, Buffer> buffer_map)
+      : buffer_map_(std::move(buffer_map)) {
+    for (const Axis& axis : sp_axes) {
+      if (axis->indptr.defined()) {
+        indptr_buf.insert(buffer_map_.Get(axis->indptr.value()).get());
+      }
+    }
+  }
 
  private:
+  PrimExpr Simplify(const BufferLoad& load) {
+    if (indptr_buf.count(load->buffer.get()) && load->indices.size() == 1) {
+      if (ana_.CanProveEqual(load->indices[0], Integer(0))) {
+        return Integer(0);
+      }
+    }
+    return load;
+  }
+
   /*!
    * \brief Compute the offset on underlying flattened buffer of given a given sparse buffer access.
    * \param axes The axes of the sparse buffer.
@@ -77,7 +93,6 @@ class BufferTransformer : public StmtExprMutator {
      * if variable: offset
      */
     size_t ndim = axes.size();
-    arith::Analyzer ana;
     PrimExpr accum = Integer(0);
     // TODO(zihao): address the flatten axis.
     std::unordered_map<Axis, PrimExpr, StructuralHash, StructuralEqual> offset_map;
@@ -87,13 +102,8 @@ class BufferTransformer : public StmtExprMutator {
       const PrimExpr& index = indices[i];
       const Axis& root = GetRootAxis(axis);
       if (axis->IsVariable()) {
-        if (ana.CanProveEqual(offset_map[GetParentAxis(axis)], Integer(0))) {
-          // simplify expression by equality: indptr[0] = 0
-          offset_map[axis] = index;
-        } else {
-          offset_map[axis] = index + BufferLoad(buffer_map_[axis->indptr.value()],
-                                                {offset_map[GetParentAxis(axis)]});
-        }
+        offset_map[axis] = index + Simplify(BufferLoad(buffer_map_[axis->indptr.value()],
+                                                       {offset_map[GetParentAxis(axis)]}));
         root_nnz_map[root] = axis->nnz;
       } else {
         offset_map[axis] = index;
@@ -126,8 +136,8 @@ class BufferTransformer : public StmtExprMutator {
             }
             already_counted.insert(root);
           } else {
-            offset_lb = BufferLoad(buffer_map_[axis_j->indptr.value()], {offset_lb});
-            offset_ub = BufferLoad(buffer_map_[axis_j->indptr.value()], {offset_ub});
+            offset_lb = Simplify(BufferLoad(buffer_map_[axis_j->indptr.value()], {offset_lb}));
+            offset_ub = Simplify(BufferLoad(buffer_map_[axis_j->indptr.value()], {offset_ub}));
           }
         }
         if (flattened_axis) {
@@ -137,23 +147,25 @@ class BufferTransformer : public StmtExprMutator {
         }
       }
     }
-    return ana.Simplify(accum);
+    return ana_.Simplify(accum);
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     Array<PrimExpr> indices;
+    BufferLoad ret;
     for (const PrimExpr& index : op->indices) {
       indices.push_back(VisitExpr(index));
     }
     if (const SparseBufferNode* sp_buf = op->buffer.as<SparseBufferNode>()) {
-      return BufferLoad(sp_buf->flattened, {ComputeOffset(sp_buf->axes, indices)});
+      ret = BufferLoad(sp_buf->flattened, {ComputeOffset(sp_buf->axes, indices)});
     } else {
       if (indices.same_as(op->indices)) {
-        return GetRef<BufferLoad>(op);
+        ret = GetRef<BufferLoad>(op);
       } else {
-        return BufferLoad(op->buffer, indices);
+        ret = BufferLoad(op->buffer, indices);
       }
     }
+    return Simplify(ret);
   }
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
@@ -175,7 +187,6 @@ class BufferTransformer : public StmtExprMutator {
 
   Array<BufferRegion> UpdateAccessRegion(Array<BufferRegion> regions) {
     Array<BufferRegion> new_regions;
-    arith::Analyzer ana;
     for (const BufferRegion& access : regions) {
       const Buffer& buf = access->buffer;
       const Array<Range>& ranges = access->region;
@@ -184,7 +195,7 @@ class BufferTransformer : public StmtExprMutator {
         Array<PrimExpr> min_indices;
         for (const Range& range : ranges) {
           min_indices.push_back(VisitExpr(range->min));
-          if (!ana.CanProveEqual(range->extent, Integer(1))) {
+          if (!ana_.CanProveEqual(range->extent, Integer(1))) {
             single_point = false;
           }
         }
@@ -220,27 +231,17 @@ class BufferTransformer : public StmtExprMutator {
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
     // if some iter vars are binded to 0, substitute corresponding variable with 0
     Array<PrimExpr> new_iter_values;
-    for (const PrimExpr& iter_value: op->iter_values) {
+    for (const PrimExpr& iter_value : op->iter_values) {
       new_iter_values.push_back(VisitExpr(iter_value));
     }
-    arith::Analyzer ana;
     Block block = op->block;
-    Optional<Stmt> init = block->init;
-    Stmt body = block->body;
-    std::unordered_map<const VarNode*, PrimExpr> var_map_;
+    Map<Var, PrimExpr> var_map;
     for (size_t i = 0; i < new_iter_values.size(); ++i) {
-      if (ana.CanProveEqual(new_iter_values[i], Integer(0))) {
-        var_map_[block->iter_vars[i]->var.get()] = Integer(0);
+      if (ana_.CanProveEqual(new_iter_values[i], Integer(0))) {
+        var_map.Set(block->iter_vars[i]->var, Integer(0));
       }
     }
-    if (init.defined()) {
-      init = Substitute(init.value(), var_map_);
-    }
-    body = Substitute(body, var_map_);
-    auto block_node = CopyOnWrite(block.get());
-    block_node->init = init;
-    block_node->body = body;
-    Stmt new_block = VisitStmt(Block(block_node));
+    Stmt new_block = VisitStmt(Substitute(block, var_map));
     auto block_realize_node = CopyOnWrite(op);
     block_realize_node->iter_values = new_iter_values;
     block_realize_node->predicate = VisitExpr(op->predicate);
@@ -276,6 +277,8 @@ class BufferTransformer : public StmtExprMutator {
     return Block(n);
   }
   Map<Var, Buffer> buffer_map_;
+  arith::Analyzer ana_;
+  std::unordered_set<const BufferNode*> indptr_buf;
 };
 
 PrimFunc LowerSparseBuffer(PrimFunc f) {
@@ -284,10 +287,10 @@ PrimFunc LowerSparseBuffer(PrimFunc f) {
     PrimFuncNode* fptr = f.CopyOnWrite();
     // Step 1. Update the PrimFunc's buffer map.
     fptr->buffer_map = std::move(UpdateBufferMap(f));
-    // Step 2. Remove sp_axes and sp_axes_param
-    fptr->sp_axes.clear();
     // Step 3. Lower sparse buffers.
-    fptr->body = BufferTransformer(fptr->buffer_map)(std::move(fptr->body));
+    fptr->body = BufferTransformer(fptr->sp_axes, fptr->buffer_map)(std::move(fptr->body));
+    // Step 2. Remove sparse axes
+    fptr->sp_axes.clear();
     // Step 4. Lower sparse tir level
     Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;
     new_attr_dict.Set("sparse_tir_level", Integer(0));

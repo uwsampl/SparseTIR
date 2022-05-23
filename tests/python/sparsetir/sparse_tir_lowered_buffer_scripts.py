@@ -469,7 +469,7 @@ def fused_sddmm(
             vi = T.axis.spatial(1, 0)
             vj = T.axis.spatial(nnz, j)
             T.reads(J_indptr_data[0 : m + 1])
-            T.writes(mid_0_data[vj + J_indptr_data[vi]])
+            T.writes(mid_0_data[vj])
             T.block_attr({"preprocess": True, "sparse": True})
             low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
             high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
@@ -488,12 +488,12 @@ def fused_sddmm(
             vi = T.axis.spatial(1, 0)
             vj, vk = T.axis.remap("SR", [j, k])
             T.reads(
-                A_data[mid_0_data[vj + J_indptr_data[vi]] * feat_size + vk],
-                mid_0_data[vj + J_indptr_data[vi]],
-                B_data[J_indices_data[vj + J_indptr_data[vi]] * feat_size + vk],
-                J_indices_data[vj + J_indptr_data[vi]],
+                A_data[mid_0_data[vj] * feat_size + vk],
+                mid_0_data[vj],
+                B_data[J_indices_data[vj] * feat_size + vk],
+                J_indices_data[vj],
             )
-            T.writes(C_data[vj + J_indptr_data[vi]])
+            T.writes(C_data[vj])
             T.block_attr({"sparse": True})
             with T.init():
                 C_data[vj] = T.float32(0)
@@ -705,7 +705,7 @@ def fused_reduction_4d_2d(
             vi = T.axis.spatial(1, 0)
             vj = T.axis.spatial(nnz_j, j)
             T.reads(K_indptr_data[0 : nnz_j + 1], L_indptr_data[0 : nnz_k + 1], X_data[0:nnz_l])
-            T.writes(Y_data[vj + J_indptr_data[vi]])
+            T.writes(Y_data[vj])
             T.block_attr({"sparse": True})
             for k in T.serial(K_indptr_data[vj + 1] - K_indptr_data[vj]):
                 with T.block("reduction_4d_2d1"):
@@ -756,7 +756,7 @@ def fused_reduction_4d_3d(
             vj = T.axis.spatial(1, 0)
             vk = T.axis.spatial(nnz_k, k)
             T.reads(L_indptr_data[0 : nnz_k + 1], X_data[0:nnz_l])
-            T.writes(Y_data[vk + K_indptr_data[vj + J_indptr_data[vi]]])
+            T.writes(Y_data[vk])
             T.block_attr({"sparse": True})
             for l in T.serial(L_indptr_data[vk + 1] - L_indptr_data[vk]):
                 with T.block("reduction_4d_3d1"):

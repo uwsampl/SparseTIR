@@ -891,6 +891,21 @@ def RemovePreprocess():
     return _ffi_api.RemovePreprocess()  # type: ignore
 
 def InjectScope():
-    """
+    """Inject scope to avoid duplicate computation (e.g. in atomic operators)
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
     """
     return _ffi_api.InjectScope()  # type: ignore
+
+def RemoveUnusedArgs():
+    """Remove unused arguments.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.RemoveUnusedArgs()  # type: ignore

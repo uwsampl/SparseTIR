@@ -18,7 +18,7 @@
  */
 
 /*!
- * \file extract_preprocess.cc
+ * \file remove_preprocess.cc
  */
 
 #include <tvm/tir/stmt_functor.h>

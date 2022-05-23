@@ -150,6 +150,7 @@ def bench_hyb(g, feat_size=128):
     for bucket_size in bucket_sizes:
         ell_n[bucket_size] = len(ell_rows[bucket_size])
     n = g.num_nodes()
+    nnz = g.num_edges()
 
     ell_indices = {}
     ell_a = {}
@@ -180,22 +181,20 @@ def bench_hyb(g, feat_size=128):
     ell_rows[bucket_size] = th.tensor(new_rows).int()
     ell_n[bucket_size] = len(new_rows)
 
-    # N4, N8, N16, N32, N64, N128, N256, N512, N, F = csrmm_hyb_tir.params[-10:]
     params = mod["main"].params
     param_map = {
         params[5]: g.num_dst_nodes(), # m
         params[6]: g.num_src_nodes(), # n
         params[7]: feat_size, # feat_size,
-        params[8]: g.num_edges(), # nnz
+        params[8]: nnz, # nnz
     }
     for i in range(len(bucket_sizes)):
-        bucket_size = len(bucket_sizes)
+        bucket_size = bucket_sizes[i]
         param_map[params[9 + 7 * i + 4]] = g.num_dst_nodes()
         param_map[params[9 + 7 * i + 5]] = g.num_src_nodes()
         param_map[params[9 + 7 * i + 6]] = ell_n[bucket_size]
 
     mod["main"] = mod["main"].specialize(param_map).with_attr("horizontal_fuse", True)
-    print(mod["main"].script())
     sch = tvm.tir.Schedule(mod)
     for sp_iter_name in ['csrmm_{}'.format(bucket_size) for bucket_size in bucket_sizes]:
         sp_iteration = sch.get_sparse_iteration(sp_iter_name)
@@ -257,74 +256,29 @@ def bench_hyb(g, feat_size=128):
     _ = sch.blockize(j)
     write_blk = sch.cache_write(blk_512, 0, "local")
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
+    mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
     f = tvm.build(mod, target="cuda")
-    print(f.imported_modules[0].get_source())
+    # print(f.imported_modules[0].get_source())
 
-    assert False
     b_nd = tvm.nd.array(np.ones(n * feat_size,).astype("float32"), device=tvm.cuda(0))
     c_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
-    placeholder = tvm.nd.array(np.zeros((2,)).astype("int32"), device=tvm.cuda(0))
-    row_4_nd = tvm.nd.array(rows_4.numpy().astype("int32"), device=tvm.cuda(0))
-    row_8_nd = tvm.nd.array(rows_8.numpy().astype("int32"), device=tvm.cuda(0))
-    row_16_nd = tvm.nd.array(rows_16.numpy().astype("int32"), device=tvm.cuda(0))
-    row_32_nd = tvm.nd.array(rows_32.numpy().astype("int32"), device=tvm.cuda(0))
-    row_64_nd = tvm.nd.array(rows_64.numpy().astype("int32"), device=tvm.cuda(0))
-    row_128_nd = tvm.nd.array(rows_128.numpy().astype("int32"), device=tvm.cuda(0))
-    row_256_nd = tvm.nd.array(rows_256.numpy().astype("int32"), device=tvm.cuda(0))
-    row_512_nd = tvm.nd.array(rows_512.numpy().astype("int32"), device=tvm.cuda(0))
-    a_4_nd = tvm.nd.array(a_4.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
-    a_8_nd = tvm.nd.array(a_8.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
-    a_16_nd = tvm.nd.array(a_16.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
-    a_32_nd = tvm.nd.array(a_32.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
-    a_64_nd = tvm.nd.array(a_64.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
-    a_128_nd = tvm.nd.array(a_128.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
-    a_256_nd = tvm.nd.array(a_256.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
-    a_512_nd = tvm.nd.array(a_512.view(-1).numpy().astype("float32"), device=tvm.cuda(0))
-    indices_4_nd = tvm.nd.array(indices_4.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
-    indices_8_nd = tvm.nd.array(indices_8.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
-    indices_16_nd = tvm.nd.array(indices_16.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
-    indices_32_nd = tvm.nd.array(indices_32.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
-    indices_64_nd = tvm.nd.array(indices_64.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
-    indices_128_nd = tvm.nd.array(indices_128.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
-    indices_256_nd = tvm.nd.array(indices_256.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
-    indices_512_nd = tvm.nd.array(indices_512.view(-1).numpy().astype("int32"), device=tvm.cuda(0))
-    print(a_4_nd)
-    print(a_8_nd)
+    ell_indices_i_nd = {}
+    ell_a_nd = {}
+    ell_indices_j_nd = {}
+    for bucket_size in bucket_sizes:
+        ell_indices_i_nd[bucket_size] = tvm.nd.array(ell_rows[bucket_size].numpy().astype("int32"), device=tvm.cuda(0))
+        ell_a_nd[bucket_size] = tvm.nd.array(ell_a[bucket_size].view(-1).numpy().astype("float32"), device=tvm.cuda(0))
+        ell_indices_j_nd[bucket_size] = tvm.nd.array(ell_indices[bucket_size].view(-1).numpy().astype("int32"), device=tvm.cuda(0))
 
     accum_time = 0.0
     runs = 0
     cold_start_time = 3
+    args = [b_nd, c_nd]
+    for bucket_size in bucket_sizes:
+        args += [ell_a_nd[bucket_size], ell_indices_i_nd[bucket_size], ell_indices_j_nd[bucket_size]]
     for i in range(10):
         with TorchOpTimer() as timer:
-            f(
-                b_nd,
-                c_nd,
-                placeholder,
-                row_4_nd,
-                indices_4_nd,
-                a_4_nd,
-                row_8_nd,
-                indices_8_nd,
-                a_8_nd,
-                row_16_nd,
-                indices_16_nd,
-                a_16_nd,
-                row_32_nd,
-                indices_32_nd,
-                a_32_nd,
-                row_64_nd,
-                indices_64_nd,
-                a_64_nd,
-                row_128_nd,
-                indices_128_nd,
-                a_128_nd,
-                row_256_nd,
-                indices_256_nd,
-                a_256_nd,
-                row_512_nd,
-                indices_512_nd,
-                a_512_nd,
-            )
+            f(*args)
         print(c_nd.numpy())
         if i >= cold_start_time:
             accum_time += timer.time
