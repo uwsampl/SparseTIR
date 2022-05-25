@@ -115,10 +115,10 @@ def csr2ell_inv_index_map(o, i, j):
 def csr2ell_index_map(i, j):
     return 0, i, j
 
-def bench_hyb(g, feat_size=128):
+def bench_hyb(g, feat_size=128, bucket_sizes=[]):
     # still work in progress
     in_degrees = g.in_degrees()
-    bucket_sizes = [4, 16, 64, 256]
+    # bucket_sizes = [4, 16, 64, 256]
 
     # rewrite csrmm
     nnz_cols_symbol = ell.params[-1]
@@ -142,11 +142,11 @@ def bench_hyb(g, feat_size=128):
 
     ell_rows = {}
     ell_n = {}
-    ell_rows[bucket_sizes[0]] = ((in_degrees <= 4)).nonzero().view(-1)
+    ell_rows[bucket_sizes[0]] = ((in_degrees <= bucket_sizes[0])).nonzero().view(-1)
     for i in range(1, len(bucket_sizes) - 1):
         bucket_size = bucket_sizes[i]
         ell_rows[bucket_size] = ((in_degrees <= bucket_size) & (in_degrees > bucket_sizes[i - 1])).nonzero().view(-1)
-    ell_rows[bucket_sizes[-1]] = (in_degrees > 256).nonzero().view(-1)
+    ell_rows[bucket_sizes[-1]] = (in_degrees > bucket_sizes[-2]).nonzero().view(-1)
     for bucket_size in bucket_sizes:
         ell_n[bucket_size] = len(ell_rows[bucket_size])
     n = g.num_nodes()
@@ -206,9 +206,15 @@ def bench_hyb(g, feat_size=128):
     for bucket_size in bucket_sizes[:-1]:
         blk = sch.get_block("csrmm_{}0".format(bucket_size))
         i, j, f = sch.get_loops(blk)
-        sch.bind(f, "threadIdx.x")
-        sch.unroll(j)
-        sch.bind(i, "blockIdx.x")
+        foo, foi, fi = sch.split(f, [None, 2, 32])
+        sch.bind(fi, "threadIdx.x")
+        sch.unroll(foi)
+        sch.bind(foo, "blockIdx.y")
+        jo, ji = sch.split(j, [None, min(32, bucket_size)])
+        sch.unroll(ji)
+        io, ii = sch.split(i, [None, max(1, 32 // bucket_size)])
+        sch.unroll(ii)
+        sch.bind(io, "blockIdx.x")
 
     # schedule last bucket
     blk = sch.get_block("csrmm_{}0".format(bucket_sizes[-1]))
@@ -217,13 +223,21 @@ def bench_hyb(g, feat_size=128):
     sch.annotate(blk, "atomic", True)
     write_blk = sch.cache_write(blk, 0, "local")
     sch.reverse_compute_at(write_blk, f)
-    sch.bind(f, "threadIdx.x")
-    sch.unroll(j)
-    sch.bind(i, "blockIdx.x")
+    foo, foi, fi = sch.split(f, [None, 2, 32])
+    sch.bind(fi, "threadIdx.x")
+    sch.unroll(foi)
+    sch.bind(foo, "blockIdx.y")
+    # sch.bind(f, "threadIdx.x")
+    jo, ji = sch.split(j, [None, 32])
+    sch.unroll(ji)
+    io, ii = sch.split(i, [None, max(1, 32 // bucket_size)])
+    sch.unroll(ii)
+    sch.bind(io, "blockIdx.x")
+    # sch.bind(i, "blockIdx.x")
+
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
     f = tvm.build(mod, target="cuda")
-    print(f.imported_modules[0].get_source())
 
     b_nd = tvm.nd.array(np.ones(n * feat_size,).astype("float32"), device=tvm.cuda(0))
     c_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
@@ -360,17 +374,19 @@ def bench_tir_csrmm(g, feat_size=128):
 
 if __name__ == "__main__":
     arxiv = DglNodePropPredDataset(name="ogbn-arxiv")
-    g = arxiv[0][0]
+    g = arxiv[0][0] # [1, 2, 4, 8, 16, 32, 64, 128]
     # proteins = DglNodePropPredDataset(name='ogbn-proteins')
     # g = proteins[0][0]
     # pubmed = dgl.data.PubmedGraphDataset()
-    # g = pubmed[0]
+    # g = pubmed[0] # [1, 8, 16]
     # ppi = dgl.data.PPIDataset()
     # g = dgl.batch(ppi)
     # reddit = dgl.data.RedditDataset()
     # g = reddit[0]
 
-    bench_hyb(g, feat_size=128)
-    # for feat_size in [32, 64, 128, 256, 512]:
-    #     print("feat_size=", feat_size)
-    #     bench_tir_csrmm(g, feat_size=feat_size)
+    for feat_size in [32, 64, 128, 256, 512]:
+        print("feat_size=", feat_size)
+        bench_hyb(g, feat_size=feat_size, bucket_sizes=[1, 2, 4, 8, 16, 32, 64, 128])
+    for feat_size in [32, 64, 128, 256, 512]:
+        print("feat_size=", feat_size)
+        bench_tir_csrmm(g, feat_size=feat_size)

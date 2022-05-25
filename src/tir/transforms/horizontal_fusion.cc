@@ -106,9 +106,8 @@ class HorizontalFuser : public StmtExprMutator {
     Var thread_var = thread_tag_var_map_.Get(thread_tag).value();
     if (thread_tag == "blockIdx.x") {
       var_substitution_map_[op->loop_var.get()] = thread_var - blockIdx_x_accum_offset_;
-      Stmt body = IfThenElse(((thread_var >= blockIdx_x_accum_offset_) &&
-                              (thread_var < blockIdx_x_accum_offset_ + original_extent)),
-                             VisitStmt(op->body));
+      Stmt body =
+          IfThenElse(thread_var < blockIdx_x_accum_offset_ + original_extent, VisitStmt(op->body));
       blockIdx_x_accum_offset_ += original_extent->value;
       return body;
     } else {
@@ -129,6 +128,14 @@ class HorizontalFuser : public StmtExprMutator {
       // add an extra loop in root block.
       auto n = CopyOnWrite(op);
       Stmt body = VisitStmt(n->body);
+      if (const SeqStmtNode* seq = body.as<SeqStmtNode>()) {
+        Stmt inner = seq->seq.back();
+        for (int i = seq->seq.size() - 2; i >= 0; i--) {
+          IfThenElse other = Downcast<IfThenElse>(seq->seq[i]);
+          inner = IfThenElse(other->condition, other->then_case, inner);
+        }
+        body = inner;
+      }
       for (auto& kv : thread_tag_extent_map_) {
         String thread_tag = kv.first;
         PrimExpr extent = kv.second;
