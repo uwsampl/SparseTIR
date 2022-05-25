@@ -476,6 +476,13 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   LoopSubspaceCollector collector;
   collector.Collect(block_sref, loop_sref);
 
+  StmtSRef block_scope_sref = GetScopeRoot(self, loop_sref, /*require_stage_pipeline=*/false);
+  const BlockNode* block_scope = TVM_SREF_TO_BLOCK(block_scope, block_scope_sref);
+  for (const IterVar& iter : block_scope->iter_vars) {
+    collector.outer_loop_vars.push_back(iter->var);
+    collector.loop_var_domain.Set(iter->var, iter->dom);
+  }
+
   // Step 3: Calculate subspace division for the inner loops.
   Array<Array<arith::IterMark>> division =
       CheckSubspaceDivisible(self->mod, block_realize, collector, &analyzer);
