@@ -307,6 +307,11 @@ class IterMapRewriter : public ExprMutator {
   PrimExpr VisitExpr_(const FloorDivNode* op) final;
   PrimExpr VisitExpr_(const FloorModNode* op) final;
 
+  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
+    // TODO(zihao): add checks here.
+    return IterSumExpr({}, GetRef<BufferLoad>(op));
+  }
+
  private:
   // temp hash for de-duplication purposes.
   struct IterSumHash {
@@ -897,7 +902,7 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   // Overall detection algorithm is divided into two steps:
   // - Step0: IterMapRewriter rewrites the expression to use IterMapExpr patterns.
   // - Step1: IterIndependenceChecker checks if the iterator are independent.
-  if (!IterRangeSanityCheck(input_iters)) return Array<IterSumExpr>();
+  // if (!IterRangeSanityCheck(input_iters)) return Array<IterSumExpr>();
   Map<Var, Range> constrained_input_iters = input_iters;
   std::vector<IterConstraint> constraints;
   if (!is_one(predicate) &&
@@ -1596,7 +1601,7 @@ Array<Array<IterMark>> SubspaceDivide(const Array<PrimExpr>& bindings,
                                       const Map<Var, Range>& input_iters,
                                       const Array<Var>& sub_iters, const PrimExpr& predicate,
                                       bool require_bijective, arith::Analyzer* analyzer) {
-  if (!IterRangeSanityCheck(input_iters)) return Array<Array<IterMark>>();
+  // if (!IterRangeSanityCheck(input_iters)) return Array<Array<IterMark>>();
   const Array<IterSumExpr>& maps =
       DetectIterMap(bindings, input_iters, predicate, require_bijective, analyzer);
   if (maps.empty()) return {};

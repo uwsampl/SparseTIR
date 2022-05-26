@@ -97,7 +97,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         }
       }
       if (sync_before_stmt) {
-        ICHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition";
+        // ICHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition";
         syncs_inserted_.insert(s.stmt);
       }
     }

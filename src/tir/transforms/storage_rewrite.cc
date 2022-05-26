@@ -227,19 +227,7 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
   }
 
   void VisitStmt_(const IfThenElseNode* op) final {
-    StmtEntry e_then;
-    e_then.stmt = op->then_case.get();
-    int64_t then_begin_index = EnterNewScope(e_then);
-    StmtExprVisitor::VisitStmt(op->then_case);
-    ExitNewScope(e_then, then_begin_index);
-    StmtEntry e_else;
-    if (!op->else_case.same_as(Stmt())) {
-      // else case not empty;
-      e_else.stmt = op->else_case.get();
-      int64_t else_begin_index = EnterNewScope(e_else);
-      StmtExprVisitor::VisitStmt(op->else_case);
-      ExitNewScope(e_else, else_begin_index);
-    }
+    VisitNewScope(op);
   }
 
   void VisitStmt_(const ForNode* op) final { VisitNewScope(op); }

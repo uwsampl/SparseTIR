@@ -262,7 +262,7 @@ Array<Array<arith::IterMark>> CheckSubspaceDivisible(const IRModule& mod,
       arith::SubspaceDivide(block_realize->iter_values, collector.loop_var_domain,
                             collector.inner_loop_vars, block_realize->predicate,
                             /*require_bijective=*/false, analyzer);
-
+  
   if (division.empty()) {
     // If we can't do perfect subspace division, check if it is a trivial case of subspace division.
     // In this case, we can still blockize.

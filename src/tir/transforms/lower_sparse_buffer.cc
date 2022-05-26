@@ -268,7 +268,21 @@ class BufferTransformer : public StmtExprMutator {
       }
     }
     n->alloc_buffers = std::move(new_alloc_buffers);
-    // TODO(zihao): update match buffer
+    // update match_buffer
+    Array<MatchBufferRegion> new_match_buffers;
+    for (const MatchBufferRegion& buf_region: op->match_buffers) {
+      Array<Range> new_ranges;
+      for (const Range& range: buf_region->source->region) {
+        new_ranges.push_back(Range::FromMinExtent(
+          VisitExpr(range->min), VisitExpr(range->extent)
+        ));
+      }
+      BufferRegion new_src(buf_region->source->buffer, new_ranges);
+      new_match_buffers.push_back(MatchBufferRegion(
+        buf_region->buffer, new_src
+      ));
+    }
+    n->match_buffers = std::move(new_match_buffers);
     // update read/write regions in lower buffer process.
     n->reads = UpdateAccessRegion(std::move(n->reads));
     n->writes = UpdateAccessRegion(std::move(n->writes));
