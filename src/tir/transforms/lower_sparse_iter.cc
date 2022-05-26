@@ -379,14 +379,12 @@ class IterTransformer : public StmtExprMutator {
    * \param block_iters The block iterators defined in the outermost block in `body`.
    * \param iter_binding The itervar bindings defined in the outermost block in `body`.
    * \param block_axes The axes corresponding to itervars defined in the outermost block in `body`.
-   * \param start_offset Some iter vars are inherited from outer blocks, no need to create new loop.
    * \return The outermost generated loop.
    */
   Stmt GenerateLoops(Stmt body, const Array<IterVar>& block_iters,
-                     const Array<PrimExpr>& iter_bindings, const Array<Axis>& block_axes,
-                     int start_offset = 0) {
+                     const Array<PrimExpr>& iter_bindings, const Array<Axis>& block_axes) {
     int n_iter = static_cast<int>(block_iters.size());
-    for (int i = n_iter - 1; i >= start_offset; --i) {
+    for (int i = n_iter - 1; i >= 0; --i) {
       const IterVar& iter_var = block_iters[i];
       if (!iter_bindings[i]->IsInstance<VarNode>()) {
         // skip if iter_binding is not a var (only happens in fused axis).
@@ -444,8 +442,6 @@ class IterTransformer : public StmtExprMutator {
       Array<PrimExpr> iter_bindings;
       /*! \brief The init statement of the block */
       Optional<Stmt> init;
-      /*! \brief The var map from outer iter var to inner iter var. */
-      Map<Var, PrimExpr> outer_inner_var_map;
 
       /*!
        * \brief Push a new block iterator/iterator binding/axis to this block.
@@ -522,16 +518,6 @@ class IterTransformer : public StmtExprMutator {
       if (block_infos.back().NeedCreateNewBlock(&ctx_, sp_iter_var->axis)) {
         // Create a new BlockInfo;
         block_infos.emplace_back();
-        const BlockInfo& prev_block_info = block_infos[block_infos.size() - 2];
-        for (size_t j = 0; j < prev_block_info.block_iters.size(); ++j) {
-          IterVar outer_iter_var = prev_block_info.block_iters[j];
-          IterVar inner_iter_var(outer_iter_var->dom,
-                                 Var(outer_iter_var->var->name_hint, outer_iter_var->var->dtype),
-                                 outer_iter_var->iter_type, outer_iter_var->thread_tag);
-          block_infos.back().Push(inner_iter_var, outer_iter_var->var,
-                                  prev_block_info.block_axes[j]);
-          block_infos.back().outer_inner_var_map.Set(outer_iter_var->var, inner_iter_var->var);
-        }
       }
       // Create loop information
       bool remove_loop_var = false;
@@ -645,12 +631,11 @@ class IterTransformer : public StmtExprMutator {
       BlockRealize block_realize(
           /*iter_values=*/info.iter_bindings,
           /*predicate=*/const_true(),
-          /*block=*/Downcast<Block>(Substitute(block, info.outer_inner_var_map)));
+          /*block=*/block);
 
       // Create loops
       body = std::move(block_realize);
-      Stmt loop = GenerateLoops(body, info.block_iters, info.iter_bindings, info.block_axes,
-                                info.outer_inner_var_map.size());
+      Stmt loop = GenerateLoops(body, info.block_iters, info.iter_bindings, info.block_axes);
       body = std::move(loop);
     }
 
