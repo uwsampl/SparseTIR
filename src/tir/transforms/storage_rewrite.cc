@@ -226,9 +226,7 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
     }
   }
 
-  void VisitStmt_(const IfThenElseNode* op) final {
-    VisitNewScope(op);
-  }
+  void VisitStmt_(const IfThenElseNode* op) final { VisitNewScope(op); }
 
   void VisitStmt_(const ForNode* op) final { VisitNewScope(op); }
 

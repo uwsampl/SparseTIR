@@ -1398,7 +1398,9 @@ class SubspaceDivider {
   DivisionResult DivideIterSumExpr(const IterSumExpr& expr, const PrimExpr& mark_extent) {
     if (expr->args.empty()) {
       // base
-      return DivisionResult(IterSumExpr({}, 0), 1, IterSumExpr({}, expr->base), 1);
+      // return DivisionResult(IterSumExpr({}, 0), 1, IterSumExpr({}, expr->base), 1);
+      // NOTE(zihao): change to put base outside.
+      return DivisionResult(IterSumExpr({}, expr->base), 1, IterSumExpr({}, 0), 1);
     } else if (expr->args.size() == 1) {
       // arg + base, if arg=Y*E(X)+X, then arg+base = Y*E(X)+(X+base)
       if (!is_one(expr->args[0]->scale)) {

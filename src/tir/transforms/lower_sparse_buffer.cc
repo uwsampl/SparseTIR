@@ -249,13 +249,16 @@ class BufferTransformer : public StmtExprMutator {
     return BlockRealize(block_realize_node);
   }
 
-  Stmt VisitStmt_(const BlockNode* op) final {
-    // visit body and init block recursively.
-    Optional<Stmt> init = NullOpt;
-    if (op->init.defined()) {
-      init = VisitStmt(op->init.value());
+  PrimExpr VisitExpr_(const VarNode* op) final {
+    Var var = GetRef<Var>(op);
+    if (global_var_map_.count(var)) {
+      return global_var_map_.Get(var).value();
+    } else {
+      return var;
     }
-    Stmt body = VisitStmt(op->body);
+  }
+
+  Stmt VisitStmt_(const BlockNode* op) final {
     auto n = CopyOnWrite(op);
     n->iter_vars = std::move(op->iter_vars);
     // update alloc_buffer
@@ -271,21 +274,50 @@ class BufferTransformer : public StmtExprMutator {
     // update match_buffer
     Array<MatchBufferRegion> new_match_buffers;
     for (const MatchBufferRegion& buf_region: op->match_buffers) {
-      Array<Range> new_ranges;
-      for (const Range& range: buf_region->source->region) {
-        new_ranges.push_back(Range::FromMinExtent(
-          VisitExpr(range->min), VisitExpr(range->extent)
+      Buffer dst_buf = buf_region->buffer;
+      Buffer src_buf = buf_region->source->buffer;
+      if (const SparseBufferNode* sp_buf = src_buf.as<SparseBufferNode>()) {
+        // TODO(zihao): handle more complicated case.
+        global_var_map_.Set(dst_buf->data, sp_buf->flattened->data);
+        ICHECK(dst_buf->elem_offset->IsInstance<VarNode>()) << "The elem_offset of new matched buffer must be var.";
+        PrimExpr real_offset = src_buf->elem_offset;
+        Array<PrimExpr> min_indices;
+        for (const Range& range: buf_region->source->region) {
+          min_indices.push_back(VisitExpr(range->min));
+        }
+        real_offset = real_offset + ComputeOffset(sp_buf->axes, min_indices);
+        global_var_map_.Set(Downcast<Var>(dst_buf->elem_offset), ana_.Simplify(real_offset));
+        Array<PrimExpr> strides = dst_buf->strides;
+        PrimExpr stride = Integer(1);
+        for (int i = strides.size() - 1; i >= 0; i--) {
+          ICHECK(strides[i]->IsInstance<VarNode>()) << "The strides of new matched buffer must be var.";
+          Var stride_var_i = Downcast<Var>(strides[i]);
+          global_var_map_.Set(stride_var_i, stride);
+          stride = ana_.Simplify(stride * sp_buf->axes[i]->length);
+        }
+      } else {
+        Array<Range> new_ranges;
+        for (const Range& range: buf_region->source->region) {
+          new_ranges.push_back(Range::FromMinExtent(
+            VisitExpr(range->min), VisitExpr(range->extent)
+          ));
+        }
+        BufferRegion new_src(src_buf, new_ranges);
+        new_match_buffers.push_back(MatchBufferRegion(
+          dst_buf, new_src
         ));
       }
-      BufferRegion new_src(buf_region->source->buffer, new_ranges);
-      new_match_buffers.push_back(MatchBufferRegion(
-        buf_region->buffer, new_src
-      ));
     }
     n->match_buffers = std::move(new_match_buffers);
     // update read/write regions in lower buffer process.
     n->reads = UpdateAccessRegion(std::move(n->reads));
     n->writes = UpdateAccessRegion(std::move(n->writes));
+    // visit body and init block recursively.
+    Optional<Stmt> init = NullOpt;
+    if (op->init.defined()) {
+      init = VisitStmt(op->init.value());
+    }
+    Stmt body = VisitStmt(op->body);
     n->body = std::move(body);
     n->init = std::move(init);
     return Block(n);
@@ -293,6 +325,7 @@ class BufferTransformer : public StmtExprMutator {
   Map<Var, Buffer> buffer_map_;
   arith::Analyzer ana_;
   std::unordered_set<const BufferNode*> indptr_buf;
+  Map<Var, PrimExpr> global_var_map_;
 };
 
 PrimFunc LowerSparseBuffer(PrimFunc f) {

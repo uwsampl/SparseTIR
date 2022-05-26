@@ -1,4 +1,3 @@
-from distutils.log import debug
 import tvm
 from tvm import tir
 from tvm.script import tir as T
@@ -112,10 +111,10 @@ def wmma_load_a_desc(a: T.handle, a_frag: T.handle) -> None:
 
 @T.prim_func
 def wmma_load_a_impl(a: T.handle, a_frag: T.handle) -> None:
-    s1 = T.var("int32")
     s0 = T.var("int32")
+    s1 = T.var("int32")
     A = T.match_buffer(
-        a, (16, 16), "float16", align=128, offset_factor=16, scope="global", strides=[s1, s0]
+        a, (16, 16), "float16", align=128, offset_factor=16, scope="global", strides=[s0, s1]
     )
     A_frag = T.match_buffer(a_frag, (16, 16), "float16", align=128, offset_factor=16, scope="wmma.matrix_a")
 
@@ -132,7 +131,7 @@ def wmma_load_a_impl(a: T.handle, a_frag: T.handle) -> None:
                 16,
                 A_frag.elem_offset // 256 + T.floordiv(T.floormod(A_frag.elem_offset, 256), 16),
                 A.access_ptr("r"),
-                s1,
+                A.strides[0],
                 "row_major",
                 dtype="handle",
             )
@@ -152,10 +151,10 @@ def wmma_load_b_desc(b: T.handle, b_frag: T.handle) -> None:
 
 @T.prim_func
 def wmma_load_b_impl(b: T.handle, b_frag: T.handle) -> None:
-    s1 = T.var("int32")
     s0 = T.var("int32")
+    s1 = T.var("int32")
     B = T.match_buffer(
-        b, (16, 16), "float16", align=128, offset_factor=16, scope="global", strides=[s1, s0]
+        b, (16, 16), "float16", align=128, offset_factor=16, scope="global", strides=[s0, s1]
     )
     B_frag = T.match_buffer(b_frag, (16, 16), "float16", align=128, offset_factor=16, scope="wmma.matrix_b")
     with T.block("root"):
@@ -171,7 +170,7 @@ def wmma_load_b_impl(b: T.handle, b_frag: T.handle) -> None:
                 16,
                 B_frag.elem_offset // 256 + T.floordiv(T.floormod(B_frag.elem_offset, 256), 16),
                 B.access_ptr("r"),
-                s1,
+                B.strides[0],
                 "row_major",
                 dtype="handle",
             )
@@ -228,13 +227,13 @@ def wmma_store_desc(c_frag: T.handle, c: T.handle) -> None:
 
 @T.prim_func
 def wmma_store_impl(c_frag: T.handle, c: T.handle) -> None:
-    s1 = T.var("int32")
     s0 = T.var("int32")
+    s1 = T.var("int32")
     C_frag = T.match_buffer(
         c_frag, (16, 16), "float32", align=128, offset_factor=16, scope="wmma.accumulator"
     )
     C = T.match_buffer(
-        c, (16, 16), "float32", align=128, offset_factor=16, scope="global", strides=[s1, s0]
+        c, (16, 16), "float32", align=128, offset_factor=16, scope="global", strides=[s0, s1]
     )
     with T.block("root"):
         T.reads(C_frag[0:16, 0:16])
@@ -249,7 +248,7 @@ def wmma_store_impl(c_frag: T.handle, c: T.handle) -> None:
                 16,
                 C_frag.elem_offset // 256 + T.floordiv(T.floormod(C_frag.elem_offset, 256), 16),
                 C.access_ptr("w"),
-                s1,
+                C.strides[0],
                 "row_major",
                 dtype="handle",
             )
@@ -327,21 +326,23 @@ sch.bind(i, "blockIdx.x")
 sch.bind(fo, "blockIdx.y")
 # sch.lift_loop(fo)
 new_blk = sch.blockize(bi)
-blk_init = sch.decompose_reduction(new_blk, j)
+C_local = sch.cache_write(new_blk, 0, "wmma.accumulator")
+sch.reverse_compute_at(C_local, fo)
+sch.decompose_reduction(new_blk, j)
 A_local = sch.cache_read(blk_inner, 1, "wmma.matrix_a")
 B_local = sch.cache_read(blk_inner, 2, "wmma.matrix_b")
-C_local = sch.cache_write(blk_inner, 0, "wmma.accumulator")
 sch.hide_buffer_access(blk_inner, "read", [3])
 sch.tensorize(sch.get_loops(blk_inner)[-3], "wmma_sync")
 sch.tensorize(sch.get_loops(B_local)[-2], "wmma_load_b")
 sch.tensorize(sch.get_loops(A_local)[-2], "wmma_load_a")
 sch.tensorize(sch.get_loops(C_local)[-2], "wmma_store")
-# mod = lower_sparse_buffer(sch.mod)
-print(sch.mod["main"].script())
+sch.tensorize(sch.get_loops(sch.get_block("bsrmm1_init"))[-2], "wmma_fill")
+mod = lower_sparse_buffer(sch.mod)
+print(mod["main"].script())
 
 
 # for t in tqdm(range(0, 2)):
-#     f = tvm.build(bind_block_axis, target="cuda")
+#     f = tvm.build(mod["main"], target="cuda")
 #     ctx = tvm.cuda(0)
 #     A_indptr = tvm.nd.array(np.copy(indptr).astype("int32"), device=ctx)
 #     A_indices = tvm.nd.array(np.copy(indices).astype("int32"), device=ctx)
@@ -360,20 +361,23 @@ print(sch.mod["main"].script())
 # print(evaluator(A_data, X_nd, Y_nd, A_indptr, A_indices))
 
 # for t in tqdm(range(0, 2)):
-#     f = tvm.build(sch.mod["main"], target="cuda")
-#     ctx = tvm.cuda(0)
-#     A_indptr = tvm.nd.array(np.copy(indptr).astype("int32"), device=ctx)
-#     A_indices = tvm.nd.array(np.copy(indices).astype("int32"), device=ctx)
-#     A_data = tvm.nd.array(np.copy(data).astype("float16"), device=ctx)
-#     X_nd = tvm.nd.array(np.copy(x.reshape(mb, block_size, feat_size)).astype("float16"), device=ctx)
-#     Y_nd = tvm.nd.array(np.zeros((nb, block_size, feat_size), dtype="float32"), device=ctx)
-#     f(A_data, X_nd, Y_nd, A_indptr, A_indices)
-#     tvm.testing.assert_allclose(
-#         np.copy(y_ground_truth).reshape(nb, block_size, feat_size),
-#         Y_nd.numpy(),
-#         rtol=1e-5,
-#         atol=1e-5,
-#     )
-# print("with Tensor Cores:")
-# evaluator = f.time_evaluator(f.entry_name, ctx, number=10)
-# print(evaluator(A_data, X_nd, Y_nd, A_indptr, A_indices))
+for t in range(2):
+    f = tvm.build(mod["main"], target="cuda")
+    print(f.imported_modules[0].get_source())
+    ctx = tvm.cuda(0)
+    A_indptr = tvm.nd.array(np.copy(indptr).astype("int32"), device=ctx)
+    A_indices = tvm.nd.array(np.copy(indices).astype("int32"), device=ctx)
+    A_data = tvm.nd.array(np.copy(data).reshape(-1).astype("float16"), device=ctx)
+    X_nd = tvm.nd.array(np.copy(x.reshape(-1)).astype("float16"), device=ctx)
+    Y_nd = tvm.nd.array(np.zeros((nb * block_size * feat_size), dtype="float32"), device=ctx)
+    print(A_data)
+    f(A_data, X_nd, Y_nd, A_indptr, A_indices)
+    tvm.testing.assert_allclose(
+        np.copy(y_ground_truth).reshape(-1),
+        Y_nd.numpy(),
+        rtol=1e-5,
+        atol=1e-5,
+    )
+print("with Tensor Cores:")
+evaluator = f.time_evaluator(f.entry_name, ctx, number=10)
+print(evaluator(A_data, X_nd, Y_nd, A_indptr, A_indices))
