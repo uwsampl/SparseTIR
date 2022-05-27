@@ -314,53 +314,49 @@ class SparseFormatRewriter : public StmtExprMutator {
                            op->annotations);
   }
 
+  /*!
+   * \brief Rewrite indices from old buffer to new buffer.
+   */
+  Array<PrimExpr> RewriteIndices(const SparseBuffer& old_buf, const SparseBuffer& new_buf,
+                                 const Array<PrimExpr> indices) {
+    Map<Axis, PrimExpr> axis_val_map;
+    for (size_t i = 0; i < indices.size(); i++) {
+      axis_val_map.Set(old_buf->axes[i], indices[i]);
+    }
+    Array<PrimExpr> new_indices;
+    rewriter_.UpdateMap(axis_val_map);
+    rewriter_.UpdateInvMap(axis_val_map);
+    for (const Axis& axis : new_buf->axes) {
+      new_indices.push_back(ana.Simplify(axis_val_map.Get(axis).value()));
+    }
+    return new_indices;
+  }
+
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     SparseBuffer buf = Downcast<SparseBuffer>(op->buffer);
+    Array<PrimExpr> indices;
+    for (const PrimExpr& idx : op->indices) {
+      indices.push_back(VisitExpr(idx));
+    }
     if (buffer_rewrite_map_.count(buf)) {
-      Buffer new_buf = buffer_rewrite_map_.Get(buf).value();
-      const SparseBufferNode* sp_buf = op->buffer.as<SparseBufferNode>();
-      const SparseBufferNode* new_sp_buf = new_buf.as<SparseBufferNode>();
-      Map<Axis, PrimExpr> axis_val_map;
-      for (size_t i = 0; i < op->indices.size(); i++) {
-        axis_val_map.Set(sp_buf->axes[i], VisitExpr(op->indices[i]));
-      }
-      rewriter_.UpdateMap(axis_val_map);
-      rewriter_.UpdateInvMap(axis_val_map);
-      Array<PrimExpr> new_indices;
-      for (const Axis& axis : new_sp_buf->axes) {
-        new_indices.push_back(ana.Simplify(axis_val_map.Get(axis).value()));
-      }
-      return BufferLoad(new_buf, new_indices);
+      SparseBuffer new_buf = buffer_rewrite_map_.Get(buf).value();
+      return BufferLoad(new_buf, RewriteIndices(buf, new_buf, indices));
     } else {
-      Array<PrimExpr> new_indices;
-      for (const PrimExpr& idx : op->indices) {
-        new_indices.push_back(VisitExpr(idx));
-      }
-      return BufferLoad(op->buffer, new_indices);
+      return BufferLoad(op->buffer, indices);
     }
   }
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     SparseBuffer buf = Downcast<SparseBuffer>(op->buffer);
+    Array<PrimExpr> indices;
+    for (const PrimExpr& idx : op->indices) {
+      indices.push_back(VisitExpr(idx));
+    }
     if (buffer_rewrite_map_.count(buf)) {
       SparseBuffer new_buf = buffer_rewrite_map_.Get(buf).value();
-      Map<Axis, PrimExpr> axis_val_map;
-      for (size_t i = 0; i < op->indices.size(); i++) {
-        axis_val_map.Set(buf->axes[i], VisitExpr(op->indices[i]));
-      }
-      rewriter_.UpdateMap(axis_val_map);
-      rewriter_.UpdateInvMap(axis_val_map);
-      Array<PrimExpr> new_indices;
-      for (const Axis& axis : new_buf->axes) {
-        new_indices.push_back(ana.Simplify(axis_val_map.Get(axis).value()));
-      }
-      return BufferStore(new_buf, VisitExpr(op->value), new_indices);
+      return BufferStore(new_buf, VisitExpr(op->value), RewriteIndices(buf, new_buf, indices));
     } else {
-      Array<PrimExpr> new_indices;
-      for (const PrimExpr& idx : op->indices) {
-        new_indices.push_back(VisitExpr(idx));
-      }
-      return BufferStore(op->buffer, VisitExpr(op->value), new_indices);
+      return BufferStore(op->buffer, VisitExpr(op->value), indices);
     }
   }
 
