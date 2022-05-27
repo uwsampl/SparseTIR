@@ -136,6 +136,10 @@ class ConcreteScheduleNode : public ScheduleNode {
   void Unannotate(const LoopRV& loop_rv, const String& ann_key) override;
   void Annotate(const BlockRV& block_rv, const String& ann_key, const ObjectRef& ann_val) override;
   void Unannotate(const BlockRV& block_rv, const String& ann_key) override;
+  void Annotate(const SparseIterationRV& sp_iteration_rv, const String& ann_key,
+                const ObjectRef& ann_val) override;
+  void Unannotate(const SparseIterationRV& sp_iteration_rv, const String& ann_key) override;
+
   /******** Schedule: Layout transformation ********/
   void TransformLayout(const BlockRV& block_rv, int buffer_index, BufferIndexType buffer_index_type,
                        const IndexMap& index_map) override;
@@ -144,9 +148,10 @@ class ConcreteScheduleNode : public ScheduleNode {
   /******** Schedule: SparseTIR schedules ********/
   SparseIterationRV GetSparseIteration(const String& name,
                                        const String& func_name = "main") override;
-  Array<SpIterVar> GetSpIters(const SparseIterationRV& block_rv) override;
-  void SparseReorder(const SparseIterationRV& block_rv, const Array<SpIterVar>& new_order) override;
-  void SparseFuse(const SparseIterationRV& block_rv,
+  Array<SpIterVar> GetSpIters(const SparseIterationRV& sp_iteration_rv) override;
+  void SparseReorder(const SparseIterationRV& sp_iteration_rv,
+                     const Array<SpIterVar>& new_order) override;
+  void SparseFuse(const SparseIterationRV& sp_iteration_rv,
                   const Array<SpIterVar>& iters_to_fuse) override;
   void HideBufAccess(const BlockRV& block_rv, const String& buf_type,
                      const Array<PrimExpr>& buf_index_array) override;

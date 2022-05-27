@@ -557,6 +557,15 @@ class ScheduleNode : public runtime::Object {
   virtual void Annotate(const BlockRV& block_rv, const String& ann_key,
                         const ObjectRef& ann_val) = 0;
   /*!
+   * \brief Annotate a sparse iteration with a key value pair
+   * \param sp_iteration_rv The sparse iteration to be annotated
+   * \param ann_key The annotation key
+   * \param ann_val The annotation value, a string or a ExprRV
+   */
+  virtual void Annotate(const SparseIterationRV& sp_iteration_rv, const String& ann_key,
+                        const ObjectRef& ann_val) = 0;
+
+  /*!
    * \brief Unannotate a loop's annotation with key ann_key
    * \param loop_rv The loop to be unannotated
    * \param ann_key The annotation key
@@ -568,6 +577,12 @@ class ScheduleNode : public runtime::Object {
    * \param ann_key The annotation key
    */
   virtual void Unannotate(const BlockRV& block_rv, const String& ann_key) = 0;
+  /*!
+   * \brief Unannotate a sparse iteration's annotation with key ann_key
+   * \param sp_iteration_rv The sparse iteration to be unannotated
+   * \param ann_key The annotation key
+   */
+  virtual void Unannotate(const SparseIterationRV& sp_iteration_rv, const String& ann_key) = 0;
 
   /******** Schedule: Layout transformation ********/
   /*!
@@ -599,26 +614,26 @@ class ScheduleNode : public runtime::Object {
                                                const String& func_name = "main") = 0;
   /*!
    * \brief Retrieve the sparse iterators of a given sparse iteration
-   * \param block_rv The block to be queried
+   * \param sp_iteration_rv The sparse iteration to be queried
    * \return The sparse iterators of the input sparse iteration
    */
-  virtual Array<SpIterVar> GetSpIters(const SparseIterationRV& block_rv) = 0;
+  virtual Array<SpIterVar> GetSpIters(const SparseIterationRV& sp_iteration_rv) = 0;
   /*!
    * \brief Reorder a list of sparse iterators. It requires the new order to not break the iterator
    * dependency.
-   * \param block_rv The sparse iteration to be transformed
+   * \param sp_iteration_rv The sparse iteration to be transformed
    * \param new_order The new order of the sparse iterators, whose length should equal to the number
    * of the input block's sparse iterators
    */
-  virtual void SparseReorder(const SparseIterationRV& block_rv,
+  virtual void SparseReorder(const SparseIterationRV& sp_iteration_rv,
                              const Array<SpIterVar>& new_order) = 0;
 
   /*!
    * \brief Fuse a list of sparse iterators.
-   * \param block_rv The sparse iteration to be transformed.
+   * \param sp_iteration_rv The sparse iteration to be transformed.
    * \param iters_to_fuse The sparse iterators to be fused.
    */
-  virtual void SparseFuse(const SparseIterationRV& block_rv,
+  virtual void SparseFuse(const SparseIterationRV& sp_iteration_rv,
                           const Array<SpIterVar>& iters_to_fuse) = 0;
 
   /*!

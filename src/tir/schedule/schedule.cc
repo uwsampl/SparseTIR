@@ -223,6 +223,9 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleAnnotate")
       if (const auto* loop_rv = rv.as<LoopRVNode>()) {
         return self->Annotate(GetRef<LoopRV>(loop_rv), ann_key, ann_val);
       }
+      if (const auto* sparse_iteration_rv = rv.as<SparseIterationRVNode>()) {
+        return self->Annotate(GetRef<SparseIterationRV>(sparse_iteration_rv), ann_key, ann_val);
+      }
       LOG(FATAL) << "TypeError: Cannot evaluate the random variable of type: " << rv->GetTypeKey()
                  << ". Its value is: " << rv;
       throw;

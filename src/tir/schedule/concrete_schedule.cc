@@ -691,6 +691,24 @@ void ConcreteScheduleNode::Unannotate(const BlockRV& block_rv, const String& ann
   TVM_TIR_SCHEDULE_END("unannotate", this->error_render_level_);
 }
 
+void ConcreteScheduleNode::Annotate(const SparseIterationRV& sp_iteration_rv, const String& ann_key,
+                                    const ObjectRef& ann_val) {
+  SparseIteration old_sp_iteration = this->Get(sp_iteration_rv), new_sp_iteration;
+  TVM_TIR_SCHEDULE_BEGIN();
+  new_sp_iteration = tir::AnnotateSparseIteration(state_, old_sp_iteration, ann_key, ann_val);
+  TVM_TIR_SCHEDULE_END("annotate", this->error_render_level_);
+  this->UpdateRV(sp_iteration_rv, new_sp_iteration);
+}
+
+void ConcreteScheduleNode::Unannotate(const SparseIterationRV& sp_iteration_rv,
+                                      const String& ann_key) {
+  SparseIteration old_sp_iteration = this->Get(sp_iteration_rv), new_sp_iteration;
+  TVM_TIR_SCHEDULE_BEGIN();
+  new_sp_iteration = tir::UnannotateSparseIteration(state_, old_sp_iteration, ann_key);
+  TVM_TIR_SCHEDULE_END("unannotate", this->error_render_level_);
+  this->UpdateRV(sp_iteration_rv, new_sp_iteration);
+}
+
 /******** Schedule: Layout transformation ********/
 void ConcreteScheduleNode::TransformLayout(const BlockRV& block_rv, int buffer_index,
                                            BufferIndexType buffer_index_type,
@@ -712,33 +730,33 @@ SparseIterationRV ConcreteScheduleNode::GetSparseIteration(const String& name,
   SparseIteration sp_iteration;
   TVM_TIR_SCHEDULE_BEGIN();
   sp_iteration = tir::GetSparseIteration(state_, name, func_name);
-  TVM_TIR_SCHEDULE_END("get-sparse-block", this->error_render_level_);
+  TVM_TIR_SCHEDULE_END("get-sparse-iteration", this->error_render_level_);
 
   return CreateRV(sp_iteration);
 }
 
-Array<SpIterVar> ConcreteScheduleNode::GetSpIters(const SparseIterationRV& block_rv) {
-  return this->Get(block_rv)->sp_iter_vars;
+Array<SpIterVar> ConcreteScheduleNode::GetSpIters(const SparseIterationRV& sp_iteration_rv) {
+  return this->Get(sp_iteration_rv)->sp_iter_vars;
 }
 
-void ConcreteScheduleNode::SparseReorder(const SparseIterationRV& block_rv,
+void ConcreteScheduleNode::SparseReorder(const SparseIterationRV& sp_iteration_rv,
                                          const Array<SpIterVar>& new_order) {
-  SparseIteration old_block = this->Get(block_rv);
+  SparseIteration old_block = this->Get(sp_iteration_rv);
   SparseIteration new_block{nullptr};
   TVM_TIR_SCHEDULE_BEGIN();
   new_block = tir::SparseReorder(state_, old_block, new_order);
   TVM_TIR_SCHEDULE_END("sparse-reorder", this->error_render_level_);
-  this->UpdateRV(block_rv, new_block);
+  this->UpdateRV(sp_iteration_rv, new_block);
 }
 
-void ConcreteScheduleNode::SparseFuse(const SparseIterationRV& block_rv,
+void ConcreteScheduleNode::SparseFuse(const SparseIterationRV& sp_iteration_rv,
                                       const Array<SpIterVar>& iters_to_fuse) {
-  SparseIteration old_block = this->Get(block_rv);
+  SparseIteration old_block = this->Get(sp_iteration_rv);
   SparseIteration new_block{nullptr};
   TVM_TIR_SCHEDULE_BEGIN();
   new_block = tir::SparseFuse(state_, old_block, iters_to_fuse);
   TVM_TIR_SCHEDULE_END("sparse-fuse", this->error_render_level_);
-  this->UpdateRV(block_rv, new_block);
+  this->UpdateRV(sp_iteration_rv, new_block);
 }
 
 void ConcreteScheduleNode::HideBufAccess(const BlockRV& block_rv, const String& buf_type,

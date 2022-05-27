@@ -422,6 +422,27 @@ TVM_DLL void Annotate(ScheduleState self, const StmtSRef& sref, const String& an
  */
 TVM_DLL void Unannotate(ScheduleState self, const StmtSRef& sref, const String& ann_key);
 
+/*!
+ * \brief Annotate a sparse iteration with key value pair
+ * \param self The state of the schedule
+ * \param sp_iteration The sparse iteration to be annotated.
+ * \param ann_key The annotation key
+ * \param ann_val The annotation value
+ */
+TVM_DLL SparseIteration AnnotateSparseIteration(ScheduleState self,
+                                                const SparseIteration& sp_iteration,
+                                                const String& ann_key, const ObjectRef& ann_val);
+
+/*!
+ * \brief Unannotate a sparse iteration's annotation with key ann_key
+ * \param self The state of the schedule
+ * \param sp_iteration The sparse iteration to be unannotated.
+ * \param ann_key The annotation key
+ */
+TVM_DLL SparseIteration UnannotateSparseIteration(ScheduleState self,
+                                                  const SparseIteration& sp_iteration,
+                                                  const String& ann_key);
+
 /******** Schedule: Layout transformation ********/
 /*!
  * \brief Apply a transformation represented by IndexMap to buffer
@@ -455,24 +476,24 @@ TVM_DLL SparseIteration GetSparseIteration(const ScheduleState& self, const Stri
  * \brief Reorder a list of sparse iterators. It requires the new order to not break the iterator
  * dependency.
  * \param self The state of the schedule
- * \param block The block to be transformed
+ * \param sp_iteration The sparse iteration to be transformed
  * \param new_order The new order of the sparse iterators, whose length should equal to the number
  * of the input block's sparse iterators
  * \return The new sparse iteration, which is only used to update the corresponding random variable
  * in concrete schedule.
  */
-TVM_DLL SparseIteration SparseReorder(ScheduleState self, const SparseIteration& block,
+TVM_DLL SparseIteration SparseReorder(ScheduleState self, const SparseIteration& sp_iteration,
                                       const Array<SpIterVar>& new_order);
 
 /*!
  * \brief Fuse a list of sparse iterators in a sparse iteration.
  * \param self The state of the schedule.
- * \param block The block to be transformed.
+ * \param sp_iteration The sparse iteration to be transformed.
  * \param iters_to_fuse The sparse iterators to be fused.
  * \return The new sparse iteration, which is only used to update the corresponding random variable
  * in concrete schedule.
  */
-TVM_DLL SparseIteration SparseFuse(ScheduleState self, const SparseIteration& block,
+TVM_DLL SparseIteration SparseFuse(ScheduleState self, const SparseIteration& sp_iteration,
                                    const Array<SpIterVar>& iters_to_fuse);
 
 /*!

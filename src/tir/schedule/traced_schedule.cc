@@ -420,6 +420,16 @@ void TracedScheduleNode::Annotate(const BlockRV& block_rv, const String& ann_key
                                       /*outputs=*/{}));
 }
 
+void TracedScheduleNode::Annotate(const SparseIterationRV& sp_iteration_rv, const String& ann_key,
+                                  const ObjectRef& ann_val) {
+  ConcreteScheduleNode::Annotate(sp_iteration_rv, ann_key, ann_val);
+  static const InstructionKind& kind = InstructionKind::Get("Annotate");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{sp_iteration_rv, ann_val},
+                                      /*attrs=*/{ann_key},
+                                      /*outputs=*/{}));
+}
+
 void TracedScheduleNode::Unannotate(const LoopRV& loop_rv, const String& ann_key) {
   ConcreteScheduleNode::Unannotate(loop_rv, ann_key);
   static const InstructionKind& kind = InstructionKind::Get("Unannotate");
@@ -434,6 +444,16 @@ void TracedScheduleNode::Unannotate(const BlockRV& block_rv, const String& ann_k
   static const InstructionKind& kind = InstructionKind::Get("Unannotate");
   trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
                                       /*inputs=*/{block_rv},
+                                      /*attrs=*/{ann_key},
+                                      /*outputs=*/{}));
+}
+
+void TracedScheduleNode::Unannotate(const SparseIterationRV& sp_iteration_rv,
+                                    const String& ann_key) {
+  ConcreteScheduleNode::Unannotate(sp_iteration_rv, ann_key);
+  static const InstructionKind& kind = InstructionKind::Get("Unannotate");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{sp_iteration_rv},
                                       /*attrs=*/{ann_key},
                                       /*outputs=*/{}));
 }
@@ -471,21 +491,21 @@ SparseIterationRV TracedScheduleNode::GetSparseIteration(const String& name,
   return result;
 }
 
-Array<SpIterVar> TracedScheduleNode::GetSpIters(const SparseIterationRV& block_rv) {
-  Array<SpIterVar> result = ConcreteScheduleNode::GetSpIters(block_rv);
+Array<SpIterVar> TracedScheduleNode::GetSpIters(const SparseIterationRV& sp_iteration_rv) {
+  Array<SpIterVar> result = ConcreteScheduleNode::GetSpIters(sp_iteration_rv);
   // Do not support traced schedule so far.
   return result;
 }
 
-void TracedScheduleNode::SparseReorder(const SparseIterationRV& block_rv,
+void TracedScheduleNode::SparseReorder(const SparseIterationRV& sp_iteration_rv,
                                        const Array<SpIterVar>& new_order) {
-  ConcreteScheduleNode::SparseReorder(block_rv, new_order);
+  ConcreteScheduleNode::SparseReorder(sp_iteration_rv, new_order);
   // Do not support traced schedule so far.
 }
 
-void TracedScheduleNode::SparseFuse(const SparseIterationRV& block_rv,
+void TracedScheduleNode::SparseFuse(const SparseIterationRV& sp_iteration_rv,
                                     const Array<SpIterVar>& new_order) {
-  ConcreteScheduleNode::SparseFuse(block_rv, new_order);
+  ConcreteScheduleNode::SparseFuse(sp_iteration_rv, new_order);
   // Do not support traced schedule so far.
 }
 

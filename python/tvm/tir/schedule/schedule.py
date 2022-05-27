@@ -2022,7 +2022,7 @@ class Schedule(Object):
     @type_checked
     def annotate(
         self,
-        block_or_loop: Union[BlockRV, LoopRV],
+        block_or_loop: Union[BlockRV, LoopRV, SparseIterationRV],
         ann_key: str,
         ann_val: Union[str, int, float, ExprRV, List[Union[str, int, float, ExprRV]]],
     ) -> None:

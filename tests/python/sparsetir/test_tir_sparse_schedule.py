@@ -63,10 +63,13 @@ def reordered_bsrmm(
 
 def test_get_sparse_iteration():
     sch = tir.Schedule(csrmm, debug_mask="all")
-    block_rv = sch.get_sparse_iteration("csrmm")
-    block = sch.get(block_rv)
-    assert block.name == "csrmm"
-    assert block.same_as(csrmm.body.block.body)
+    sp_iteration_rv = sch.get_sparse_iteration("csrmm")
+    sp_iteration = sch.get(sp_iteration_rv)
+    assert sp_iteration.name == "csrmm"
+    assert sp_iteration.same_as(csrmm.body.block.body)
+    sch.annotate(sp_iteration_rv, "guard", True)
+    new_sp_iteration = sch.get(sp_iteration_rv)
+    assert new_sp_iteration.annotations.get("guard") == True
 
 
 def test_get_sp_iters():

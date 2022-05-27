@@ -23,20 +23,39 @@ namespace tir {
 
 class SpIterationReplacer : public StmtMutator {
  public:
-  explicit SpIterationReplacer(const SparseIteration& old_block, const SparseIteration& new_block)
-      : old_block_(old_block.get()), new_block_(new_block.get()) {}
+  explicit SpIterationReplacer(const SparseIteration& old_sp_iteration,
+                               const SparseIteration& new_sp_iteration)
+      : old_sp_iteration_(old_sp_iteration.get()), new_sp_iteration_(new_sp_iteration.get()) {}
 
  private:
   Stmt VisitStmt_(const SparseIterationNode* op) override {
-    if (op == old_block_) {
-      return GetRef<SparseIteration>(new_block_);
+    if (op == old_sp_iteration_) {
+      return GetRef<SparseIteration>(new_sp_iteration_);
     } else {
       return StmtMutator::VisitStmt_(op);
     }
   }
 
-  const SparseIterationNode *old_block_, *new_block_;
+  const SparseIterationNode *old_sp_iteration_, *new_sp_iteration_;
 };
+
+void UpdateIRModule(ScheduleState self, const SparseIteration& old_sp_iteration,
+                    const SparseIteration& new_sp_iteration) {
+  const PrimFuncNode* g_func = nullptr;
+  GlobalVar g_var;
+  g_func = GetPrimFuncFromSparseIteration(self->mod, old_sp_iteration.get(), &g_var);
+
+  IRModuleNode* new_mod = self->mod.CopyOnWrite();
+  MapNode* new_map = new_mod->functions.CopyOnWrite();
+  PrimFunc ref_new_func = Downcast<PrimFunc>(std::move(new_map->at(g_var)));
+  ICHECK(ref_new_func.get() == g_func);
+  PrimFuncNode* new_func = ref_new_func.CopyOnWrite();
+
+  SpIterationReplacer replacer(old_sp_iteration, new_sp_iteration);
+  new_func->body = replacer(g_func->body);
+  new_map->at(g_var) = std::move(ref_new_func);
+  self->mod = GetRef<IRModule>(new_mod);
+}
 
 /*!
  * \brief Check whether the new iterators are valid. We say they are valid if the new order is a
@@ -155,36 +174,22 @@ void CheckDependency(const ScheduleState self, const Array<SpIterVar>& new_order
   }
 }
 
-SparseIteration SparseReorder(ScheduleState self, const SparseIteration& block,
+SparseIteration SparseReorder(ScheduleState self, const SparseIteration& sp_iteration,
                               const Array<SpIterVar>& new_order) {
-  // Step 1. Check whether the iterators in `new_order` are the same as `block`'s iterators.
-  CheckValidInputIterators(self, new_order, block->sp_iter_vars);
+  // Step 1. Check whether the iterators in `new_order` are the same as `sp_iteration`'s iterators.
+  CheckValidInputIterators(self, new_order, sp_iteration->sp_iter_vars);
 
   // Step 2. Check whether the new order does not break the iterator dependency.
   CheckDependency(self, new_order);
 
   // Step 3. Create the new SparseIteration.
-  ObjectPtr<SparseIterationNode> p_new_block = make_object<SparseIterationNode>(*block.get());
-  p_new_block->sp_iter_vars = new_order;
-  SparseIteration new_block(p_new_block);
+  ObjectPtr<SparseIterationNode> p_new_sp_iteration =
+      make_object<SparseIterationNode>(*sp_iteration.get());
+  p_new_sp_iteration->sp_iter_vars = new_order;
+  SparseIteration new_sp_iteration(p_new_sp_iteration);
 
-  // Step 4. Create the new IRModule. (The following lines are from Schedule::Replace(...))
-  const PrimFuncNode* g_func = nullptr;
-  GlobalVar g_var;
-  g_func = GetPrimFuncFromSparseIteration(self->mod, block.get(), &g_var);
-
-  IRModuleNode* new_mod = self->mod.CopyOnWrite();
-  MapNode* new_map = new_mod->functions.CopyOnWrite();
-  PrimFunc ref_new_func = Downcast<PrimFunc>(std::move(new_map->at(g_var)));
-  ICHECK(ref_new_func.get() == g_func);
-  PrimFuncNode* new_func = ref_new_func.CopyOnWrite();
-
-  SpIterationReplacer replacer(block, new_block);
-  new_func->body = replacer(g_func->body);
-  new_map->at(g_var) = std::move(ref_new_func);
-  self->mod = GetRef<IRModule>(new_mod);
-
-  return new_block;
+  UpdateIRModule(self, sp_iteration, new_sp_iteration);
+  return new_sp_iteration;
 }
 
 int CheckFuseMatch(const ScheduleState self, const Array<SpIterVar>& iters_to_fuse,
@@ -234,15 +239,16 @@ int CheckFuseMatch(const ScheduleState self, const Array<SpIterVar>& iters_to_fu
   return -1;
 }
 
-SparseIteration SparseFuse(ScheduleState self, const SparseIteration& block,
+SparseIteration SparseFuse(ScheduleState self, const SparseIteration& sp_iteration,
                            const Array<SpIterVar>& iters_to_fuse) {
   // Step 1. Check match or not.
-  int match_pos = CheckFuseMatch(self, iters_to_fuse, block->sp_iter_vars);
+  int match_pos = CheckFuseMatch(self, iters_to_fuse, sp_iteration->sp_iter_vars);
 
-  ObjectPtr<SparseIterationNode> p_new_block = make_object<SparseIterationNode>(*block.get());
+  ObjectPtr<SparseIterationNode> p_new_sp_iteration =
+      make_object<SparseIterationNode>(*sp_iteration.get());
   Array<SpIterVar> new_sp_iters;
   for (int i = 0; i < match_pos; ++i) {
-    new_sp_iters.push_back(block->sp_iter_vars[i]);
+    new_sp_iters.push_back(sp_iteration->sp_iter_vars[i]);
   }
   Array<Axis> axis_group;
   for (const SpIterVar& sp_iter_var : iters_to_fuse) {
@@ -253,29 +259,14 @@ SparseIteration SparseFuse(ScheduleState self, const SparseIteration& block,
     Axis new_axis = FusedAxis(axis_group, i);
     new_sp_iters.push_back(SpIterVar(sp_iter_var->var, sp_iter_var->is_reduction, new_axis));
   }
-  for (size_t i = match_pos + iters_to_fuse.size(); i < block->sp_iter_vars.size(); ++i) {
-    new_sp_iters.push_back(block->sp_iter_vars[i]);
+  for (size_t i = match_pos + iters_to_fuse.size(); i < sp_iteration->sp_iter_vars.size(); ++i) {
+    new_sp_iters.push_back(sp_iteration->sp_iter_vars[i]);
   }
-  p_new_block->sp_iter_vars = new_sp_iters;
-  SparseIteration new_block(p_new_block);
+  p_new_sp_iteration->sp_iter_vars = new_sp_iters;
+  SparseIteration new_sp_iteration(p_new_sp_iteration);
 
-  // Step 4. Create the new IRModule. (The following lines are from Schedule::Replace(...))
-  const PrimFuncNode* g_func = nullptr;
-  GlobalVar g_var;
-  g_func = GetPrimFuncFromSparseIteration(self->mod, block.get(), &g_var);
-
-  IRModuleNode* new_mod = self->mod.CopyOnWrite();
-  MapNode* new_map = new_mod->functions.CopyOnWrite();
-  PrimFunc ref_new_func = Downcast<PrimFunc>(std::move(new_map->at(g_var)));
-  ICHECK(ref_new_func.get() == g_func);
-  PrimFuncNode* new_func = ref_new_func.CopyOnWrite();
-
-  SpIterationReplacer replacer(block, new_block);
-  new_func->body = replacer(g_func->body);
-  new_map->at(g_var) = std::move(ref_new_func);
-  self->mod = GetRef<IRModule>(new_mod);
-
-  return new_block;
+  UpdateIRModule(self, sp_iteration, new_sp_iteration);
+  return new_sp_iteration;
 }
 
 SparseIteration GetSparseIteration(const ScheduleState& self, const String& name,
@@ -303,6 +294,26 @@ SparseIteration GetSparseIteration(const ScheduleState& self, const String& name
   finder(prim_func->body);
   CHECK(finder.result_.defined()) << "Cannot find a sparse iteration with the name: " + name;
   return finder.result_.value();
+}
+
+SparseIteration AnnotateSparseIteration(ScheduleState self, const SparseIteration& sp_iteration,
+                                        const String& ann_key, const ObjectRef& ann_val) {
+  ObjectPtr<SparseIterationNode> p_new_sp_iteration =
+      make_object<SparseIterationNode>(*sp_iteration.get());
+  p_new_sp_iteration->annotations.Set(ann_key, ann_val);
+  SparseIteration new_sp_iteration(p_new_sp_iteration);
+  UpdateIRModule(self, sp_iteration, new_sp_iteration);
+  return new_sp_iteration;
+}
+
+SparseIteration UnannotateSparseIteration(ScheduleState self, const SparseIteration& sp_iteration,
+                                          const String& ann_key) {
+  ObjectPtr<SparseIterationNode> p_new_sp_iteration =
+      make_object<SparseIterationNode>(*sp_iteration.get());
+  p_new_sp_iteration->annotations.erase(ann_key);
+  SparseIteration new_sp_iteration(p_new_sp_iteration);
+  UpdateIRModule(self, sp_iteration, new_sp_iteration);
+  return new_sp_iteration;
 }
 
 }  // namespace tir
