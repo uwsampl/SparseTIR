@@ -15,8 +15,17 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Python-interface for Sparse-TIR"""
+from sparse_tir_scripts import ellmm
+from tvm.sparse import lower_sparse_iter, specialize_buffer
+import tvm
 
-from .lower import lower_sparse_iter, lower_sparse_buffer
-from .format_rewrite import FormatRewriteRule
-from .specialize import specialize_buffer
+
+def test_specialize_ellmm():
+    mod = tvm.IRModule.from_expr(ellmm)
+    mod = lower_sparse_iter(mod)
+    mod = specialize_buffer(mod, "J_indices", lambda i, j: (i + j,))
+    print(mod["main"].script())
+
+
+if __name__ == "__main__":
+    test_specialize_ellmm()

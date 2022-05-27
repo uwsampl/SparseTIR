@@ -16,7 +16,7 @@
 # under the License.
 
 """Format search module for sparse tensor algebra."""
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Union
 import tvm._ffi
 import tvm.tir
 
@@ -32,19 +32,26 @@ class FormatRewriteRule(Object):
     ----------
     name : str
         Name of the format rewriting rule.
+
     format_desc : PrimFunc
         A TIR script describing the new format.
+
     buffers_to_rewrite: List[str]
         The list of sparse buffers we need to rewrite.
+
     axes_before_rewrite : List[str]
         The list of axes before the rewrite.
+
     axes_after_rewrite : List[str]
         The list of axes after the rewrite.
+
     axis_map : Dict[str, List[str]]
         The axis mapping from the old format to the new format.
-    idx_map_func : Callable
+
+    idx_map_func : Union[Callable, IndexMap]
         A function describing the index mapping from the old format to indices in new format.
-    inv_idx_map_func : Callable
+
+    inv_idx_map_func : Union[Callable, IndexMap]
         A function describing the coordinate mapping from indices in new format.
         to indices in old format.
     """
@@ -57,9 +64,13 @@ class FormatRewriteRule(Object):
         axes_before_rewrite: List[str],
         axes_after_rewrite: List[str],
         axis_map: Dict[str, List[str]],
-        idx_map_func: Callable,
-        inv_idx_map_func: Callable,
+        idx_map: Union[Callable, IndexMap],
+        inv_idx_map: Union[Callable, IndexMap],
     ) -> None:
+        if isinstance(idx_map, Callable):
+            idx_map = IndexMap.from_func(idx_map)
+        if isinstance(inv_idx_map, Callable):
+            inv_idx_map = (IndexMap.from_func(inv_idx_map),)
         self.__init_handle_by_constructor__(
             _ffi_api.FormatRewriteRule,
             name,
@@ -68,6 +79,6 @@ class FormatRewriteRule(Object):
             axes_before_rewrite,
             axes_after_rewrite,
             axis_map,
-            IndexMap.from_func(idx_map_func),
-            IndexMap.from_func(inv_idx_map_func),
+            idx_map,
+            inv_idx_map,
         )  # type: ignore

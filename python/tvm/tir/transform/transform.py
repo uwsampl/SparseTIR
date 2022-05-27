@@ -870,6 +870,7 @@ def SparseFormatRewrite(
     # TODO(zihao)
     return _ffi_api.SparseFormatRewrite(rewrite_rules, include_format_rewrite_blks)  # type: ignore
 
+
 def ExtractPreprocess():
     """Extract the preprocess blocks/sparse iterations in the module.
 
@@ -880,15 +881,17 @@ def ExtractPreprocess():
     """
     return _ffi_api.ExtractPreprocess()  # type: ignore
 
+
 def RemovePreprocess():
     """Remove the preprocess blocks/sparse iterations in the module.
-    
+
     Returns
     -------
     fpass : tvm.transform.Pass
         The result pass
     """
     return _ffi_api.RemovePreprocess()  # type: ignore
+
 
 def InjectScope():
     """Inject scope to avoid duplicate computation (e.g. in atomic operators)
@@ -900,6 +903,7 @@ def InjectScope():
     """
     return _ffi_api.InjectScope()  # type: ignore
 
+
 def RemoveUnusedArgs():
     """Remove unused arguments.
 
@@ -909,3 +913,22 @@ def RemoveUnusedArgs():
         The result pass
     """
     return _ffi_api.RemoveUnusedArgs()  # type: ignore
+
+
+def SpecializeBuffer(buf_name: str, idx_map: "IndexMap"):
+    """Specialize the buffer with given index map.
+
+    Parameters
+    ----------
+    buf_name : str
+        The name of the buffer to specialize.
+
+    idx_map : IndexMap
+        The index map.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.SpecializeBuffer(buf_name, idx_map)  # type: ignore

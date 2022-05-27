@@ -683,6 +683,14 @@ TVM_DLL Pass InjectScope();
  */
 TVM_DLL Pass RemovedUnusedArgs();
 
+/*!
+ * \brief Specialize the buffer with given index map.
+ * \param buf_name the name of the buffer to specialize.
+ * \param idx_map The index map.
+ * \return The pass.
+ */
+TVM_DLL Pass SpecializeBuffer(const String& buf_name, const IndexMap& idx_map);
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm

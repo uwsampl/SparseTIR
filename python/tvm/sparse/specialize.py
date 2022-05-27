@@ -15,8 +15,32 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Python-interface for Sparse-TIR"""
+"""Specialize buffer with index map."""
+from typing import Callable, Union
+from tvm import IRModule
+from tvm.tir import IndexMap
+from tvm.tir.transform import SpecializeBuffer
 
-from .lower import lower_sparse_iter, lower_sparse_buffer
-from .format_rewrite import FormatRewriteRule
-from .specialize import specialize_buffer
+
+def specialize_buffer(mod: IRModule, buf_name: str, idx_map: Union[Callable, IndexMap]):
+    """Specialize a buffer in an IRModule with given buffer name and index map function.
+
+    Parameters
+    ----------
+    mod : IRModule
+        The IRModule we perform the specialization.
+
+    buf_name : str
+        The name of the buffer to specialize.
+
+    idx_map : IndexMap
+        The index map.
+
+    Returns
+    -------
+    IRModule
+        The new IRModule.
+    """
+    if isinstance(idx_map, Callable):
+        idx_map = IndexMap.from_func(idx_map)
+    return SpecializeBuffer(buf_name, idx_map)(mod)
