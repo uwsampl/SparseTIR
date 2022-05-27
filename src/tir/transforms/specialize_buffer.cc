@@ -66,10 +66,9 @@ class BufferSpecializer : public StmtExprMutator {
     for (const BufferRegion& access : op->reads) {
       Buffer buf = access->buffer;
       Array<Range> new_region;
-      for (const Range& range: access->region) {
-        new_region.push_back(Range::FromMinExtent(
-          ana_.Simplify(VisitExpr(range->min)), ana_.Simplify(VisitExpr(range->extent))
-        ));
+      for (const Range& range : access->region) {
+        new_region.push_back(Range::FromMinExtent(ana_.Simplify(VisitExpr(range->min)),
+                                                  ana_.Simplify(VisitExpr(range->extent))));
       }
       if (!buf.same_as(buf_)) {
         // remove read access to given buffer.
@@ -79,10 +78,9 @@ class BufferSpecializer : public StmtExprMutator {
     for (const BufferRegion& access : op->writes) {
       Buffer buf = access->buffer;
       Array<Range> new_region;
-      for (const Range& range: access->region) {
-        new_region.push_back(Range::FromMinExtent(
-          ana_.Simplify(VisitExpr(range->min)), ana_.Simplify(VisitExpr(range->extent))
-        ));
+      for (const Range& range : access->region) {
+        new_region.push_back(Range::FromMinExtent(ana_.Simplify(VisitExpr(range->min)),
+                                                  ana_.Simplify(VisitExpr(range->extent))));
       }
       if (!buf.same_as(buf_)) {
         // remove write access to given buffer.
