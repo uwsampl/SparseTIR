@@ -70,7 +70,7 @@ class FormatRewriteRule(Object):
         if isinstance(idx_map, Callable):
             idx_map = IndexMap.from_func(idx_map)
         if isinstance(inv_idx_map, Callable):
-            inv_idx_map = (IndexMap.from_func(inv_idx_map),)
+            inv_idx_map = IndexMap.from_func(inv_idx_map)
         self.__init_handle_by_constructor__(
             _ffi_api.FormatRewriteRule,
             name,
