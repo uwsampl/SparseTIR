@@ -210,30 +210,29 @@ def bench_hyb(g, feat_size=128, bucket_sizes=[]):
         sch.bind(fi, "threadIdx.x")
         sch.unroll(foi)
         sch.bind(foo, "blockIdx.y")
-        jo, ji = sch.split(j, [None, min(32, bucket_size)])
+        jo, ji = sch.split(j, [None, 32])
         sch.unroll(ji)
         io, ii = sch.split(i, [None, max(1, 32 // bucket_size)])
-        sch.unroll(ii)
         sch.bind(io, "blockIdx.x")
 
     # schedule last bucket
     blk = sch.get_block("csrmm_{}0".format(bucket_sizes[-1]))
     i, j, f = sch.get_loops(blk)
-    sch.reorder(f, j)
     sch.annotate(blk, "atomic", True)
     write_blk = sch.cache_write(blk, 0, "local")
-    sch.reverse_compute_at(write_blk, f)
+    sch.reverse_compute_at(write_blk, i)
     foo, foi, fi = sch.split(f, [None, 2, 32])
     sch.bind(fi, "threadIdx.x")
     sch.unroll(foi)
     sch.bind(foo, "blockIdx.y")
-    # sch.bind(f, "threadIdx.x")
     jo, ji = sch.split(j, [None, 32])
     sch.unroll(ji)
     io, ii = sch.split(i, [None, max(1, 32 // bucket_size)])
-    sch.unroll(ii)
     sch.bind(io, "blockIdx.x")
-    # sch.bind(i, "blockIdx.x")
+    ax0, ax1, ax2 = sch.split(sch.get_loops(write_blk)[-1], [None, 2, 32])
+    sch.bind(ax0, "blockIdx.y")
+    sch.bind(ax2, "threadIdx.x")
+    sch.unroll(ax1)
 
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
@@ -382,7 +381,7 @@ if __name__ == "__main__":
     # ppi = dgl.data.PPIDataset()
     # g = dgl.batch(ppi)
     # reddit = dgl.data.RedditDataset()
-    # g = reddit[0]
+    # g = reddit[0] # [64, 128, 256, 512]
 
     for feat_size in [32, 64, 128, 256, 512]:
         print("feat_size=", feat_size)
