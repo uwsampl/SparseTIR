@@ -358,7 +358,9 @@ int CheckReductionBlockErrorCode(const ScheduleState& self, const StmtSRef& bloc
   // Cond 4. Dominant: the block is the only writer of its output, dominating the reader of its
   // output buffers.
   if (!IsDominantBlock(self, scope_root_sref, block_sref)) {
-    return 4;
+    if (!IsHorizontalFuse(self)) {
+      return 4;
+    }
   }
   // Cond 5. The reduction block vars are not used to index the output buffers.
   return ReductionIterNotIndexOutputBuffer(GetRef<Block>(block)) ? 0 : 5;
