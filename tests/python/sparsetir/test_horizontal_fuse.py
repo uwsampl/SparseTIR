@@ -79,6 +79,25 @@ def test_end_to_end():
     tvm.testing.assert_allclose(z1.numpy(), z1_golden, rtol=1e-5, atol=1e-5)
     tvm.testing.assert_allclose(z2.numpy(), z2_golden, rtol=1e-5, atol=1e-5)
 
+def test_swizzle():
+    sch = tvm.tir.Schedule(original.with_attr("horizontal_fuse", "swizzle"))
+    blk1 = sch.get_block("first")
+    blk2 = sch.get_block("second")
+    A_read = sch.cache_read(blk1, 0, "shared")
+    B_read = sch.cache_read(blk2, 0, "shared")
+    i, j = sch.get_loops(blk1)
+    sch.compute_at(A_read, i)
+    sch.bind(i, "blockIdx.x")
+    sch.bind(j, "threadIdx.x")
+    i, j = sch.get_loops(blk2)
+    sch.compute_at(B_read, i)
+    sch.bind(i, "blockIdx.x")
+    sch.bind(j, "threadIdx.x")
+    print(sch.mod["main"].script())
+    f = tvm.build(sch.mod["main"], target="cuda")
+    print(f.imported_modules[0].get_source())
+ 
 
 if __name__ == "__main__":
     test_end_to_end()
+    test_swizzle()
