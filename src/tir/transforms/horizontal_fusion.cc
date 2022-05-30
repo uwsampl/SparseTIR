@@ -161,12 +161,15 @@ PrimFunc HorizontalFusion(PrimFunc f) {
   if (!IsFromLegacyTESchedule(f)) {
     PrimFuncNode* fptr = f.CopyOnWrite();
     // If the horizontal fuse flag was set to True, apply horizontal fuser.
-    Optional<Bool> maybe_horizontal_fuse_flag = fptr->attrs.GetAttr<Bool>("horizontal_fuse");
+    Optional<String> maybe_horizontal_fuse_flag = fptr->attrs.GetAttr<String>("horizontal_fuse");
     if (maybe_horizontal_fuse_flag.defined()) {
-      if (maybe_horizontal_fuse_flag.value()->value == 1) {
+      String horizontal_fuse_flag = maybe_horizontal_fuse_flag.value();
+      if (horizontal_fuse_flag == "sequential") {
         ThreadTagExtentCollector collector;
         Map<String, Integer> thread_tag_extent_map_ = collector.Collect(fptr);
         fptr->body = HorizontalFuser(std::move(thread_tag_extent_map_))(std::move(fptr->body));
+      } else if (horizontal_fuse_flag == "swizzle") {
+        LOG(FATAL) << "Not implemented yet";
       }
       Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;
       new_attr_dict.erase("horizontal_fuse");
