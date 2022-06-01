@@ -149,30 +149,36 @@ def csr2ell_index_map(i, j):
 
 cached_formats = []
 
-def bench_hyb(g, x, y_golden, feat_size=128, bucket_sizes=[], cwm=2):
+def bench_hyb(g, x, y_golden, feat_size=128, bucket_sizes=[], cwm=2, column_part=1,):
     global cached_formats
     mat = g.adj(transpose=True, scipy_fmt='csr')
     del g
     cwm = min(cwm, feat_size // 32)
-    buckets = bucket_sizes
-    num_buckets = len(buckets)
+    buckets = bucket_sizes * column_part
     m = mat.shape[0]
     n = mat.shape[1]
     nnz = mat.nnz
+    per_column_part_size = (n + column_part - 1) // column_part
 
-    in_degrees = mat.indptr[1:] - mat.indptr[:-1]
+    num_buckets = len(buckets)
     ell_n = []
     is_bucket_atomic = []
-    for bucket_size in bucket_sizes[:-1]:
-        ell_n.append(int((in_degrees <= bucket_size).sum()))
-        is_bucket_atomic.append(False)
-    for i in range(1, len(bucket_sizes) - 1):
-        ell_n[i] = ell_n[i] - sum(ell_n[:i])
-    sub_indegrees = in_degrees[in_degrees > bucket_sizes[-2]]
-    ell_n.append(
-        int(((sub_indegrees + bucket_sizes[-1] - 1) // bucket_sizes[-1]).sum())
-    )
-    is_bucket_atomic.append(True)
+ 
+    for partition in range(column_part):
+        sub_mat = mat[:, partition * per_column_part_size: (partition + 1) * per_column_part_size]
+        in_degrees = sub_mat.indptr[1:] - sub_mat.indptr[:-1]
+        for i, bucket_size in enumerate(bucket_sizes[:-1]):
+            last_bucket_size = 0 if i == 0 else bucket_sizes[i - 1]
+            ell_n.append(int(((in_degrees > last_bucket_size) & (in_degrees <= bucket_size)).sum()))
+            if column_part == 1:
+                is_bucket_atomic.append(False)
+            else:
+                is_bucket_atomic.append(True)
+        sub_indegrees = in_degrees[in_degrees > bucket_sizes[-2]]
+        ell_n.append(
+            int(((sub_indegrees + bucket_sizes[-1] - 1) // bucket_sizes[-1]).sum())
+        )
+        is_bucket_atomic.append(True)
     print(ell_n)
 
     # rewrite csrmm
@@ -250,49 +256,51 @@ def bench_hyb(g, x, y_golden, feat_size=128, bucket_sizes=[], cwm=2):
         ell_indices, ell_a, ell_rows = cached_formats
     else:
         ell_rows = []
-        ell_rows.append(((in_degrees <= bucket_sizes[0])).nonzero()[0])
-        for i in range(1, len(bucket_sizes) - 1):
-            bucket_size = bucket_sizes[i]
-            ell_rows.append(
-                ((in_degrees <= bucket_size) & (in_degrees > bucket_sizes[i - 1]))
-                .nonzero()[0]
-            )
-        ell_rows.append((in_degrees > bucket_sizes[-2]).nonzero()[0])
-
         ell_indices = []
         ell_a = []
-        for i, bucket_size in enumerate(buckets[:-1]):
-            indices = np.zeros((ell_n[i], bucket_size), dtype=np.int32)
-            a = np.zeros((ell_n[i], bucket_size), dtype=np.float32)
-            for i, row in enumerate(ell_rows[i]):
-                mat_row = mat[row]
-                indices[i, :mat_row.nnz] = mat_row.indices
-                a[i, :mat_row.nnz] = mat_row.data
+
+        for partition in range(column_part):
+            sub_mat = mat[:, partition * per_column_part_size: (partition + 1) * per_column_part_size]
+            in_degrees = sub_mat.indptr[1:] - sub_mat.indptr[:-1]
+
+            for i, bucket_size in enumerate(bucket_sizes[:-1]):
+                last_bucket_size = 0 if i == 0 else bucket_sizes[i - 1]
+                ell_rows.append(((in_degrees > last_bucket_size) & (in_degrees <= bucket_size)).nonzero()[0])
+            ell_rows.append((in_degrees > bucket_sizes[-2]).nonzero()[0])
+
+            for i, bucket_size in enumerate(bucket_sizes[:-1]):
+                indices = np.zeros((ell_n[partition * len(bucket_sizes) + i], bucket_size), dtype=np.int32)
+                a = np.zeros((ell_n[partition * len(bucket_sizes) + i], bucket_size), dtype=np.float32)
+                for j, row in enumerate(ell_rows[partition * len(bucket_sizes) + i]):
+                    mat_row = sub_mat[row]
+                    indices[j, :mat_row.nnz] = mat_row.indices
+                    a[j, :mat_row.nnz] = mat_row.data
+                ell_indices.append(indices)
+                ell_a.append(a)
+
+            # split rows for the last bucket
+            indices = np.zeros((ell_n[(partition + 1) * len(bucket_sizes) - 1], bucket_sizes[-1]), dtype=np.int32)
+            a = np.zeros((ell_n[(partition + 1) * len(bucket_sizes) - 1], bucket_sizes[-1]), dtype=np.float32)
+            new_rows = np.zeros((ell_n[(partition + 1) * len(bucket_sizes) - 1],), dtype=np.int32)
+            bucket_size = bucket_sizes[-1]
+            i = 0
+            for row in ell_rows[-1]:
+                mat_row = sub_mat[row]
+                for start_offset in range(0, mat_row.nnz, bucket_size):
+                    if start_offset + bucket_size >= mat_row.nnz:
+                        # last bucket
+                        indices[i, :mat_row.nnz - start_offset] = mat_row.indices[start_offset:]
+                        a[i, :mat_row.nnz - start_offset] = mat_row.data[start_offset:]
+                    else:
+                        indices[i] = mat_row.indices[start_offset: start_offset + bucket_size]
+                        a[i].fill(1)
+                    new_rows[i] = row
+                    i += 1
+
             ell_indices.append(indices)
             ell_a.append(a)
+            ell_rows[-1] = new_rows
 
-        # split rows for the last bucket
-        indices = np.zeros((ell_n[-1], buckets[-1]), dtype=np.int32)
-        a = np.zeros((ell_n[-1], buckets[-1]), dtype=np.float32)
-        new_rows = np.zeros((ell_n[-1],), dtype=np.int32)
-        bucket_size = bucket_sizes[-1]
-        i = 0
-        for row in ell_rows[-1]:
-            mat_row = mat[row]
-            for start_offset in range(0, mat_row.nnz, bucket_size):
-                if start_offset + bucket_size >= mat_row.nnz:
-                    # last bucket
-                    indices[i, :mat_row.nnz - start_offset] = mat_row.indices[start_offset:]
-                    a[i, :mat_row.nnz - start_offset] = mat_row.data[start_offset:]
-                else:
-                    indices[i] = mat_row.indices[start_offset: start_offset + bucket_size]
-                    a[i].fill(1)
-                new_rows[i] = row
-                i += 1
-
-        ell_indices.append(indices)
-        ell_a.append(a)
-        ell_rows[-1] = new_rows
         cached_formats = ell_indices, ell_a, ell_rows
 
     # prepare nd array
@@ -452,7 +460,7 @@ if __name__ == "__main__":
         print("feat_size=", feat_size)
         x = th.ones((g.num_src_nodes(), feat_size))
         y_golden = dgl.ops.copy_u_sum(g, x)
-        bench_hyb(g, x, y_golden, feat_size=feat_size, bucket_sizes=[1, 2, 4, 8, 16, 32], cwm=2)
+        bench_hyb(g, x, y_golden, feat_size=feat_size, bucket_sizes=[1, 2, 4, 8, 16, 32], cwm=2, column_part=1)
     for feat_size in [32, 64, 128, 256, 512]:
         print("feat_size=", feat_size)
         bench_tir_csrmm(g, feat_size=feat_size)
