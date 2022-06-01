@@ -1,4 +1,5 @@
 import dgl
+from sklearn.metrics import jaccard_score
 import tvm
 import tvm.testing
 import tvm.tir as tir
@@ -9,8 +10,36 @@ from tvm.script import tir as T
 from tvm.sparse import FormatRewriteRule, lower_sparse_buffer, lower_sparse_iter
 import tvm.sparse
 from ogb.nodeproppred import DglNodePropPredDataset
-from sparse_tir_scripts import csrmm
 from sparse_tir_format_rewrite_scripts import ell
+
+
+@T.prim_func
+def csrmm(
+    a: T.handle,
+    b: T.handle,
+    c: T.handle,
+    indptr: T.handle,
+    indices: T.handle,
+    m: T.int32,
+    n: T.int32,
+    num_tiles: T.int32,
+    nnz: T.int32,
+    cwm: T.int32,
+) -> None:
+    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
+    I = T.dense_fixed(m)
+    J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
+    J_detach = T.dense_fixed(n)
+    K1 = T.dense_fixed(num_tiles)
+    K2 = T.dense_fixed(cwm)
+    K3 = T.dense_fixed(32)
+    A = T.match_sparse_buffer(a, (I, J), "float32")
+    B = T.match_sparse_buffer(b, (J_detach, K1, K2, K3), "float32")
+    C = T.match_sparse_buffer(c, (I, K1, K2, K3), "float32")
+    with T.iter([I, J, K1, K2, K3], "SRSSS", "csrmm") as [i, j, k1, k2, k3]:
+        with T.init():
+            C[i, k1, k2, k3] = 0.0
+        C[i, k1, k2, k3] = C[i, k1, k2, k3] + A[i, j] * B[j, k1, k2, k3]
 
 
 class TorchOpTimer(object):
@@ -109,24 +138,50 @@ def csrmm_padding_tir(
                                 * B[A_indices[(vj + A_indptr[vi]) * tile_size + vt] * K + vk]
                             )
 
+
 def csr2ell_inv_index_map(o, i, j):
     return i, j
+
 
 def csr2ell_index_map(i, j):
     return 0, i, j
 
-def bench_hyb(g, feat_size=128, bucket_sizes=[]):
-    # still work in progress
-    in_degrees = g.in_degrees()
-    # bucket_sizes = [4, 16, 64, 256]
+
+cached_formats = []
+
+def bench_hyb(g, x, y_golden, feat_size=128, bucket_sizes=[], cwm=2):
+    global cached_formats
+    mat = g.adj(transpose=True, scipy_fmt='csr')
+    del g
+    cwm = min(cwm, feat_size // 32)
+    buckets = bucket_sizes
+    num_buckets = len(buckets)
+    m = mat.shape[0]
+    n = mat.shape[1]
+    nnz = mat.nnz
+
+    in_degrees = mat.indptr[1:] - mat.indptr[:-1]
+    ell_n = []
+    is_bucket_atomic = []
+    for bucket_size in bucket_sizes[:-1]:
+        ell_n.append(int((in_degrees <= bucket_size).sum()))
+        is_bucket_atomic.append(False)
+    for i in range(1, len(bucket_sizes) - 1):
+        ell_n[i] = ell_n[i] - sum(ell_n[:i])
+    sub_indegrees = in_degrees[in_degrees > bucket_sizes[-2]]
+    ell_n.append(
+        int(((sub_indegrees + bucket_sizes[-1] - 1) // bucket_sizes[-1]).sum())
+    )
+    is_bucket_atomic.append(True)
+    print(ell_n)
 
     # rewrite csrmm
     nnz_cols_symbol = ell.params[-1]
     rewrites = []
-    for bucket_size in bucket_sizes:
+    for i, bucket_size in enumerate(buckets):
         rewrites.append(
             FormatRewriteRule(
-                str(bucket_size),
+                str(i),
                 ell.specialize({nnz_cols_symbol: bucket_size}),
                 ["A"],
                 ["I", "J"],
@@ -140,130 +195,139 @@ def bench_hyb(g, feat_size=128, bucket_sizes=[]):
     mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
     mod = tvm.tir.transform.RemovePreprocess()(mod)
 
-    ell_rows = {}
-    ell_n = {}
-    ell_rows[bucket_sizes[0]] = ((in_degrees <= bucket_sizes[0])).nonzero().view(-1)
-    for i in range(1, len(bucket_sizes) - 1):
-        bucket_size = bucket_sizes[i]
-        ell_rows[bucket_size] = ((in_degrees <= bucket_size) & (in_degrees > bucket_sizes[i - 1])).nonzero().view(-1)
-    ell_rows[bucket_sizes[-1]] = (in_degrees > bucket_sizes[-2]).nonzero().view(-1)
-    for bucket_size in bucket_sizes:
-        ell_n[bucket_size] = len(ell_rows[bucket_size])
-    n = g.num_nodes()
-    nnz = g.num_edges()
-
-    ell_indices = {}
-    ell_a = {}
-    for bucket_size in bucket_sizes[:-1]:
-        indices = []
-        a = []
-        for row in ell_rows[bucket_size]:
-            in_edges = g.in_edges([row])[0]
-            indices.append(th.cat([in_edges, th.full((bucket_size - len(in_edges),), 0)]))
-            a.append(th.cat([th.ones(len(in_edges)), th.zeros(bucket_size - len(in_edges))]))
-        ell_indices[bucket_size] = th.stack(indices)
-        ell_a[bucket_size] = th.stack(a)
-
-    # split rows for the last bucket
-    indices = []
-    a = []
-    new_rows = []
-    bucket_size = bucket_sizes[-1]
-    for row in ell_rows[bucket_size]:
-        in_edges = g.in_edges([row])[0]
-        for i in range((len(in_edges) + bucket_size - 1) // bucket_size):
-            in_edges_i = in_edges[i * bucket_size : (i + 1) * bucket_size]
-            indices.append(th.cat([in_edges_i, th.full((bucket_size - len(in_edges_i),), 0)]))
-            a.append(th.cat([th.ones(len(in_edges_i)), th.zeros(bucket_size - len(in_edges_i))]))
-            new_rows.append(row)
-    ell_indices[bucket_size] = th.stack(indices)
-    ell_a[bucket_size] = th.stack(a)
-    ell_rows[bucket_size] = th.tensor(new_rows).int()
-    ell_n[bucket_size] = len(new_rows)
-
+    # specialize
     params = mod["main"].params
     param_map = {
-        params[5]: g.num_dst_nodes(), # m
-        params[6]: g.num_src_nodes(), # n
-        params[7]: feat_size, # feat_size,
-        params[8]: nnz, # nnz
+        params[5]: m,  # m
+        params[6]: n,  # n
+        params[7]: feat_size // cwm // 32,  # num_tiles,
+        params[8]: nnz,  # nnz
+        params[9]: cwm,  # cwm
     }
-    for i in range(len(bucket_sizes)):
-        bucket_size = bucket_sizes[i]
-        param_map[params[9 + 7 * i + 4]] = g.num_dst_nodes()
-        param_map[params[9 + 7 * i + 5]] = g.num_src_nodes()
-        param_map[params[9 + 7 * i + 6]] = ell_n[bucket_size]
+    for i, bucket_size in enumerate(buckets):
+        param_map[params[10 + 7 * i + 4]] = m 
+        param_map[params[10 + 7 * i + 5]] = n 
+        param_map[params[10 + 7 * i + 6]] = ell_n[i]
 
     mod["main"] = mod["main"].specialize(param_map).with_attr("horizontal_fuse", True)
+
+    # schedule
     sch = tvm.tir.Schedule(mod)
-    for sp_iter_name in ['csrmm_{}'.format(bucket_size) for bucket_size in bucket_sizes]:
+    for sp_iter_name in ["csrmm_{}".format(i) for i in range(num_buckets)]:
         sp_iteration = sch.get_sparse_iteration(sp_iter_name)
-        o, i, j, k = sch.get_sp_iters(sp_iteration)
+        o, i, j, k1, k2, k3 = sch.get_sp_iters(sp_iteration)
         sch.sparse_fuse(sp_iteration, [o, i])
+
     mod = sch.mod
     mod = tvm.sparse.lower_sparse_iter(mod)
     sch = tvm.tir.Schedule(mod)
-    for bucket_size in bucket_sizes[:-1]:
-        blk = sch.get_block("csrmm_{}0".format(bucket_size))
-        i, j, f = sch.get_loops(blk)
-        foo, foi, fi = sch.split(f, [None, 2, 32])
-        sch.bind(fi, "threadIdx.x")
+    for i, bucket_size in enumerate(buckets):
+        is_atomic = is_bucket_atomic[i]
+        bucket_size = buckets[i]
+        blk = sch.get_block("csrmm_{}0".format(i))
+        i, j, foo, foi, fi = sch.get_loops(blk)
+        sch.reorder(foo, fi, j, foi)
+        if is_atomic:
+            sch.annotate(blk, "atomic", True)
+            write_blk = sch.cache_write(blk, 0, "local")
+            sch.reverse_compute_at(write_blk, fi, True)
+            ax = sch.get_loops(write_blk)[-1]
+            sch.unroll(ax)
         sch.unroll(foi)
+        sch.bind(fi, "threadIdx.x")
         sch.bind(foo, "blockIdx.y")
-        jo, ji = sch.split(j, [None, 32])
-        sch.unroll(ji)
+        sch.unroll(j)
         io, ii = sch.split(i, [None, max(1, 32 // bucket_size)])
         sch.bind(io, "blockIdx.x")
-
-    # schedule last bucket
-    blk = sch.get_block("csrmm_{}0".format(bucket_sizes[-1]))
-    i, j, f = sch.get_loops(blk)
-    sch.annotate(blk, "atomic", True)
-    write_blk = sch.cache_write(blk, 0, "local")
-    sch.reverse_compute_at(write_blk, i)
-    foo, foi, fi = sch.split(f, [None, 2, 32])
-    sch.bind(fi, "threadIdx.x")
-    sch.unroll(foi)
-    sch.bind(foo, "blockIdx.y")
-    jo, ji = sch.split(j, [None, 32])
-    sch.unroll(ji)
-    io, ii = sch.split(i, [None, max(1, 32 // bucket_size)])
-    sch.bind(io, "blockIdx.x")
-    ax0, ax1, ax2 = sch.split(sch.get_loops(write_blk)[-1], [None, 2, 32])
-    sch.bind(ax0, "blockIdx.y")
-    sch.bind(ax2, "threadIdx.x")
-    sch.unroll(ax1)
 
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
     f = tvm.build(mod, target="cuda")
+    # print(f.imported_modules[0].get_source())
 
-    b_nd = tvm.nd.array(np.ones(n * feat_size,).astype("float32"), device=tvm.cuda(0))
+    # prepare new formats
+    if len(cached_formats) > 0:
+        ell_indices, ell_a, ell_rows = cached_formats
+    else:
+        ell_rows = []
+        ell_rows.append(((in_degrees <= bucket_sizes[0])).nonzero()[0])
+        for i in range(1, len(bucket_sizes) - 1):
+            bucket_size = bucket_sizes[i]
+            ell_rows.append(
+                ((in_degrees <= bucket_size) & (in_degrees > bucket_sizes[i - 1]))
+                .nonzero()[0]
+            )
+        ell_rows.append((in_degrees > bucket_sizes[-2]).nonzero()[0])
+
+        ell_indices = []
+        ell_a = []
+        for i, bucket_size in enumerate(buckets[:-1]):
+            indices = np.zeros((ell_n[i], bucket_size), dtype=np.int32)
+            a = np.zeros((ell_n[i], bucket_size), dtype=np.float32)
+            for i, row in enumerate(ell_rows[i]):
+                mat_row = mat[row]
+                indices[i, :mat_row.nnz] = mat_row.indices
+                a[i, :mat_row.nnz] = mat_row.data
+            ell_indices.append(indices)
+            ell_a.append(a)
+
+        # split rows for the last bucket
+        indices = np.zeros((ell_n[-1], buckets[-1]), dtype=np.int32)
+        a = np.zeros((ell_n[-1], buckets[-1]), dtype=np.float32)
+        new_rows = np.zeros((ell_n[-1],), dtype=np.int32)
+        bucket_size = bucket_sizes[-1]
+        i = 0
+        for row in ell_rows[-1]:
+            mat_row = mat[row]
+            for start_offset in range(0, mat_row.nnz, bucket_size):
+                if start_offset + bucket_size >= mat_row.nnz:
+                    # last bucket
+                    indices[i, :mat_row.nnz - start_offset] = mat_row.indices[start_offset:]
+                    a[i, :mat_row.nnz - start_offset] = mat_row.data[start_offset:]
+                else:
+                    indices[i] = mat_row.indices[start_offset: start_offset + bucket_size]
+                    a[i].fill(1)
+                new_rows[i] = row
+                i += 1
+
+        ell_indices.append(indices)
+        ell_a.append(a)
+        ell_rows[-1] = new_rows
+        cached_formats = ell_indices, ell_a, ell_rows
+
+    # prepare nd array
+    b_nd = tvm.nd.array(
+        x.numpy().reshape(-1).astype("float32"),
+        device=tvm.cuda(0),
+    )
     c_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
-    ell_indices_i_nd = {}
-    ell_a_nd = {}
-    ell_indices_j_nd = {}
-    for bucket_size in bucket_sizes:
-        ell_indices_i_nd[bucket_size] = tvm.nd.array(ell_rows[bucket_size].numpy().astype("int32"), device=tvm.cuda(0))
-        ell_a_nd[bucket_size] = tvm.nd.array(ell_a[bucket_size].view(-1).numpy().astype("float32"), device=tvm.cuda(0))
-        ell_indices_j_nd[bucket_size] = tvm.nd.array(ell_indices[bucket_size].view(-1).numpy().astype("int32"), device=tvm.cuda(0))
+    ell_indices_i_nd = []
+    ell_a_nd = []
+    ell_indices_j_nd = []
+    for i in range(num_buckets):
+        ell_indices_i_nd.append(
+            tvm.nd.array(ell_rows[i].astype("int32"), device=tvm.cuda(0))
+        )
+        ell_a_nd.append(
+            tvm.nd.array(ell_a[i].reshape(-1).astype("float32"), device=tvm.cuda(0))
+        )
+        ell_indices_j_nd.append(
+            tvm.nd.array(ell_indices[i].reshape(-1).astype("int32"), device=tvm.cuda(0))
+        )
 
-    accum_time = 0.0
-    runs = 0
-    cold_start_time = 3
+    # prepare args
     args = [b_nd, c_nd]
-    for bucket_size in bucket_sizes:
-        args += [ell_a_nd[bucket_size], ell_indices_i_nd[bucket_size], ell_indices_j_nd[bucket_size]]
-    print(ell_n)
-    for i in range(10):
-        with TorchOpTimer() as timer:
-            f(*args)
-        if i >= cold_start_time:
-            accum_time += timer.time
-            runs += 1
+    for i in range(num_buckets):
+        args += [ell_a_nd[i], ell_indices_i_nd[i], ell_indices_j_nd[i]]
+    
+    # test accuracy
+    f(*args)
+    tvm.testing.assert_allclose(c_nd.numpy().reshape(-1, feat_size), y_golden.numpy())
 
-    print(accum_time / runs * 1000)
-
+    # evaluate time
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
+    print("tir hyb time: {:.3f}ms".format(evaluator(*args).mean * 1000))
+    
 
 def bench_tir_csrmm(g, feat_size=128):
     # generate random input
@@ -319,7 +383,7 @@ def bench_tir_csrmm(g, feat_size=128):
             runs += 1
     print("cusparse time: {:.3f}ms".format(accum_time / runs * 1000))
 
-    for tile_size in [8, 16, 24, 32, 40, 48, 56, 64]:
+    for tile_size in [4, 8, 16, 24, 32, 40, 48, 56, 64]:
         g_pad = pad_graph(g, tile_size=tile_size)
         m = g_pad.num_src_nodes()
         n = g_pad.num_dst_nodes()
@@ -373,19 +437,22 @@ def bench_tir_csrmm(g, feat_size=128):
 
 if __name__ == "__main__":
     arxiv = DglNodePropPredDataset(name="ogbn-arxiv")
-    g = arxiv[0][0] # [1, 2, 4, 8, 16, 32, 64, 128]
-    # proteins = DglNodePropPredDataset(name='ogbn-proteins')
+    g = arxiv[0][0] # [1, 2, 4, 8, 16, 32]
+    # proteins = DglNodePropPredDataset(name="ogbn-proteins")
     # g = proteins[0][0]
     # pubmed = dgl.data.PubmedGraphDataset()
     # g = pubmed[0] # [1, 8, 16]
     # ppi = dgl.data.PPIDataset()
-    # g = dgl.batch(ppi)
+    # g = dgl.batch(ppi) # [4, 8, 16, 32]
     # reddit = dgl.data.RedditDataset()
     # g = reddit[0] # [64, 128, 256, 512]
 
+    g = g.int()
     for feat_size in [32, 64, 128, 256, 512]:
         print("feat_size=", feat_size)
-        bench_hyb(g, feat_size=feat_size, bucket_sizes=[1, 2, 4, 8, 16, 32, 64, 128])
+        x = th.ones((g.num_src_nodes(), feat_size))
+        y_golden = dgl.ops.copy_u_sum(g, x)
+        bench_hyb(g, x, y_golden, feat_size=feat_size, bucket_sizes=[1, 2, 4, 8, 16, 32], cwm=2)
     for feat_size in [32, 64, 128, 256, 512]:
         print("feat_size=", feat_size)
         bench_tir_csrmm(g, feat_size=feat_size)

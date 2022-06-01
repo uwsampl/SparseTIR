@@ -77,36 +77,11 @@ class ThreadTagExtentCollector : public StmtExprVisitor {
 
 class HorizontalFuser : public StmtExprMutator {
  public:
-  explicit HorizontalFuser(Map<String, Integer> thread_tag_extent_map, bool is_sequential)
+  explicit HorizontalFuser(Map<String, Integer> thread_tag_extent_map)
       : blockIdx_x_accum_offset_(0),
         group_counter_(0),
-        thread_tag_extent_map_(std::move(thread_tag_extent_map)),
-        is_sequential_(is_sequential) {
+        thread_tag_extent_map_(std::move(thread_tag_extent_map)) {
     InitThreadTagVarMap();
-    if (!is_sequential_) {
-      PrimExpr num_blocks = thread_tag_extent_map_.Get("blockIdx.x").value();
-      // swizzle
-      group_id = Buffer(
-          /*ptr=*/Var("group_id", PointerType(PrimType(num_blocks->dtype), "global")),
-          /*dtype=*/num_blocks->dtype,
-          /*shape=*/{num_blocks},
-          /*strides=*/{Integer(1)},
-          /*elem_offset=*/PrimExpr{nullptr},
-          /*name=*/"group_id",
-          /*data_alignment=*/0,
-          /*offset_factor=*/0,
-          /*buffer_type=*/kDefault);
-      thread_map = Buffer(
-          /*ptr=*/Var("thread_map", PointerType(PrimType(num_blocks->dtype), "global")),
-          /*dtype=*/num_blocks->dtype,
-          /*shape=*/{num_blocks},
-          /*strides=*/{Integer(1)},
-          /*elem_offset=*/PrimExpr{nullptr},
-          /*name=*/"thread_map",
-          /*data_alignment=*/0,
-          /*offset_factor=*/0,
-          /*buffer_type=*/kDefault);
-    }
   }
 
   Buffer group_id, thread_map;
@@ -139,17 +114,10 @@ class HorizontalFuser : public StmtExprMutator {
     Var thread_var = thread_tag_var_map_.Get(thread_tag).value();
     if (thread_tag == "blockIdx.x") {
       Stmt body;
-      if (is_sequential_) {
-        var_substitution_map_[op->loop_var.get()] = thread_var - blockIdx_x_accum_offset_;
-        body = IfThenElse(thread_var < blockIdx_x_accum_offset_ + original_extent,
-                          VisitStmt(op->body));
-        blockIdx_x_accum_offset_ += original_extent->value;
-      } else {
-        var_substitution_map_[op->loop_var.get()] = BufferLoad(thread_map, {thread_var});
-        body =
-            IfThenElse(BufferLoad(group_id, {thread_var}) == group_counter_, VisitStmt(op->body));
-        group_counter_++;
-      }
+      var_substitution_map_[op->loop_var.get()] = thread_var - blockIdx_x_accum_offset_;
+      body =
+          IfThenElse(thread_var < blockIdx_x_accum_offset_ + original_extent, VisitStmt(op->body));
+      blockIdx_x_accum_offset_ += original_extent->value;
       return body;
     } else {
       Integer new_extent = thread_tag_extent_map_.Get(thread_tag).value();
@@ -180,8 +148,12 @@ class HorizontalFuser : public StmtExprMutator {
       for (auto& kv : thread_tag_extent_map_) {
         String thread_tag = kv.first;
         PrimExpr extent = kv.second;
-        For new_loop(thread_tag_var_map_.Get(thread_tag).value(), Integer(0), extent,
-                     ForKind::kThreadBinding, body,
+        Var thread_var = thread_tag_var_map_.Get(thread_tag).value();
+        // if (thread_tag == "blockIdx.x") {
+        //   body = LetStmt(group_id_i_, BufferLoad(group_id, {thread_var}), body);
+        //   body = LetStmt(thread_map_i_, BufferLoad(thread_map, {thread_var}), body);
+        // }
+        For new_loop(thread_var, Integer(0), extent, ForKind::kThreadBinding, body,
                      IterVar(NullValue<Range>(), Var(""), IterVarType::kThreadIndex, thread_tag));
         body = new_loop;
       }
@@ -194,9 +166,9 @@ class HorizontalFuser : public StmtExprMutator {
   int32_t blockIdx_x_accum_offset_;
   int32_t group_counter_;
   Map<String, Integer> thread_tag_extent_map_;
-  bool is_sequential_;
   Map<String, Var> thread_tag_var_map_;
   std::unordered_map<const VarNode*, PrimExpr> var_substitution_map_;
+  Var group_id_i_, thread_map_i_;
 };
 
 PrimFunc HorizontalFusion(PrimFunc f) {
@@ -204,24 +176,12 @@ PrimFunc HorizontalFusion(PrimFunc f) {
   if (!IsFromLegacyTESchedule(f)) {
     PrimFuncNode* fptr = f.CopyOnWrite();
     // If the horizontal fuse flag was set to True, apply horizontal fuser.
-    Optional<String> maybe_horizontal_fuse_flag = fptr->attrs.GetAttr<String>("horizontal_fuse");
+    Optional<ObjectRef> maybe_horizontal_fuse_flag =
+        fptr->attrs.GetAttr<ObjectRef>("horizontal_fuse");
     if (maybe_horizontal_fuse_flag.defined()) {
-      String horizontal_fuse_flag = maybe_horizontal_fuse_flag.value();
       ThreadTagExtentCollector collector;
       Map<String, Integer> thread_tag_extent_map_ = collector.Collect(fptr);
-      if (horizontal_fuse_flag == "sequential") {
-        fptr->body =
-            HorizontalFuser(std::move(thread_tag_extent_map_), true)(std::move(fptr->body));
-      } else if (horizontal_fuse_flag == "swizzle") {
-        HorizontalFuser fuser(std::move(thread_tag_extent_map_), false);
-        fptr->body = fuser(std::move(fptr->body));
-        Var group_id_ptr("group_id_ptr", DataType::Handle());
-        Var thread_map_ptr("thread_map_ptr", DataType::Handle());
-        fptr->params.push_back(group_id_ptr);
-        fptr->params.push_back(thread_map_ptr);
-        fptr->buffer_map.Set(group_id_ptr, fuser.group_id);
-        fptr->buffer_map.Set(thread_map_ptr, fuser.thread_map);
-      }
+      fptr->body = HorizontalFuser(std::move(thread_tag_extent_map_))(std::move(fptr->body));
       Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;
       new_attr_dict.erase("horizontal_fuse");
       if (new_attr_dict.empty()) {

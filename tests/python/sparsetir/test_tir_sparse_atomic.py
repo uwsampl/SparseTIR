@@ -146,10 +146,10 @@ def test_lower_rgcn_hetero(
     _, _, ax2 = sch.get_loops(read_blk)
     sch.bind(ax2, "threadIdx.x")
     mod = lower_sparse_buffer(sch.mod)
-    print(mod["main"].script())
 
     f = tvm.build(mod["main"], target="cuda")
     print(f.imported_modules[0].get_source())
+    assert False
 
     # cold_start = 3
     # total = 10

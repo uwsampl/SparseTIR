@@ -23,6 +23,7 @@ from sparse_tir_format_rewrite_scripts import (
     bsr_rewrite_with_preprocess,
     ell,
     ell_rewrite_with_preprocess,
+    padding,
 )
 
 
@@ -89,6 +90,31 @@ def test_csrmm_ell_rewrite():
     tvm.ir.assert_structural_equal(mod["main"], ell_rewrite_with_preprocess, True)
 
 
+def csrpadding_inv_index_map(i, jo, ji):
+    return i, ji
+
+def csrpadding_index_map(i, j):
+    return i, 0, j
+
+def test_csrmm_padding_rewrite():
+    pad_size_symbol = padding.params[-1]
+    pad_size = 32
+    rewrites = [FormatRewriteRule(
+        str(pad_size),
+        padding.specialize({pad_size_symbol: pad_size}),
+        ["A"],
+        ["I", "J"],
+        ["I", "JO", "JI"],
+        {"I": ["I"], "J": ["JO", "JI"]},
+        csrpadding_index_map,
+        csrpadding_inv_index_map,
+    )]
+    mod = tvm.IRModule.from_expr(csrmm)
+    mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
+    print(mod["main"].script())
+
+
 if __name__ == "__main__":
     test_csrmm_bsr_rewrite()
     test_csrmm_ell_rewrite()
+    test_csrmm_padding_rewrite()

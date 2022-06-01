@@ -8,6 +8,7 @@ def test_schedule_rgcn():
     mod = tvm.IRModule.from_expr(func)
     mod = tvm.tir.transform.LowerSparseIter()(mod)
     sch = tvm.tir.Schedule(mod)
+    print(sch.mod["main"].script())
 
     blk0 = sch.get_block("rgcn-hetero-forward0")
     blk1 = sch.get_block("rgcn-hetero-forward1")
@@ -19,13 +20,11 @@ def test_schedule_rgcn():
     j, f_in = sch.get_loops(blk2)
     sch.bind(f_in, "threadIdx.x")
     sch.reorder(f_in, j)
-    sch.decompose_reduction(blk2, f_in)
+    # sch.decompose_reduction(blk2, f_in)
     i1, i2 = sch.split(i, [None, 8])
     sch.bind(i2, "blockIdx.x")
     sch.bind(r, "blockIdx.y")
     sch.bind(f_out, "threadIdx.y")
-    _, _, ax2 = sch.get_loops(read_blk)
-    sch.bind(ax2, "threadIdx.x")
     mod = tvm.tir.transform.LowerSparseBuffer()(sch.mod)
     print(mod["main"].script())
 

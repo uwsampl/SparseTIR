@@ -37,6 +37,23 @@ def bsr(
 
 
 @T.prim_func
+def padding(
+    a: T.handle,
+    indptr: T.handle,
+    indices: T.handle,
+    m: T.int32,
+    n: T.int32,
+    nnz_chunks: T.int32,
+    pad_size: T.int32,
+) -> None:
+    I = T.dense_fixed(m)
+    JO = T.dense_variable(I, ((n + pad_size - 1) // pad_size, nnz_chunks), indptr, "int32")
+    JI = T.sparse_fixed(JO, (n, pad_size), indices, "int32")
+    A = T.match_sparse_buffer(a, (I, JO, JI), "float32")
+    T.evaluate(0)
+
+
+@T.prim_func
 def ell(
     a: T.handle,
     indptr_i: T.handle,
