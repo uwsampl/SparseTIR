@@ -243,7 +243,7 @@ def bench_hyb(g, x, y_golden, feat_size=128, bucket_sizes=[], cwm=2, column_part
         sch.bind(fi, "threadIdx.x")
         sch.bind(foo, "blockIdx.y")
         sch.unroll(j)
-        io, ii = sch.split(i, [None, max(1, 32 // bucket_size)])
+        io, ii = sch.split(i, [None, max(1, bucket_sizes[-1] // bucket_size)])
         sch.bind(io, "blockIdx.x")
 
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
