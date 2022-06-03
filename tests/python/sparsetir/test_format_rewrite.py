@@ -24,6 +24,7 @@ from sparse_tir_format_rewrite_scripts import (
     ell,
     ell_rewrite_with_preprocess,
     padding,
+    padding_rewrite_with_preprocess,
 )
 
 
@@ -32,6 +33,7 @@ def csr2bsr_inv_index_map(block_size):
         return io * block_size + ii, jo * block_size + ji
 
     return func
+
 
 def csr2bsr_index_map(block_size):
     def func(i, j):
@@ -42,6 +44,7 @@ def csr2bsr_index_map(block_size):
 
 def csr2ell_inv_index_map(o, i, j):
     return i, j
+
 
 def csr2ell_index_map(i, j):
     return 0, i, j
@@ -93,25 +96,29 @@ def test_csrmm_ell_rewrite():
 def csrpadding_inv_index_map(i, jo, ji):
     return i, ji
 
+
 def csrpadding_index_map(i, j):
     return i, 0, j
+
 
 def test_csrmm_padding_rewrite():
     pad_size_symbol = padding.params[-1]
     pad_size = 32
-    rewrites = [FormatRewriteRule(
-        str(pad_size),
-        padding.specialize({pad_size_symbol: pad_size}),
-        ["A"],
-        ["I", "J"],
-        ["I", "JO", "JI"],
-        {"I": ["I"], "J": ["JO", "JI"]},
-        csrpadding_index_map,
-        csrpadding_inv_index_map,
-    )]
+    rewrites = [
+        FormatRewriteRule(
+            str(pad_size),
+            padding.specialize({pad_size_symbol: pad_size}),
+            ["A"],
+            ["I", "J"],
+            ["I", "JO", "JI"],
+            {"I": ["I"], "J": ["JO", "JI"]},
+            csrpadding_index_map,
+            csrpadding_inv_index_map,
+        )
+    ]
     mod = tvm.IRModule.from_expr(csrmm)
     mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
-    print(mod["main"].script())
+    tvm.ir.assert_structural_equal(mod["main"], padding_rewrite_with_preprocess, True)
 
 
 if __name__ == "__main__":

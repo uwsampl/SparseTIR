@@ -283,6 +283,7 @@ class SparseFormatRewriter : public StmtExprMutator {
     Map<Axis, PrimExpr> axis_val_map;
     for (const SpIterVar& sp_iter_var : op->sp_iter_vars) {
       if (axis_rewrite_map_.count(sp_iter_var->axis)) {
+        axis_iter_var_map_.Set(sp_iter_var->axis, sp_iter_var);
         Array<Axis> new_axes = axis_rewrite_map_.Get(sp_iter_var->axis).value();
         for (const Axis& axis : new_axes) {
           Var new_var(GetVarNameFromAxis(axis), sp_iter_var->var->dtype);
@@ -290,6 +291,7 @@ class SparseFormatRewriter : public StmtExprMutator {
           new_sp_iter_vars.push_back(new_sp_iter_var);
           axis_val_map.Set(axis, new_var);
           ana.Bind(new_var, Range::FromMinExtent(Integer(0), axis->length));
+          axis_iter_var_map_.Set(axis, new_sp_iter_var);
         }
       } else {
         Var new_var(sp_iter_var->var->name_hint, sp_iter_var->var->dtype);
@@ -298,6 +300,7 @@ class SparseFormatRewriter : public StmtExprMutator {
         new_sp_iter_vars.push_back(new_sp_iter_var);
         axis_val_map.Set(sp_iter_var->axis, new_var);
         ana.Bind(new_var, Range::FromMinExtent(Integer(0), sp_iter_var->axis->length));
+        axis_iter_var_map_.Set(sp_iter_var->axis, new_sp_iter_var);
       }
     }
     rewriter_.UpdateInvMap(axis_val_map);
@@ -310,6 +313,14 @@ class SparseFormatRewriter : public StmtExprMutator {
     if (op->init.defined()) {
       init = VisitStmt(Substitute(op->init.value(), var_map));
     }
+    // pop axis_iter_var_map_
+    for (const SpIterVar& sp_iter_var : new_sp_iter_vars) {
+      axis_iter_var_map_.erase(sp_iter_var->axis);
+    }
+    for (const SpIterVar& sp_iter_var : op->sp_iter_vars) {
+      axis_iter_var_map_.erase(sp_iter_var->axis);
+    }
+    // return
     return SparseIteration(new_sp_iter_vars, op->name + rewrite_suffix, body, init,
                            op->annotations);
   }
@@ -332,31 +343,60 @@ class SparseFormatRewriter : public StmtExprMutator {
     return new_indices;
   }
 
+  bool CheckBypass(const SparseBuffer& buf, const Array<PrimExpr>& indices) {
+    for (size_t i = 0; i < indices.size(); ++i) {
+      if (!axis_iter_var_map_.Get(buf->axes[i]).value()->var.same_as(indices[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     SparseBuffer buf = Downcast<SparseBuffer>(op->buffer);
-    Array<PrimExpr> indices;
+    Array<PrimExpr> indices_in_old_space;
     for (const PrimExpr& idx : op->indices) {
-      indices.push_back(VisitExpr(idx));
+      indices_in_old_space.push_back(VisitExpr(idx));
     }
     if (buffer_rewrite_map_.count(buf)) {
+      bool bypass = CheckBypass(buf, op->indices);  // use indices before visiting
       SparseBuffer new_buf = buffer_rewrite_map_.Get(buf).value();
-      return BufferLoad(new_buf, RewriteIndices(buf, new_buf, indices));
+      Array<PrimExpr> indices_in_new_space;
+      if (bypass) {
+        // directly use the iter var of buffer axes, avoid back-forward translation.
+        for (const Axis& axis : new_buf->axes) {
+          indices_in_new_space.push_back(axis_iter_var_map_.Get(axis).value()->var);
+        }
+      } else {
+        indices_in_new_space = RewriteIndices(buf, new_buf, indices_in_old_space);
+      }
+      return BufferLoad(new_buf, indices_in_new_space);
     } else {
-      return BufferLoad(op->buffer, indices);
+      return BufferLoad(op->buffer, indices_in_old_space);
     }
   }
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     SparseBuffer buf = Downcast<SparseBuffer>(op->buffer);
-    Array<PrimExpr> indices;
+    Array<PrimExpr> indices_in_old_space;
     for (const PrimExpr& idx : op->indices) {
-      indices.push_back(VisitExpr(idx));
+      indices_in_old_space.push_back(VisitExpr(idx));
     }
     if (buffer_rewrite_map_.count(buf)) {
+      bool bypass = CheckBypass(buf, op->indices);  // use indices before visiting
       SparseBuffer new_buf = buffer_rewrite_map_.Get(buf).value();
-      return BufferStore(new_buf, VisitExpr(op->value), RewriteIndices(buf, new_buf, indices));
+      Array<PrimExpr> indices_in_new_space;
+      if (bypass) {
+        // directly use the iter var of buffer axes, avoid back-forward translation.
+        for (const Axis& axis : new_buf->axes) {
+          indices_in_new_space.push_back(axis_iter_var_map_.Get(axis).value()->var);
+        }
+      } else {
+        indices_in_new_space = RewriteIndices(buf, new_buf, indices_in_old_space);
+      }
+      return BufferStore(new_buf, VisitExpr(op->value), indices_in_new_space);
     } else {
-      return BufferStore(op->buffer, VisitExpr(op->value), indices);
+      return BufferStore(op->buffer, VisitExpr(op->value), indices_in_old_space);
     }
   }
 
@@ -372,6 +412,7 @@ class SparseFormatRewriter : public StmtExprMutator {
   Map<String, Axis> name_axis_map_;
   Map<String, SparseBuffer> name_buf_map_;
   Map<Axis, Array<Axis>> axis_rewrite_map_;
+  Map<Axis, SpIterVar> axis_iter_var_map_;  // used for bypassing
   Map<Var, PrimExpr> var_map_;
   Map<SparseBuffer, SparseBuffer> buffer_rewrite_map_;
   Array<Axis> axes_before_rewrite_;

@@ -302,28 +302,70 @@ def ell_rewrite_with_preprocess(
     with T.iter([O_4, I_4, J_4, K], "SSRS", "csrmm_4") as [o_4, i_4, j_4, k]:
         with T.init():
             C[i_4, k] = T.float32(0)
-        C[i_4, k] = C[i_4, k] + A_4[0, i_4, j_4] * B[j_4, k]
+        C[i_4, k] = C[i_4, k] + A_4[o_4, i_4, j_4] * B[j_4, k]
     with T.iter([O_8, I_8, J_8, K], "SSRS", "csrmm_8") as [o_8, i_8, j_8, k]:
         with T.init():
             C[i_8, k] = T.float32(0)
-        C[i_8, k] = C[i_8, k] + A_8[0, i_8, j_8] * B[j_8, k]
+        C[i_8, k] = C[i_8, k] + A_8[o_8, i_8, j_8] * B[j_8, k]
     with T.iter([O_16, I_16, J_16, K], "SSRS", "csrmm_16") as [o_16, i_16, j_16, k]:
         with T.init():
             C[i_16, k] = T.float32(0)
-        C[i_16, k] = C[i_16, k] + A_16[0, i_16, j_16] * B[j_16, k]
+        C[i_16, k] = C[i_16, k] + A_16[o_16, i_16, j_16] * B[j_16, k]
     with T.iter([O_32, I_32, J_32, K], "SSRS", "csrmm_32") as [o_32, i_32, j_32, k]:
         with T.init():
             C[i_32, k] = T.float32(0)
-        C[i_32, k] = C[i_32, k] + A_32[0, i_32, j_32] * B[j_32, k]
+        C[i_32, k] = C[i_32, k] + A_32[o_32, i_32, j_32] * B[j_32, k]
     with T.iter([O_64, I_64, J_64, K], "SSRS", "csrmm_64") as [o_64, i_64, j_64, k]:
         with T.init():
             C[i_64, k] = T.float32(0)
-        C[i_64, k] = C[i_64, k] + A_64[0, i_64, j_64] * B[j_64, k]
+        C[i_64, k] = C[i_64, k] + A_64[o_64, i_64, j_64] * B[j_64, k]
     with T.iter([O_128, I_128, J_128, K], "SSRS", "csrmm_128") as [o_128, i_128, j_128, k]:
         with T.init():
             C[i_128, k] = T.float32(0)
-        C[i_128, k] = C[i_128, k] + A_128[0, i_128, j_128] * B[j_128, k]
+        C[i_128, k] = C[i_128, k] + A_128[o_128, i_128, j_128] * B[j_128, k]
     with T.iter([O_512, I_512, J_512, K], "SSRS", "csrmm_512") as [o_512, i_512, j_512, k]:
         with T.init():
             C[i_512, k] = T.float32(0)
-        C[i_512, k] = C[i_512, k] + A_512[0, i_512, j_512] * B[j_512, k]
+        C[i_512, k] = C[i_512, k] + A_512[o_512, i_512, j_512] * B[j_512, k]
+
+
+@T.prim_func
+def padding_rewrite_with_preprocess(
+    a: T.handle,
+    b: T.handle,
+    c: T.handle,
+    indptr: T.handle,
+    indices: T.handle,
+    m: T.int32,
+    n: T.int32,
+    feat_size: T.int32,
+    nnz: T.int32,
+    a_32: T.handle,
+    indptr_32: T.handle,
+    indices_32: T.handle,
+    m_32: T.int32,
+    n_32: T.int32,
+    nnz_chunks_32: T.int32,
+) -> None:
+    # function attr dict
+    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
+    I = T.dense_fixed(m, "int32")
+    J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
+    J_detach = T.dense_fixed(n, "int32")
+    K = T.dense_fixed(feat_size, "int32")
+    I_32 = T.dense_fixed(m_32, "int32")
+    JO_32 = T.dense_variable(I_32, ((n_32 + 32 - 1) // 32, nnz_chunks_32), indptr_32, "int32")
+    JI_32 = T.sparse_fixed(JO_32, (n_32, 32), indices_32, "int32")
+    A = T.match_sparse_buffer(a, [I, J], dtype="float32")
+    B = T.match_sparse_buffer(b, [J_detach, K], dtype="float32")
+    C = T.match_sparse_buffer(c, [I, K], dtype="float32")
+    A_32 = T.match_sparse_buffer(a_32, [I_32, JO_32, JI_32], dtype="float32")
+    # body
+    # with T.block("root")
+    with T.iter([I_32, JO_32, JI_32], "SSS", "rewrite_A_32") as [i_32, jo_32, ji_32]:
+        T.iter_attr({"preprocess": True})
+        A_32[i_32, jo_32, ji_32] = A[i_32, ji_32]
+    with T.iter([I_32, JO_32, JI_32, K], "SRRS", "csrmm_32") as [i_32, jo_32, ji_32, k]:
+        with T.init():
+            C[i_32, k] = T.float32(0)
+        C[i_32, k] = C[i_32, k] + A_32[i_32, jo_32, ji_32] * B[ji_32, k]
