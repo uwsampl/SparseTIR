@@ -104,6 +104,7 @@ def bench_hyb(
         ell_n.append(int(((sub_indegrees + bucket_sizes[-1] - 1) // bucket_sizes[-1]).sum()))
         is_bucket_atomic.append(True)
     print(ell_n)
+    print(nnz / (sum([b * sub_nnz for b, sub_nnz in zip(buckets, ell_n)])))
 
     # rewrite csrmm
     nnz_cols_symbol = ell.params[-1]
@@ -161,7 +162,7 @@ def bench_hyb(
             sch.annotate(blk, "atomic", True)
             write_blk = sch.cache_write(blk, 0, "local")
             sch.reverse_compute_at(write_blk, fi, True)
-            sch.unroll(sch.get_loops(write_blk)[-2])
+            # sch.unroll(sch.get_loops(write_blk)[-2])
         sch.bind(fi, "threadIdx.x")
         sch.bind(foo, "blockIdx.y")
         sch.unroll(foi)
@@ -274,13 +275,13 @@ def bench_hyb(
     print("tir hyb time: {:.3f}ms".format(evaluator(*args).mean * 1000))
 
 
-col_part_config = {"arxiv": 1, "proteins": 8, "pubmed": 1, "ppi": 8, "reddit": 8}
+col_part_config = {"arxiv": 1, "proteins": 8, "pubmed": 1, "ppi": 6, "reddit": 8}
 
 bucketing_config = {
     "arxiv": [1, 2, 4, 8, 16, 32],
     "proteins": [1, 2, 4, 8, 16, 32, 64, 128, 256],
     "pubmed": [1, 2, 4, 8, 16, 32],
-    "ppi": [1, 2, 4, 8, 16, 32],
+    "ppi": [1, 2, 4, 8, 16, 32, 64, 128],
     "reddit": [1, 2, 4, 8, 16, 32, 64, 128, 256, 512],
 }
 
@@ -313,7 +314,7 @@ if __name__ == "__main__":
     name = args.dataset
     g = get_dataset(name)
 
-    for feat_size in [32, 64, 128, 256, 512]:
+    for feat_size in [64, 128, 256, 512]:
         print("feat_size =", feat_size)
         x = th.rand((g.num_src_nodes(), feat_size))
         y_golden = dgl.ops.copy_u_sum(g, x)
