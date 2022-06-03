@@ -3,6 +3,7 @@ import tvm
 import tvm.testing
 import tvm.tir as tir
 import scipy.sparse as sp
+import argparse
 import numpy as np
 import torch as th
 from tvm.script import tir as T
@@ -76,6 +77,7 @@ def bench_hyb(
 ):
     global cached_bucketing_format
     mat = g.adj(transpose=True, scipy_fmt="csr")
+    sub_mats = [mat[:, i * per_column_part_size : (i + 1) * per_column_part_size] for i in range(column_part)]
     del g
     cwm = min(cwm, feat_size // 32)
     buckets = bucket_sizes * column_part
@@ -89,7 +91,7 @@ def bench_hyb(
     is_bucket_atomic = []
 
     for partition in range(column_part):
-        sub_mat = mat[:, partition * per_column_part_size : (partition + 1) * per_column_part_size]
+        sub_mat = sub_mats[partition]
         in_degrees = sub_mat.indptr[1:] - sub_mat.indptr[:-1]
         for i, bucket_size in enumerate(bucket_sizes[:-1]):
             last_bucket_size = 0 if i == 0 else bucket_sizes[i - 1]
@@ -184,9 +186,7 @@ def bench_hyb(
         ell_a = []
 
         for partition in range(column_part):
-            sub_mat = mat[
-                :, partition * per_column_part_size : (partition + 1) * per_column_part_size
-            ]
+            sub_mat = sub_mats[partition]
             in_degrees = sub_mat.indptr[1:] - sub_mat.indptr[:-1]
 
             for i, bucket_size in enumerate(bucket_sizes[:-1]):
@@ -307,7 +307,10 @@ def get_dataset(name: str):
 
 
 if __name__ == "__main__":
-    name = "arxiv"
+    parser = argparse.ArgumentParser("hybrid format spmm in sparse-tir")
+    parser.add_argument("--dataset", "-d", type=str, default='arxiv', help="dataset name")
+    args = parser.parse_args()
+    name = args.dataset
     g = get_dataset(name)
 
     for feat_size in [32, 64, 128, 256, 512]:
