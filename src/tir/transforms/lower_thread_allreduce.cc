@@ -484,7 +484,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
         load_remap_[buffers[idx]->data.get()] = load;
         alloc_remap_[buffers[idx]->data.get()] =
             Allocate(shared_bufs[idx]->data, types[idx],
-                     {PrimExpr(group_extent), PrimExpr(reduce_extent)}, pred, Evaluate(0));
+                     {PrimExpr(group_extent) * PrimExpr(reduce_extent)}, pred, Evaluate(0));
         var_remap_[buffers[idx]->data.get()] = shared_bufs[idx]->data;
         store_remap_[buffers[idx].get()] = shared_bufs[idx];
       }

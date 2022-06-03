@@ -167,8 +167,9 @@ def bench_hyb(
         sch.bind(foo, "blockIdx.y")
         sch.unroll(foi)
         sch.unroll(j)
-        io, ii = sch.split(i, [None, max(1, bucket_sizes[-1] // bucket_size)])
+        io, ioi, ii = sch.split(i, [None, 8, bucket_sizes[-1] // bucket_size])
         sch.bind(io, "blockIdx.x")
+        sch.bind(ioi, "threadIdx.y")
         init_blk = sch.decompose_reduction(blk, fi)
         ax0, ax1 = sch.get_loops(init_blk)[-2:]
         sch.bind(ax0, "threadIdx.x")
