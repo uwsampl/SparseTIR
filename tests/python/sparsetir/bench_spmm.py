@@ -77,7 +77,6 @@ def bench_hyb(
 ):
     global cached_bucketing_format
     mat = g.adj(transpose=True, scipy_fmt="csr")
-    sub_mats = [mat[:, i * per_column_part_size : (i + 1) * per_column_part_size] for i in range(column_part)]
     del g
     cwm = min(cwm, feat_size // 32)
     buckets = bucket_sizes * column_part
@@ -85,6 +84,7 @@ def bench_hyb(
     n = mat.shape[1]
     nnz = mat.nnz
     per_column_part_size = (n + column_part - 1) // column_part
+    sub_mats = [mat[:, i * per_column_part_size : (i + 1) * per_column_part_size] for i in range(column_part)]
 
     num_buckets = len(buckets)
     ell_n = []
