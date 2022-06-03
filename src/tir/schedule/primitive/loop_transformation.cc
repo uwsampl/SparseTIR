@@ -418,8 +418,11 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
   for (int i = 0; i < n; i++) {
     const PrimExpr& factor = factors[i];
     Var var = loop->loop_var.copy_with_suffix("_" + std::to_string(i));
-    if (!is_one(factor)) substitute_value = substitute_value * factor + var;
-    analyzer.Bind(var, Range::FromMinExtent(0, factor));
+    if (!is_one(factor) || IsHorizontalFuse(self)) substitute_value = substitute_value * factor + var;
+    if (!IsHorizontalFuse(self)) {
+      // NOTE(zihao): fix the bug in hybrid spmm.
+      analyzer.Bind(var, Range::FromMinExtent(0, factor));
+    }
     new_loop_vars.emplace_back(std::move(var));
   }
   Map<Block, Block> opaque_block_reuse;
@@ -442,8 +445,10 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
   for (int i = n - 1; i >= 0; i--) {
     new_stmt = For(new_loop_vars[i], 0, factors[i], ForKind::kSerial, new_stmt);
   }
-  new_stmt = IterMapSimplifyBlockBinding::SimplifyBindings(std::move(new_stmt), GetLoops(loop_sref),
-                                                           opaque_block_reuse.CopyOnWrite());
+  if (!IsHorizontalFuse(self)) {
+    new_stmt = IterMapSimplifyBlockBinding::SimplifyBindings(std::move(new_stmt), GetLoops(loop_sref),
+                                                            opaque_block_reuse.CopyOnWrite());
+  }
   self->Replace(loop_sref, new_stmt, opaque_block_reuse);
   Array<StmtSRef> result_srefs;
   result_srefs.reserve(n);
