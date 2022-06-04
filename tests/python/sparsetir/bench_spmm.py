@@ -65,7 +65,6 @@ def csr2ell_index_map(i, j):
 
 cached_bucketing_format = []
 
-
 def bench_hyb(
     g,
     x,
@@ -167,9 +166,9 @@ def bench_hyb(
         sch.bind(foo, "blockIdx.y")
         sch.unroll(foi)
         sch.unroll(j)
-        io, ioi, ii = sch.split(i, [None, 8, bucket_sizes[-1] // bucket_size])
+        io, ioi, ii = sch.split(i, [None, bucket_sizes[-1] // bucket_size, 8])
         sch.bind(io, "blockIdx.x")
-        sch.bind(ioi, "threadIdx.y")
+        sch.bind(ii, "threadIdx.y")
         init_blk = sch.decompose_reduction(blk, fi)
         ax0, ax1 = sch.get_loops(init_blk)[-2:]
         sch.bind(ax0, "threadIdx.x")
@@ -276,13 +275,13 @@ def bench_hyb(
     print("tir hyb time: {:.3f}ms".format(evaluator(*args).mean * 1000))
 
 
-col_part_config = {"arxiv": 1, "proteins": 8, "pubmed": 1, "ppi": 6, "reddit": 8}
+col_part_config = {"arxiv": 1, "proteins": 8, "pubmed": 1, "ppi": 16, "reddit": 8}
 
 bucketing_config = {
     "arxiv": [1, 2, 4, 8, 16, 32],
     "proteins": [1, 2, 4, 8, 16, 32, 64, 128, 256],
     "pubmed": [1, 2, 4, 8, 16, 32],
-    "ppi": [1, 2, 4, 8, 16, 32, 64, 128],
+    "ppi": [1, 2, 4, 8, 16, 32],
     "reddit": [1, 2, 4, 8, 16, 32, 64, 128, 256, 512],
 }
 
@@ -315,7 +314,7 @@ if __name__ == "__main__":
     name = args.dataset
     g = get_dataset(name)
 
-    for feat_size in [64, 128, 256, 512]:
+    for feat_size in [32, 64, 128, 256, 512]:
         print("feat_size =", feat_size)
         x = th.rand((g.num_src_nodes(), feat_size))
         y_golden = dgl.ops.copy_u_sum(g, x)
