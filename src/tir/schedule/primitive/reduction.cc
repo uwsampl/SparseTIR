@@ -592,8 +592,8 @@ class BaseBlockCreator {
     PrimExpr predicate = const_true();
     if (is_rf_block_) {
       new_block_name = new_block_name + "_rf";
-      predicate = old_block_realize_->predicate;
     }
+    predicate = old_block_realize_->predicate;
     Optional<Stmt> init_block =
         has_reduce_iter ? BufferStore(new_reduction_update_->buffer, reducer_->identity_element[0],
                                       new_reduction_update_->indices)
