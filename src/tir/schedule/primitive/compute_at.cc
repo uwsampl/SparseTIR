@@ -255,11 +255,11 @@ class ScopeReconstructor : private StmtMutator {
       if (!pred_bound.IsNothing()) {
         if (pred_bound.HasLowerBound()) {
           PrimExpr lower_bound = iter_values[i] >= pred_bound.min();
-          predicate = predicate && lower_bound;
+          // predicate = predicate && lower_bound;
         }
         if (pred_bound.HasUpperBound()) {
           PrimExpr upper_bound = iter_values[i] < pred_bound.max() + 1;
-          predicate = predicate && upper_bound;
+          // predicate = predicate && upper_bound;
         }
       }
     }

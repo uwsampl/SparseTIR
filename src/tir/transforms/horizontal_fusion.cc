@@ -79,12 +79,9 @@ class HorizontalFuser : public StmtExprMutator {
  public:
   explicit HorizontalFuser(Map<String, Integer> thread_tag_extent_map)
       : blockIdx_x_accum_offset_(0),
-        group_counter_(0),
         thread_tag_extent_map_(std::move(thread_tag_extent_map)) {
     InitThreadTagVarMap();
   }
-
-  Buffer group_id, thread_map;
 
  private:
   void InitThreadTagVarMap() {
@@ -116,7 +113,7 @@ class HorizontalFuser : public StmtExprMutator {
       Stmt body;
       var_substitution_map_[op->loop_var.get()] = thread_var - blockIdx_x_accum_offset_;
       body =
-          IfThenElse(thread_var < blockIdx_x_accum_offset_ + original_extent, VisitStmt(op->body));
+          IfThenElse((thread_var >= blockIdx_x_accum_offset_) && (thread_var < blockIdx_x_accum_offset_ + original_extent), VisitStmt(op->body));
       blockIdx_x_accum_offset_ += original_extent->value;
       return body;
     } else {
@@ -137,22 +134,10 @@ class HorizontalFuser : public StmtExprMutator {
       // add an extra loop in root block.
       auto n = CopyOnWrite(op);
       Stmt body = VisitStmt(n->body);
-      if (const SeqStmtNode* seq = body.as<SeqStmtNode>()) {
-        Stmt inner = seq->seq.back();
-        for (int i = seq->seq.size() - 2; i >= 0; i--) {
-          IfThenElse other = Downcast<IfThenElse>(seq->seq[i]);
-          inner = IfThenElse(other->condition, other->then_case, inner);
-        }
-        body = inner;
-      }
       for (auto& kv : thread_tag_extent_map_) {
         String thread_tag = kv.first;
         PrimExpr extent = kv.second;
         Var thread_var = thread_tag_var_map_.Get(thread_tag).value();
-        // if (thread_tag == "blockIdx.x") {
-        //   body = LetStmt(group_id_i_, BufferLoad(group_id, {thread_var}), body);
-        //   body = LetStmt(thread_map_i_, BufferLoad(thread_map, {thread_var}), body);
-        // }
         For new_loop(thread_var, Integer(0), extent, ForKind::kThreadBinding, body,
                      IterVar(NullValue<Range>(), Var(""), IterVarType::kThreadIndex, thread_tag));
         body = new_loop;
@@ -164,11 +149,9 @@ class HorizontalFuser : public StmtExprMutator {
   }
 
   int32_t blockIdx_x_accum_offset_;
-  int32_t group_counter_;
   Map<String, Integer> thread_tag_extent_map_;
   Map<String, Var> thread_tag_var_map_;
   std::unordered_map<const VarNode*, PrimExpr> var_substitution_map_;
-  Var group_id_i_, thread_map_i_;
 };
 
 PrimFunc HorizontalFusion(PrimFunc f) {

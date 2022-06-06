@@ -63,7 +63,7 @@ def csr2ell_index_map(i, j):
     return 0, i, j
 
 
-cached_bucketing_format = {}
+cached_bucketing_format = None
 
 def bench_hyb(
     g,
@@ -179,8 +179,8 @@ def bench_hyb(
     f = tvm.build(mod, target="cuda")
 
     # prepare new formats
-    if (bucket_sizes, column_part) in cached_bucketing_format:
-        ell_indices, ell_a, ell_rows = cached_bucketing_format[(bucket_sizes, column_part)]
+    if cached_bucketing_format is not None:
+        ell_indices, ell_a, ell_rows = cached_bucketing_format
     else:
         ell_rows = []
         ell_indices = []
@@ -243,7 +243,7 @@ def bench_hyb(
             ell_a.append(a)
             ell_rows[-1] = new_rows
 
-        cached_bucketing_format[(bucket_sizes, column_part)] = ell_indices, ell_a, ell_rows
+        cached_bucketing_format = ell_indices, ell_a, ell_rows
 
     # prepare nd array
     b_nd = tvm.nd.array(
