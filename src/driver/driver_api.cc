@@ -270,9 +270,9 @@ Array<tvm::transform::Pass> CreatePassList(bool disable_loop_partition) {
   pass_list.push_back(tir::transform::VectorizeLoop(!disable_vectorize));
   pass_list.push_back(tir::transform::InjectVirtualThread());
   pass_list.push_back(tir::transform::InjectDoubleBuffer());
-  if (!disable_storage_rewrite) {
-    pass_list.push_back(tir::transform::StorageRewrite());
-  }
+  // if (!disable_storage_rewrite) {
+  //   pass_list.push_back(tir::transform::StorageRewrite());
+  // }
   pass_list.push_back(tir::transform::UnrollLoop());
 
   // Add user-defined phase-2 passes
@@ -576,17 +576,23 @@ transform::Sequential MixedModulePassManager(IRModule mixed_mod, Target target) 
   if (detect_global_barrier) {
     mixed_pass_list.push_back(tir::transform::ThreadSync("global"));
   }
+  bool disable_storage_rewrite =
+      pass_ctx->GetConfig<Bool>("tir.disable_storage_rewrite", Bool(false)).value();
 
   mixed_pass_list.push_back(tir::transform::ThreadSync("shared"));
   mixed_pass_list.push_back(tir::transform::ThreadSync("shared.dyn"));
   mixed_pass_list.push_back(tir::transform::MergeDynamicSharedMemoryAllocations());
   mixed_pass_list.push_back(tir::transform::ThreadSync("warp"));
-  mixed_pass_list.push_back(tir::transform::InferFragment());
+  // mixed_pass_list.push_back(tir::transform::InferFragment());
   mixed_pass_list.push_back(tir::transform::LowerThreadAllreduce());
   // Move storage rewrite after lower thread allreduce to share allocated shared memory for allreduce.
-  // mixed_pass_list.push_back(transform::PrintIR());
-  // mixed_pass_list.push_back(tir::transform::StorageRewrite());
-  // mixed_pass_list.push_back(transform::PrintIR());
+  disable_storage_rewrite = true;
+  if (!disable_storage_rewrite) {
+    mixed_pass_list.push_back(tir::transform::StorageRewrite());
+  }
+  // Move InferFragment below storage rewrite
+  mixed_pass_list.push_back(tir::transform::InferFragment());
+
 
   bool unpacked_api = mixed_mod->GetAttr<relay::Executor>(tvm::attr::kExecutor)
                           .value_or(relay::Executor::Create("graph", {}))
