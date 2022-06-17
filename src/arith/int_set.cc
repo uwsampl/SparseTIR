@@ -828,6 +828,18 @@ Array<IntSet> EvalSet(const Array<Range>& region, const Map<Var, IntSet>& dom_ma
   return result;
 }
 
+Array<IntSet> EvalSet(const Array<Range>& region, const Map<Var, IntSet>& dom_map, const Map<Buffer, Range>& buf_dom_map) {
+  Analyzer ana;
+  IntervalSetEvaluator m(&ana, dom_map, buf_dom_map);
+  Array<IntSet> result;
+  result.reserve(region.size());
+  for (const Range& r : region) {
+    PrimExpr sum = r->min + (r->extent - 1);
+    result.push_back(m.Eval(IntervalSet(r->min, ana.Simplify(sum))));
+  }
+  return result;
+}
+
 IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_map) {
   Analyzer ana;
   auto dmap = ConvertDomMap(dom_map);

@@ -35,6 +35,7 @@ namespace arith {
 using tir::IterVar;
 using tir::Var;
 using tir::VarNode;
+using tir::Buffer;
 
 class Analyzer;
 
@@ -212,6 +213,15 @@ IntSet EvalSet(Range r, const std::unordered_map<const VarNode*, IntSet>& dom_ma
  * \return An array of integer sets that can cover all the possible values.
  */
 Array<IntSet> EvalSet(const Array<Range>& region, const Map<Var, IntSet>& dom_map);
+/*!
+ * \brief Same as EvalSet, but takes Array<Range>
+ *
+ * \param region The range to be evaluated.
+ * \param dom_map The domain of each variable.
+ * \param buf_dom_map The domain of buffers.
+ * \return An array of integer sets that can cover all the possible values.
+ */
+Array<IntSet> EvalSet(const Array<Range>& region, const Map<Var, IntSet>& dom_map, const Map<Buffer, Range>& buf_dom_map);
 /*! \brief Map from Expr to IntSet */
 using ExprIntSetMap = std::unordered_map<PrimExpr, IntSet, ObjectPtrHash, ObjectPtrEqual>;
 /*!

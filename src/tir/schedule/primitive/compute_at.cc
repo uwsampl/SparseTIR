@@ -187,7 +187,6 @@ struct BlockVarDomainInfo {
       PrimExpr max = set.HasUpperBound() ? analyzer->Simplify(set.max()) : set.max();
       return arith::IntSet::Interval(min, max);
     };
-    LOG(INFO) << dom;
     // if no dom specified, try use bound as dom
     if (dom.IsNothing()) {
       if (bound.HasLowerBound() && bound.HasUpperBound()) {
@@ -201,7 +200,6 @@ struct BlockVarDomainInfo {
     bound = to_simplified(bound);
     // if can proof the dom is within bound, remove bound
     auto intersect = to_simplified(arith::Intersect({dom, bound}));
-    LOG(INFO) << dom;
     if (analyzer->CanProveEqual(dom.min(), intersect.min()) &&
         analyzer->CanProveEqual(dom.max(), intersect.max())) {
       bound = arith::IntSet::Nothing();
@@ -210,7 +208,6 @@ struct BlockVarDomainInfo {
       dom = bound;
       bound = arith::IntSet::Nothing();
     }
-    LOG(INFO) << dom;
   }
 };
 
@@ -367,7 +364,7 @@ void RelaxBufferRegions(const Map<Var, PrimExpr>& binding,
     }
     // Relax the region
     Array<arith::IntSet> relaxed_region =
-        arith::EvalSet(Substitute(region, binding), var_dom.value());
+        arith::EvalSet(Substitute(region, binding), var_dom.value(), buf_dom);
     relaxed_regions.push_back({relaxed_region.begin(), relaxed_region.end()});
   }
 }
@@ -441,7 +438,6 @@ void UpdateBlockVarDomain(const arith::IntSet& provided, const arith::IntSet& re
   ICHECK(var.same_as(var_with_bound.first));
   auto it = iter_doms->find(var.get());
   if (it != iter_doms->end()) {
-    LOG(INFO) << var_dom << " " << var_bound;
     it->second.Union({var_dom, var_bound});
   } else {
     ICHECK(analyzer->CanProveEqual(provided.min(), required.min()));
