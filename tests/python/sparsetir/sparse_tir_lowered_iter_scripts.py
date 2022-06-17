@@ -44,6 +44,8 @@ def csrmm(
     J_indices = T.match_sparse_buffer(indices, [I, J_dense], dtype="int32")
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indptr, [0, nnz])
+    T.assume_buffer_domain(J_indices, [0, n])
     for i in T.serial(m):
         with T.block("csrmm0"):
             vi = T.axis.spatial(m, i)
@@ -89,6 +91,9 @@ def csrmm_dense_iter(
     # body
     # with T.block("root")
     mid_0 = T.alloc_sparse_buffer([I, J_detach], dtype="int32", extra_storage=0)
+    T.assume_buffer_domain(J_indptr, [0, nnz])
+    T.assume_buffer_domain(J_indices, [0, n])
+    T.assume_buffer_domain(mid_0, [0, n])
     for i, j in T.grid(m, n):
         with T.block("binary_search_block_0_0"):
             vi, vj = T.axis.remap("SS", [i, j])
@@ -128,6 +133,7 @@ def segment_reduce(a: T.handle, b: T.handle, indptr: T.handle, n: T.int32, nnz: 
     J_indptr = T.match_sparse_buffer(indptr, [I], dtype="int32", extra_storage=1)
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indptr, [0, nnz])
     for i in T.serial(n):
         with T.block("segment_reduce0"):
             vi = T.axis.spatial(n, i)
@@ -174,6 +180,8 @@ def bsrmm(
     J_indices = T.match_sparse_buffer(indices, [I, J_dense], dtype="int32")
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indptr, [0, nnzb])
+    T.assume_buffer_domain(J_indices, [0, mb])
     for i, bi, bj, f in T.grid(nb, blk, blk, feat_size):
         with T.block("bsrmm0"):
             vi, vbi, vbj, vf = T.axis.remap("SSRS", [i, bi, bj, f])
@@ -216,6 +224,8 @@ def csr_reduce(
     J_indices = T.match_sparse_buffer(indices, [I, J_dense], dtype="int32")
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indptr, [0, nnz])
+    T.assume_buffer_domain(J_indices, [0, m])
     for i in T.serial(n):
         with T.block("csr_reduce0"):
             vi = T.axis.spatial(n, i)
@@ -254,6 +264,8 @@ def csr_element_wise(
     J_indices = T.match_sparse_buffer(indices, [I, J_dense], dtype="int32")
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indptr, [0, nnz])
+    T.assume_buffer_domain(J_indices, [0, n])
     for i in T.serial(m):
         with T.block("csr_element_wise0"):
             vi = T.axis.spatial(m, i)
@@ -299,6 +311,10 @@ def hyper_gnn(
     I_T_indices = T.match_sparse_buffer(indices_T, [J_detach, I_T_dense], dtype="int32")
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indptr, [0, nnz])
+    T.assume_buffer_domain(J_indices, [0, m])
+    T.assume_buffer_domain(I_T_indptr, [0, nnz])
+    T.assume_buffer_domain(I_T_indices, [0, n])
     for i, f in T.grid(n, feat_size):
         with T.block("hyper_gnn0"):
             vi, vf = T.axis.remap("SS", [i, f])
@@ -362,6 +378,7 @@ def ellmm(
     J_indices = T.match_sparse_buffer(indices, [I, J_dense], dtype="int32")
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indices, [0, mb])
     for i, j, bi, bj, f in T.grid(nb, col, blk, blk, feat_size):
         with T.block("ellmm0"):
             vi, vj, vbi, vbj, vf = T.axis.remap("SRSRS", [i, j, bi, bj, f])
@@ -399,6 +416,8 @@ def sddmm(
     J_indices = T.match_sparse_buffer(indices, [I, J_dense], dtype="int32")
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indptr, [0, nnz])
+    T.assume_buffer_domain(J_indices, [0, n])
     for i in T.serial(m):
         with T.block("sddmm0"):
             vi = T.axis.spatial(m, i)
@@ -446,6 +465,9 @@ def fused_sddmm(
     # body
     # with T.block("root")
     mid_0 = T.alloc_sparse_buffer([I, J], dtype="int32", extra_storage=0)
+    T.assume_buffer_domain(J_indptr, [0, nnz])
+    T.assume_buffer_domain(J_indices, [0, n])
+    T.assume_buffer_domain(mid_0, [0, m])
     for j in T.serial(nnz):
         with T.block("binary_search_block_0_0"):
             vi = T.axis.spatial(1, 0)
@@ -508,6 +530,10 @@ def square_sum(
     K_indices = T.match_sparse_buffer(indices_k, [I, J, K_dense], dtype="int32")
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indptr, [0, nnz_j])
+    T.assume_buffer_domain(J_indices, [0, N1])
+    T.assume_buffer_domain(K_indptr, [0, nnz_k])
+    T.assume_buffer_domain(K_indices, [0, N2])
     for i in T.serial(M):
         with T.block("square_sum0"):
             vi = T.axis.spatial(M, i)
@@ -567,6 +593,13 @@ def square_sum_two_K(
     # body
     # with T.block("root")
     mid_0 = T.alloc_sparse_buffer([I, J, K1], dtype="int32", extra_storage=0)
+    T.assume_buffer_domain(J_indptr, [0, nnz_j])
+    T.assume_buffer_domain(J_indices, [0, N1])
+    T.assume_buffer_domain(K0_indptr, [0, nnz_k])
+    T.assume_buffer_domain(K0_indices, [0, N2])
+    T.assume_buffer_domain(K1_indptr, [0, nnz_k])
+    T.assume_buffer_domain(K1_indices, [0, N2])
+    T.assume_buffer_domain(mid_0, [0, N2])
     for i in T.serial(M):
         with T.block("binary_search_block_0_0"):
             vi = T.axis.spatial(M, i)
@@ -654,6 +687,9 @@ def fused_reduction_4d_2d(
     L_indptr = T.match_sparse_buffer(indptr_l, [I, J, K], dtype="int32", extra_storage=1)
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indptr, [0, nnz_j])
+    T.assume_buffer_domain(K_indptr, [0, nnz_k])
+    T.assume_buffer_domain(L_indptr, [0, nnz_l])
     for j in T.serial(nnz_j):
         with T.block("reduction_4d_2d0"):
             vi = T.axis.spatial(1, 0)
@@ -705,6 +741,9 @@ def fused_reduction_4d_3d(
     L_indptr = T.match_sparse_buffer(indptr_l, [I, J, K], dtype="int32", extra_storage=1)
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indptr, [0, nnz_j])
+    T.assume_buffer_domain(K_indptr, [0, nnz_k])
+    T.assume_buffer_domain(L_indptr, [0, nnz_l])
     for k in T.serial(nnz_k):
         with T.block("reduction_4d_3d0"):
             vi = T.axis.spatial(1, 0)
@@ -754,6 +793,8 @@ def rgcn_forward(
     J_indices = T.match_sparse_buffer(indices, [I, J_dense], dtype="int32")
     # body
     # with T.block("root")
+    T.assume_buffer_domain(J_indptr, [0, nnz])
+    T.assume_buffer_domain(J_indices, [0, n])
     for i, fo in T.grid(n, feat_size):
         with T.block("rgcn-forward0"):
             vi, vfo = T.axis.remap("SS", [i, fo])
@@ -818,6 +859,10 @@ def rgcn_hetero_forward(
     J_indices = T.match_sparse_buffer(indices_j, [R, I, J_dense], dtype="int32")
     # body
     # with T.block("root")
+    T.assume_buffer_domain(I_indptr, [0, nnz_i])
+    T.assume_buffer_domain(I_indices, [0, n])
+    T.assume_buffer_domain(J_indptr, [0, nnz_j])
+    T.assume_buffer_domain(J_indices, [0, n])
     for fo, r in T.grid(feat_size, num_rels):
         with T.block("rgcn-hetero-forward0"):
             vfo, vr = T.axis.remap("SS", [fo, r])
@@ -880,6 +925,8 @@ def sparse_softmax(
     # with T.block("root")
     TMP = T.alloc_sparse_buffer([I], dtype="float32", extra_storage=0)
     TMP1 = T.alloc_sparse_buffer([I], dtype="float32", extra_storage=0)
+    T.assume_buffer_domain(J_indptr, [0, nnz])
+    T.assume_buffer_domain(J_indices, [0, n])
     for i in T.serial(n):
         with T.block("sparse_softmax0"):
             vi = T.axis.spatial(n, i)
@@ -948,6 +995,11 @@ def csr2bsr(
     # body
     # with T.block("root")
     mid_0 = T.alloc_sparse_buffer([I, J], dtype="int32", extra_storage=0)
+    T.assume_buffer_domain(J_indptr, [0, nnz_in])
+    T.assume_buffer_domain(J_indices, [0, n_in])
+    T.assume_buffer_domain(J_bsr_indptr, [0, nnz_out])
+    T.assume_buffer_domain(J_bsr_indices, [0, n_out])
+    T.assume_buffer_domain(mid_0, [0, n_out])
     for i in T.serial(m_in):
         with T.block("binary_search_block_0_0"):
             vi = T.axis.spatial(m_in, i)

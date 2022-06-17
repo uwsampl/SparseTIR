@@ -27,6 +27,7 @@ from tvm.tir import Var, Buffer, PrimExpr, Stmt, MatchBufferRegion
 from tvm.runtime import Object
 from tvm.tir.expr import IterVar
 from tvm.tir.sparse import Axis, SparseBuffer
+from tvm.tir.stmt import BufferDomain
 from .tir.node import BufferSlice
 
 
@@ -75,6 +76,8 @@ class BlockInfo:
     """List[Buffer]: list of T.alloc_buffer statements in the block signature"""
     match_buffers: List[MatchBufferRegion] = []
     """List[MatchBufferRegion]: list of T.match_buffer statements in the block signature"""
+    buf_doms: List[BufferDomain] = []
+    """List[BufferDomain]: list of T.assume_buffer_domain statements in the block signature"""
     iter_values: List[PrimExpr] = []
     """List[PrimExpr]: list of binding values for iter vars"""
     iter_vars: List[IterVar] = []
@@ -96,6 +99,7 @@ class BlockInfo:
     def __init__(self):
         self.alloc_buffers = []
         self.match_buffers = []
+        self.buf_doms = []
         self.iter_values = []
         self.iter_vars = []
         self.reads = None
@@ -148,6 +152,8 @@ class ContextMaintainer:
     # root alloc_buffer
     root_alloc_buffers: List[Buffer] = []
     """List[Buffer]: The buffers allocated under root block"""
+    # root buffer domains
+    root_buf_doms: List[BufferDomain] = []
 
     def __init__(
         self,
@@ -172,6 +178,8 @@ class ContextMaintainer:
         self.analyzer = tvm.arith.Analyzer()
         # root alloc_buffer
         self.root_alloc_buffers = []
+        # root buffer domains
+        self.root_buf_doms = []
 
     def enter_scope(self, nodes: Optional[List[synr.ast.Node]] = None):
         """Creates a new scope

@@ -279,6 +279,7 @@ BlockRealize GenerateBlockFromTensors(const te::ComputeOp& compute_op,
                             /*init=*/std::move(init),
                             /*alloc_buffers=*/{},
                             /*match_buffers=*/{},
+                            /*buf_doms=*/{},
                             /*annotations=*/std::move(annotations)));
 }
 
@@ -388,6 +389,7 @@ Stmt GenerateStmtFromExternOp(const te::ExternOp& extern_op, CreateFuncInfo* inf
                             /*init=*/NullOpt,
                             /*alloc_buffers=*/{},
                             /*match_buffers=*/{},
+                            /*buf_doms=*/{},
                             /*annotations=*/extern_op->attrs));
 }
 

@@ -105,7 +105,8 @@ class ScriptCompleter : public StmtMutator {
   }
 };
 
-PrimFunc ScriptComplete(PrimFunc func, const Array<Buffer>& root_allocates) {
+PrimFunc ScriptComplete(PrimFunc func, const Array<Buffer>& root_allocates,
+                        const Array<BufferDomain> root_buf_doms) {
   Map<Var, Buffer> buffer_var_map;
   for (const auto& pair : func->buffer_map) {
     const Buffer& buffer = pair.second;
@@ -123,7 +124,7 @@ PrimFunc ScriptComplete(PrimFunc func, const Array<Buffer>& root_allocates) {
   if ((script_completer.contains_block || script_completer.contains_sp_iteration ||
        root_allocates.size()) &&
       !contain_root) {
-    res = Block({}, {}, {}, "root", res, NullOpt, root_allocates);
+    res = Block({}, {}, {}, "root", res, NullOpt, root_allocates, {}, root_buf_doms);
     res = BlockRealize({}, Bool(true), Downcast<Block>(res));
   }
   if (func->body.same_as(res)) {

@@ -117,6 +117,7 @@ class Axis : public ObjectRef {
                         DataType idtype);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Axis, ObjectRef, AxisNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(AxisNode);
 };
 
 Axis GetParentAxis(const Axis& axis);
@@ -164,6 +165,7 @@ class FusedAxis : public Axis {
   TVM_DLL explicit FusedAxis(Array<Axis> group, int index);
 
   TVM_DEFINE_OBJECT_REF_METHODS(FusedAxis, Axis, FusedAxisNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(FusedAxisNode);
 };
 
 /*!
@@ -205,9 +207,10 @@ class FlattenedAxis : public Axis {
   TVM_DLL explicit FlattenedAxis(String name, Array<Axis> axes, PrimExpr flattened_nnz,
                                  Buffer offset);
   TVM_DEFINE_OBJECT_REF_METHODS(FlattenedAxis, Axis, FlattenedAxisNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(FlattenedAxisNode);
 };
 
-/* Return the  */
+/* Return a new dense axis that inherits the dependency of base axis.*/
 Axis ToDenseAxis(Axis base);
 
 /*!
@@ -245,6 +248,7 @@ class AttachedAxis : public Axis {
   TVM_DLL explicit AttachedAxis(Axis base, Axis new_parent);
 
   TVM_DEFINE_OBJECT_REF_METHODS(AttachedAxis, Axis, AttachedAxisNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(AttachedAxisNode);
 };
 
 /*! \brief Node to represent a sparse buffer */
@@ -296,6 +300,7 @@ class SparseBuffer : public Buffer {
   TVM_DLL explicit SparseBuffer(Var data, Array<Axis> axes, DataType dtype, String name,
                                 Optional<PrimExpr> extra_storage, Span span = Span());
   TVM_DEFINE_OBJECT_REF_METHODS(SparseBuffer, Buffer, SparseBufferNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(SparseBufferNode);
 };
 
 // overload printing of for type.
@@ -351,6 +356,7 @@ class SpIterVar : public ObjectRef {
   TVM_DLL explicit SpIterVar(Var var, bool is_reduction, Axis axis);
 
   TVM_DEFINE_OBJECT_REF_METHODS(SpIterVar, ObjectRef, SpIterVarNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(SpIterVarNode);
 };
 
 // inline implementations

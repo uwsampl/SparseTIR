@@ -68,6 +68,8 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     preproc = tvm.build(mod["main"], target="cuda")
 
+    ty = 4 
+
     # schedule compute
     sch = tir.Schedule(mod_sddmm)
     blk = sch.get_block("sddmm0")
@@ -75,7 +77,7 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     ko, kio, kii = sch.split(k, [None, 8, 4])
     rf_blk = sch.rfactor(kio, 2)
     j = sch.get_loops(rf_blk)[0]
-    joo, joi, ji = sch.split(j, [None, 4, 4])
+    joo, joi, ji = sch.split(j, [None, ty, 4])
     sch.bind(joo, "blockIdx.x")
     sch.bind(joi, "threadIdx.y")
     sch.unroll(ji)
@@ -87,7 +89,10 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     ko, kio, kii = sch.get_loops(rf_blk)[-3:]
     sch.reorder(ko, ji)
     # schedule read A
-    sch.compute_at(read_A, ji, True)
+    sch.compute_at(read_A, ko, True)
+    print(sch.mod["main"].script())
+    assert False
+    # sch.compute_at(read_A, ji, True)
     ax0, ax1 = sch.split(sch.get_loops(read_A)[-1], [8, 4])
     sch.bind(ax0, "threadIdx.x")
     sch.vectorize(ax1)
@@ -103,17 +108,15 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     # schedule rf
     sch.bind(kio, "threadIdx.x")
     sch.unroll(kii)
-    # sch.unroll(ko)
+    sch.unroll(ko)
     # schedule write back
     ax0, ax1 = sch.get_loops(blk)[-2:]
     sch.reorder(ax1, ax0)
     sch.bind(ax0, "threadIdx.x")
     sch.unroll(ax1)
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
-    # print(mod["main"].script())
     sddmm = tvm.build(mod["main"], target="cuda")
     # print(sddmm.imported_modules[0].get_source())
-    # assert False
 
     # compute mid
     a_nd = tvm.nd.array(a.view(-1).numpy(), tvm.cuda())
@@ -132,8 +135,8 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     for i in range(10):
         with TorchOpTimer() as timer:
             sddmm(a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd)
-        if i == 0:
-            tvm.testing.assert_allclose(c_nd.numpy(), c_golden.view(-1).cpu(), rtol=1e-5)
+        # if i == 0:
+        #     tvm.testing.assert_allclose(c_nd.numpy(), c_golden.view(-1).cpu(), rtol=1e-5)
         if i >= cold_start_time:
             accum_time += timer.time
             runs += 1
@@ -159,15 +162,15 @@ def get_dataset(name: str):
         g = reddit[0]
     else:
         raise KeyError("Unknown dataset {}.".format(name))
-    g = dgl.graph(g.edges("uv", "srcdst"), num_nodes=g.num_nodes())
+    # g = dgl.graph(g.edges("uv", "srcdst"), num_nodes=g.num_nodes())
     return g.int()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("sddmm in sparse-tir")
-    parser.add_argument("--dataset", "-d", type=str, default='arxiv', help="dataset name")
+    parser.add_argument("--dataset", "-d", type=str, default='pubmed', help="dataset name")
     args = parser.parse_args()
     name = args.dataset
     g = get_dataset(name)
-    for feat_size in [512]:#[32, 64, 128, 256, 512]:
+    for feat_size in [32, 64, 128, 256, 512]:
         bench_sddmm(g, feat_size)

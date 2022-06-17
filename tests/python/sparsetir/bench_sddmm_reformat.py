@@ -98,7 +98,7 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     sch.reorder(ko, ji, kio, kii)
     # TODO(zihao): fix here
     # schedule read A
-    sch.compute_at(read_A, ko, True)
+    # sch.compute_at(read_A, ko, True)
     print(sch.mod["main"].script())
     assert False
     ax0, ax1 = sch.split(sch.get_loops(read_A)[-1], [8, 4])

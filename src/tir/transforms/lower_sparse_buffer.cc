@@ -271,6 +271,8 @@ class BufferTransformer : public StmtExprMutator {
       }
     }
     n->alloc_buffers = std::move(new_alloc_buffers);
+    // clear buffer domains in this pass.
+    n->buf_doms.clear();
     // update match_buffer
     Array<MatchBufferRegion> new_match_buffers;
     for (const MatchBufferRegion& buf_region : op->match_buffers) {
@@ -333,9 +335,9 @@ PrimFunc LowerSparseBuffer(PrimFunc f) {
     PrimFuncNode* fptr = f.CopyOnWrite();
     // Step 1. Update the PrimFunc's buffer map.
     fptr->buffer_map = std::move(UpdateBufferMap(f));
-    // Step 3. Lower sparse buffers.
+    // Step 2. Lower sparse buffers.
     fptr->body = BufferTransformer(fptr->sp_axes, fptr->buffer_map)(std::move(fptr->body));
-    // Step 2. Remove sparse axes
+    // Step 3. Remove sparse axes
     fptr->sp_axes.clear();
     // Step 4. Lower sparse tir level
     Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;

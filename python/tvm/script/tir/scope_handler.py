@@ -355,6 +355,7 @@ class Block(WithScopeHandler):
                 block_info.init,
                 block_info.alloc_buffers,
                 block_info.match_buffers,
+                block_info.buf_doms,
                 annotations,
                 span,
             )

@@ -51,6 +51,7 @@ namespace arith {
 class Analyzer;
 
 using tir::Var;
+using tir::Buffer;
 
 enum DivMode {
   /*! \brief Truncated division. */
@@ -146,6 +147,14 @@ class ConstIntBoundAnalyzer {
    * \param allow_override Whether we allow overriding an existing var's range.
    */
   TVM_DLL void Bind(const Var& var, const Range& range, bool allow_override = false);
+  /*!
+   * \brief Bind buffer to a range.
+   *
+   * \param buf The buffer.
+   * \param range The range we bind to.
+   * \param allow_override Whether we allow overriding an existing buffer's range.
+   */
+  TVM_DLL void Bind(const Buffer& buf, const Range& range, bool allow_override = false);
 
  private:
   friend class Analyzer;
@@ -438,6 +447,26 @@ class TVM_DLL Analyzer {
    *        between variables.
    */
   void Bind(const Map<Var, Range>& variables, bool allow_override = false);
+
+  /*!
+   * \brief Notify all the sub-analyzers that buffer is binded to a range.
+   *
+   *  Each buffer can only be binded once.
+   *
+   * \param buf The buffer.
+   * \param range The range we bind to.
+   * \param allow_override Whether we allow overriding an existing buffer's
+   *        expression.
+   */
+  void Bind(const Buffer& buf, const Range& range, bool allow_override = false);
+  /*!
+   * \brief Bind all the buffers in the Map
+   *
+   * \param buf_dom_map The {buffer -> range} map.
+   * \param allow_override Whether we allow overriding an existing buffer's
+   *        expression.
+   */
+  void Bind(const Map<Buffer, Range>& buf_dom_map, bool allow_override = false);
   /*!
    * \brief Whether can we prove expr >= val.
 

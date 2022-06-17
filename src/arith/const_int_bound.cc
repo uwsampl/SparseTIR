@@ -105,6 +105,15 @@ class ConstIntBoundAnalyzer::Impl
     Update(var, ret, allow_override);
   }
 
+  void Bind(const Buffer& buf, const Range& range, bool allow_override) {
+    Entry a = VisitExpr(range->min);
+    Entry b = VisitExpr(range->extent);
+    Entry ret;
+    ret.min_value = a.min_value;
+    ret.max_value = InfAwareAdd(a.max_value, InfAwareAdd(b.max_value, -1));
+    Update(buf, ret, allow_override);
+  }
+
   void Update(const Var& var, const Entry& info, bool allow_override) {
     if (!allow_override) {
       auto it = var_map_.find(var);
@@ -117,6 +126,20 @@ class ConstIntBoundAnalyzer::Impl
       }
     }
     var_map_[var] = info;
+  }
+
+  void Update(const Buffer& buf, const Entry& info, bool allow_override) {
+    if (!allow_override) {
+      auto it = buf_map_.find(buf);
+      if (it != buf_map_.end()) {
+        ICHECK(it->second == info)
+            << "Trying to update buffer \'" << buf << "\'"
+            << " with a different const bound: "
+            << "original=" << ConstIntBound(it->second.min_value, it->second.max_value)
+            << ", new=" << ConstIntBound(info.min_value, info.max_value);
+      }
+    }
+    buf_map_[buf] = info;
   }
 
   Entry VisitExpr_(const LetNode* op) final {
@@ -331,6 +354,16 @@ class ConstIntBoundAnalyzer::Impl
     }
   }
 
+  Entry VisitExpr_(const BufferLoadNode* op) final {
+    Buffer buf = op->buffer;
+    auto it = buf_map_.find(buf);
+    if (it != buf_map_.end()) {
+      return it->second;
+    } else {
+      return Everything(op->dtype);
+    }
+  }
+
   Entry VisitExpr_(const SizeVarNode* op) final {
     SizeVar v = GetRef<SizeVar>(op);
     auto it = var_map_.find(v);
@@ -381,6 +414,8 @@ class ConstIntBoundAnalyzer::Impl
   friend class ConstIntBoundAnalyzer;
   // internal variable map
   std::unordered_map<Var, Entry, ObjectPtrHash, ObjectPtrEqual> var_map_;
+  // internal buffer map
+  std::unordered_map<Buffer, Entry, ObjectPtrHash, ObjectPtrEqual> buf_map_;
   // additional bound info
   std::vector<BoundInfo> additional_info_;
   // look up table for memorization
@@ -626,6 +661,10 @@ void ConstIntBoundAnalyzer::Update(const Var& var, const ConstIntBound& info, bo
 
 void ConstIntBoundAnalyzer::Bind(const Var& var, const Range& range, bool allow_override) {
   impl_->Bind(var, range, allow_override);
+}
+
+void ConstIntBoundAnalyzer::Bind(const Buffer& buf, const Range& range, bool allow_override) {
+  impl_->Bind(buf, range, allow_override);
 }
 
 std::function<void()> ConstIntBoundAnalyzer::EnterConstraint(const PrimExpr& constraint) {

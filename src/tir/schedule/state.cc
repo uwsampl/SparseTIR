@@ -416,6 +416,11 @@ class StateCreator : private StmtVisitor {
         BlockInfoCollector::Collect(self, func->body);
       }
     }
+    for (const BufferDomain& buf_dom: creator.buf_doms) {
+      const Buffer& buf = buf_dom->buffer;
+      const Range& dom = buf_dom->dom;
+      n->buf_dom_map.Set(buf, dom);
+    }
     return n;
   }
 
@@ -457,6 +462,9 @@ class StateCreator : private StmtVisitor {
   void VisitStmt_(const BlockRealizeNode* realize) final {
     const BlockNode* block = realize->block.get();
     PushSRef(block);
+    for (const BufferDomain& buf_dom: block->buf_doms) {
+      buf_doms.push_back(buf_dom);
+    }
     VisitStmt(block->body);  // `block->init` is not visited
     PopAndRecordSRef();
   }
@@ -471,6 +479,8 @@ class StateCreator : private StmtVisitor {
   ScheduleStateNode* self_;
   /*! \brief The stack frame used to indicate the current scope */
   std::vector<StmtSRef> srefs_;
+  /*! \brief Collected buffer domains. */
+  Array<BufferDomain> buf_doms;
 };
 
 /**************** Constructor ****************/

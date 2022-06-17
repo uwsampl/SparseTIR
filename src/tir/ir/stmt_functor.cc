@@ -139,6 +139,10 @@ void StmtVisitor::VisitStmt_(const BlockNode* op) {
              [fvisit_buffer_region](const MatchBufferRegion& match_buffer_region) {
                fvisit_buffer_region(match_buffer_region->source);
              });
+  VisitArray(op->buf_doms, [this](const BufferDomain& buf_dom) {
+    this->VisitExpr(buf_dom->dom->min);
+    this->VisitExpr(buf_dom->dom->extent);
+  });
   if (op->init.defined()) {
     this->VisitStmt(op->init.value());
   }

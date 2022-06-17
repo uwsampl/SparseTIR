@@ -57,8 +57,19 @@ void Analyzer::Bind(const Var& var, const Range& range, bool allow_override) {
   // skip rewrite simplify
 }
 
+void Analyzer::Bind(const Buffer& buf, const Range& range, bool allow_override) {
+  ICHECK(range.defined());
+  this->const_int_bound.Bind(buf, range, allow_override);
+}
+
 void Analyzer::Bind(const Map<Var, Range>& variables, bool allow_override) {
   for (const auto& iter : variables) {
+    this->Bind(iter.first, iter.second, allow_override);
+  }
+}
+
+void Analyzer::Bind(const Map<Buffer, Range>& buf_dom_map, bool allow_override) {
+  for (const auto& iter : buf_dom_map) {
     this->Bind(iter.first, iter.second, allow_override);
   }
 }
@@ -172,9 +183,14 @@ TVM_REGISTER_GLOBAL("arith.CreateAnalyzer").set_body([](TVMArgs args, TVMRetValu
     } else if (name == "bind") {
       return PackedFunc([self](TVMArgs args, TVMRetValue* ret) {
         if (args[1].IsObjectRef<Range>()) {
-          self->Bind(args[0], args[1].operator Range());
+          if (args[0].IsObjectRef<Var>()) {
+            self->Bind(args[0].operator Var(), args[1].operator Range());
+          } else {
+            self->Bind(args[0].operator Buffer(), args[1].operator Range());
+          }
         } else {
-          self->Bind(args[0], args[1].operator PrimExpr());
+          self->Bind(args[0].operator Var(), args[1].operator PrimExpr());
+          // NOTE(zihao): binding buffer to primexpr is not supported yet.
         }
       });
     } else if (name == "enter_constraint_context") {

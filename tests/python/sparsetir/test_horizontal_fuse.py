@@ -24,7 +24,7 @@ from tvm.script import tir as T
 @T.prim_func
 def original(
     A: T.Buffer[(128, 128), "float32"],
-    B: T.Buffer[(64, 64), "float32"],
+    B: T.Buffer[(64, 128), "float32"],
     C1: T.Buffer[(128,), "float32"],
     C2: T.Buffer[(64,), "float32"],
 ) -> None:
@@ -35,12 +35,28 @@ def original(
             with T.init():
                 C1[vi] = T.float32(0)
             C1[vi] = C1[vi] + A[vi, vj]
-    for i, j in T.grid(64, 64):
+    for i, j in T.grid(64, 128):
         with T.block("second"):
             vi, vj = T.axis.remap("SR", [i, j])
             with T.init():
                 C2[vi] = T.float32(0)
             C2[vi] = C2[vi] + B[vi, vj]
+               
+# from tvm.script import tir as T
+@T.prim_func
+def local_alloc(A: T.Buffer[(200,), "float32"], B: T.Buffer[(200,), "float32"]) -> None:
+    # var definition
+    blockIdx_x = T.env_thread("blockIdx.x")
+    # body
+    T.launch_thread(blockIdx_x, 200)
+    # if blockIdx_x < 100:
+    C_local = T.allocate([1], "float32", "local")
+    C_local[0] = T.float32(0)
+    A[blockIdx_x] = C_local[0]
+    # else:
+    C_local_1 = T.allocate([1], "float32", "local")
+    C_local_1[0] = T.float32(0)
+    B[blockIdx_x] = C_local_1[0]
 
 
 def test_end_to_end():
@@ -63,28 +79,34 @@ def test_end_to_end():
     io, ii = sch.split(i, [None, 4])
     sch.bind(io, "blockIdx.x")
     sch.bind(j, "threadIdx.x")
-    print(sch.mod["main"].script())
     f = tvm.build(sch.mod["main"], target="cuda")
     print(f.imported_modules[0].get_source())
 
-    x_np = np.random.rand(128, 128).astype("float32")
-    y_np = np.random.rand(64, 64).astype("float32")
-    z1_np = np.zeros(128).astype("float32")
-    z2_np = np.zeros(64).astype("float32")
+    # x_np = np.random.rand(128, 128).astype("float32")
+    # y_np = np.random.rand(64, 64).astype("float32")
+    # z1_np = np.zeros(128).astype("float32")
+    # z2_np = np.zeros(64).astype("float32")
 
-    z1_golden = x_np.sum(axis=-1)
-    z2_golden = y_np.sum(axis=-1)
+    # z1_golden = x_np.sum(axis=-1)
+    # z2_golden = y_np.sum(axis=-1)
 
-    x = tvm.nd.array(x_np, device=tvm.cuda(0))
-    y = tvm.nd.array(y_np, device=tvm.cuda(0))
-    z1 = tvm.nd.array(z1_np, device=tvm.cuda(0))
-    z2 = tvm.nd.array(z2_np, device=tvm.cuda(0))
+    # x = tvm.nd.array(x_np, device=tvm.cuda(0))
+    # y = tvm.nd.array(y_np, device=tvm.cuda(0))
+    # z1 = tvm.nd.array(z1_np, device=tvm.cuda(0))
+    # z2 = tvm.nd.array(z2_np, device=tvm.cuda(0))
 
-    f(x, y, z1, z2)
+    # f(x, y, z1, z2)
 
-    tvm.testing.assert_allclose(z1.numpy(), z1_golden, rtol=1e-5, atol=1e-5)
-    tvm.testing.assert_allclose(z2.numpy(), z2_golden, rtol=1e-5, atol=1e-5)
+    # tvm.testing.assert_allclose(z1.numpy(), z1_golden, rtol=1e-5, atol=1e-5)
+    # tvm.testing.assert_allclose(z2.numpy(), z2_golden, rtol=1e-5, atol=1e-5)
+
+
+def test_local_alloc():
+    mod = tvm.IRModule.from_expr(local_alloc)
+    mod = tir.transform.StorageRewrite()(mod)
+    print(mod["main"].script())
 
 
 if __name__ == "__main__":
     test_end_to_end()
+    # test_local_alloc()

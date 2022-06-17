@@ -545,6 +545,26 @@ class BufferRegion(Object):
         self.__init_handle_by_constructor__(_ffi_api.BufferRegion, buffer, region)  # type: ignore
 
 
+@tvm._ffi.register_object("tir.BufferDomain")
+class BufferDomain(Object):
+    """BufferDomain node.
+
+    Parameters
+    ----------
+    buffer : Buffer
+        The buffer of the buffer region.
+
+    dom : Range
+        The domain of elements in the buffer.
+    """
+
+    buffer: Buffer
+    dom: Range
+
+    def __init__(self, buffer: Buffer, dom: Range) -> None:
+        self.__init_handle_by_constructor__(_ffi_api.BufferDomain, buffer, dom)  # type: ignore
+
+
 @tvm._ffi.register_object("tir.MatchBufferRegion")
 class MatchBufferRegion(Object):
     """MatchBufferRegion node.
@@ -596,6 +616,9 @@ class Block(Stmt):
 
     match_buffers: Optional[List[MatchBufferRegion]]
         The subregion buffer match
+    
+    buf_doms: Optional[List[BufferDomain]]
+        The buffer domains declared in the block.
 
     annotations: Optional[Mapping[str, Object]]
         Additional annotation hints.
@@ -612,6 +635,7 @@ class Block(Stmt):
     init: Optional[Stmt]
     alloc_buffers: Optional[List[Buffer]]
     match_buffers: Optional[List[MatchBufferRegion]]
+    buf_doms: Optional[List[BufferDomain]]
     annotations: Optional[Mapping[str, Object]]
     span: Optional[Span]
 
@@ -625,6 +649,7 @@ class Block(Stmt):
         init: Optional[Stmt] = None,
         alloc_buffers: Optional[List[Buffer]] = None,
         match_buffers: Optional[List[MatchBufferRegion]] = None,
+        buf_doms: Optional[List[BufferDomain]] = None,
         annotations: Optional[Mapping[str, Object]] = None,
         span: Optional[Span] = None,
     ):
@@ -632,6 +657,8 @@ class Block(Stmt):
             alloc_buffers = []
         if match_buffers is None:
             match_buffers = []
+        if buf_doms is None:
+            buf_doms = []
         if annotations is None:
             annotations = {}
         self.__init_handle_by_constructor__(
@@ -644,6 +671,7 @@ class Block(Stmt):
             init,
             alloc_buffers,
             match_buffers,
+            buf_doms,
             annotations,
             span,
         )  # type: ignore
@@ -669,7 +697,7 @@ class SparseIteration(Stmt):
 
     init : Optional[Stmt]
         The init statement of the block.
-    
+
     annotations : Optional[Mapping[str, Object]]
         Additional annotation hints.
 

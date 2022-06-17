@@ -283,6 +283,7 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
   virtual Doc PrintBlockName(const BlockNode* block_op);
   Doc PrintSparseIterationName(const SparseIterationNode* op);
   Doc PrintSparseStructDefinitions(const SparseIterationNode* sp_iteration);
+  Doc PrintBufferDomain(const BufferDomainNode* op);
 
   Doc PrintBufferRegion(const BufferRegionNode* op);
   Doc PrintMatchBufferRegion(const MatchBufferRegionNode* op);
@@ -755,6 +756,8 @@ Doc TVMScriptPrinter::Print(const ObjectRef& node) {
     return PrintBuffer(node.as<BufferNode>());
   } else if (node->IsInstance<AxisNode>()) {
     return PrintSpAxis(node.as<AxisNode>());
+  } else if (node->IsInstance<BufferDomainNode>()) {
+    return PrintBufferDomain(node.as<BufferDomainNode>());
   } else if (node->IsInstance<StringObj>()) {
     return PrintString(node.as<StringObj>());
   } else if (node->IsInstance<IterVarNode>()) {
@@ -1490,6 +1493,9 @@ Doc TVMScriptPrinter::PrintBlockBody(const BlockNode* op) {
   for (const auto& match_buf : op->match_buffers) {
     body << Print(match_buf) << Doc::NewLine();
   }
+  for (const auto& buf_dom : op->buf_doms) {
+    body << Print(buf_dom) << Doc::NewLine();
+  }
   if (op->init.defined()) {
     Doc init_block;
     init_block << "with " << tir_prefix_ << ".init():";
@@ -1877,6 +1883,13 @@ Doc TVMScriptPrinter::PrintNonHeaderBufferDeclarations(const Array<Buffer>& alia
 Doc TVMScriptPrinter::PrintSpAxis(const AxisNode* op) {
   const Axis& axis = GetRef<Axis>(op);
   return meta_.InMeta(axis) ? meta_.GetMetaNode(axis) : AllocAxis(axis);
+}
+
+Doc TVMScriptPrinter::PrintBufferDomain(const BufferDomainNode* op) {
+  Doc doc;
+  doc << tir_prefix_ << ".assume_buffer_domain(" << Print(op->buffer) << ", ["
+      << Print(op->dom->min) << ", " << Print(op->dom->min + op->dom->extent) << "])";
+  return doc;
 }
 
 Doc TVMScriptPrinter::PrintBufferRegion(const BufferRegionNode* op) {

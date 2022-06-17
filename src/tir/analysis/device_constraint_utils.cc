@@ -410,7 +410,8 @@ class ApplyDeviceConstraintsMutator : public StmtExprMutator {
         new_match_buffers.same_as(new_block->match_buffers)) {
       return Block(new_block->iter_vars, std::move(new_reads), std::move(new_writes),
                    new_block->name_hint, new_block->body, new_block->init, new_block->alloc_buffers,
-                   std::move(new_match_buffers), new_block->annotations, new_block->span);
+                   std::move(new_match_buffers), new_block->buf_doms, new_block->annotations,
+                   new_block->span);
     }
     return std::move(new_block);
   }

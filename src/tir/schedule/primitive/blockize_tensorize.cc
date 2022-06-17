@@ -466,6 +466,7 @@ BlockRealize GenerateBlockizedOuterBlock(const BlockizedBindingExtractor& extrac
 StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   arith::Analyzer analyzer;
+  analyzer.Bind(self->buf_dom_map);
 
   // Step 1: Check the loop has a single child BlockRealize on the sref tree.
   BlockRealize block_realize = CheckGetSingleChildBlockRealizeOnSRefTree(self, loop_sref);

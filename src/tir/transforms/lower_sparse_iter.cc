@@ -78,13 +78,14 @@ Array<Axis> CollectAncestors(Axis axis, int max_depth = -1) {
 /*!
  * \brief Add indptr and indices buffer-matches to PrimFunc's buffer map.
  */
-std::tuple<Map<Axis, Buffer>, Map<Axis, Buffer>, Map<Var, Buffer>, Array<Axis>> UpdateBufferMap(
-    PrimFunc f) {
+std::tuple<Map<Axis, Buffer>, Map<Axis, Buffer>, Map<Var, Buffer>, Array<Axis>, Array<BufferDomain>>
+UpdateMetadata(PrimFunc f) {
   Map<Var, Buffer> buffer_map = f->buffer_map;
   Map<Axis, Buffer> axis_indptr_map;
   Map<Axis, Buffer> axis_indices_map;
   std::unordered_map<const AxisNode*, Axis> to_dense_map;
   Array<Axis> new_sp_axes;
+  Array<BufferDomain> buf_doms;
   for (const Axis& axis : f->sp_axes) {
     new_sp_axes.push_back(axis);
     // TODO(Zihao): special handle of FlattenedAxis
@@ -102,6 +103,7 @@ std::tuple<Map<Axis, Buffer>, Map<Axis, Buffer>, Map<Var, Buffer>, Array<Axis>> 
         ancestors.Set(ancestors.size() - 1, to_dense_map[parent.get()]);
       }
       SparseBuffer sp_buf(indptr, ancestors, axis->idtype, indptr_name, Integer(1));
+      buf_doms.push_back(BufferDomain(sp_buf, Range::FromMinExtent(Integer(0), axis->nnz)));
       buffer_map.Set(axis->indptr.value(), sp_buf);
       axis_indptr_map.Set(axis, sp_buf);
     }
@@ -116,11 +118,12 @@ std::tuple<Map<Axis, Buffer>, Map<Axis, Buffer>, Map<Var, Buffer>, Array<Axis>> 
       }
       ancestors.push_back(to_dense_map[axis.get()]);
       SparseBuffer sp_buf(indices, ancestors, axis->idtype, indices_name, NullOpt);
+      buf_doms.push_back(BufferDomain(sp_buf, Range::FromMinExtent(Integer(0), axis->length)));
       buffer_map.Set(axis->indices.value(), sp_buf);
       axis_indices_map.Set(axis, sp_buf);
     }
   }
-  return {axis_indptr_map, axis_indices_map, buffer_map, new_sp_axes};
+  return {axis_indptr_map, axis_indices_map, buffer_map, new_sp_axes, buf_doms};
 }
 
 /*!
@@ -345,6 +348,7 @@ class IterTransformer : public StmtExprMutator {
 
   std::vector<BinarySearchStructure> bsearch_structures;  // binary search related structures.
   Array<Buffer> root_alloc_buffers;                       // allocated buffers in the root block.
+  Array<BufferDomain> alloc_buf_doms;                     // allocated buffer domains.
  private:
   /*! \brief Create base dom map: each axis parameters should be greater than 0. */
   void CreateBaseDomMap(const Array<Axis>& axes) {
@@ -620,6 +624,7 @@ class IterTransformer : public StmtExprMutator {
                   /*init=*/init,
                   /*alloc_buffers=*/{},
                   /*match_buffers=*/{},
+                  /*buf_doms=*/{},
                   /*annotations=*/annotations);
 
       // Update var dom.
@@ -670,6 +675,7 @@ class IterTransformer : public StmtExprMutator {
                     /*init=*/{},
                     /*alloc_buffers=*/bsearch_structure.alloc_buffers,
                     /*match_buffers=*/{},
+                    /*buf_doms*/{},
                     /*annotations=*/annotations);
         bsearch_structure.alloc_buffers = {};
         BlockRealize block_realize(
@@ -924,6 +930,7 @@ class IterTransformer : public StmtExprMutator {
     String name = "binary_search_block_" + std::to_string(bsearch_blk_counter);
     bsearch_blk_counter++;
     root_alloc_buffers.push_back(mid);
+    alloc_buf_doms.push_back(BufferDomain(mid, Range::FromMinExtent(Integer(0), buf->shape.back())));
     Array<Range> read_regions, write_regions;
     for (const PrimExpr& index : prefix_indices) {
       read_regions.push_back(Range::FromMinExtent(index, Integer(1)));
@@ -1081,8 +1088,8 @@ PrimFunc LowerSparseIter(PrimFunc f) {
     PrimFuncNode* fptr = f.CopyOnWrite();
     // Step 1. Update the PrimFunc's buffer map.
     Map<Axis, Buffer> axis_indptr_map, axis_indices_map;
-    std::tie(axis_indptr_map, axis_indices_map, fptr->buffer_map, fptr->sp_axes) =
-        UpdateBufferMap(f);
+    Array<BufferDomain> buf_doms;
+    std::tie(axis_indptr_map, axis_indices_map, fptr->buffer_map, fptr->sp_axes, buf_doms) = UpdateMetadata(f);
     // Step 2. Lower iterations.
     IterTransformer lower_sparse(axis_indptr_map, axis_indices_map, fptr->sp_axes);
     Stmt body = lower_sparse(std::move(fptr->body));
@@ -1095,7 +1102,8 @@ PrimFunc LowerSparseIter(PrimFunc f) {
       seq.push_back(body);
       body = SeqStmt(seq);
     }
-    Block root_block({}, {}, {}, "root", body, NullOpt, lower_sparse.root_alloc_buffers);
+    buf_doms = Concat(buf_doms, lower_sparse.alloc_buf_doms);
+    Block root_block({}, {}, {}, "root", body, NullOpt, lower_sparse.root_alloc_buffers, {}, buf_doms);
     fptr->body = BlockRealize({}, const_true(), std::move(root_block));
     // Step 4. Lower sparse tir level.
     Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;

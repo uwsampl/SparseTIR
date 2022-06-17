@@ -145,6 +145,7 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
       /*init=*/NullOpt,
       /*alloc_buffers=*/{},
       /*match_buffers=*/{},
+      /*buf_doms=*/{},
       /*annotations=*/info->annotations);
   // Create the block realize node
   Stmt body = BlockRealize(/*values=*/iter_values,
@@ -171,6 +172,7 @@ bool CalculateAffineFlag(const ScheduleState& self, const StmtSRef& block_sref) 
     return true;
   }
   arith::Analyzer analyzer;
+  analyzer.Bind(self->buf_dom_map);
   StmtSRef parent_sref = GetRef<StmtSRef>(block_sref->parent);
   return IsAffineBinding(/*realize=*/GetBlockRealize(self, block_sref),
                          /*loop_var_ranges=*/LoopDomainOfSRefTreePath(parent_sref),
@@ -238,6 +240,7 @@ BufferRegion RelaxBufferRegion(ScheduleState self, const BufferRegion& buffer_re
   Map<Var, PrimExpr> binding = GetBindings(realize);
   const Buffer& buffer = buffer_region->buffer;
   arith::Analyzer analyzer;
+  analyzer.Bind(self->buf_dom_map);
   BufferRegion subst_region = BufferRegion(buffer, Substitute(buffer_region->region, binding));
   Array<arith::IntSet> int_sets = AnalyzeRegionUpperBound(
       /*region=*/subst_region,

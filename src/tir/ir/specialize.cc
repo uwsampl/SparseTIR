@@ -138,6 +138,9 @@ class PrimFuncSpecializer : public StmtExprMutator {
     op = stmt.as<BlockNode>();
     ICHECK(op != nullptr);
 
+    Array<BufferDomain> buf_doms = MutateArray(
+        op->buf_doms,
+        std::bind(&PrimFuncSpecializer::MutateBufferDomain, this, std::placeholders::_1));
     Array<BufferRegion> reads = MutateArray(
         op->reads,
         std::bind(&PrimFuncSpecializer::MutateBufferRegion, this, std::placeholders::_1));
@@ -148,11 +151,13 @@ class PrimFuncSpecializer : public StmtExprMutator {
         op->iter_vars, std::bind(&PrimFuncSpecializer::MutateIterVar, this, std::placeholders::_1));
 
     if (alloc_buffers.same_as(op->alloc_buffers) && reads.same_as(op->reads) &&
+        writes.same_as(op->writes) && buf_doms.same_as(op->buf_doms) &&
         iter_vars.same_as(op->iter_vars)) {
       return GetRef<Block>(op);
     } else {
       ObjectPtr<BlockNode> n = CopyOnWrite(op);
       n->alloc_buffers = std::move(alloc_buffers);
+      n->buf_doms = std::move(buf_doms);
       n->reads = std::move(reads);
       n->writes = std::move(writes);
       n->iter_vars = std::move(iter_vars);
@@ -408,6 +413,16 @@ class PrimFuncSpecializer : public StmtExprMutator {
       return buffer_region;
     } else {
       return BufferRegion(it->second, std::move(region));
+    }
+  }
+
+  BufferDomain MutateBufferDomain(const BufferDomain& buf_dom) {
+    auto it = buffer_map_.find(buf_dom->buffer);
+    Range dom = MutateRange(buf_dom->dom);
+    if (it == buffer_map_.end() && dom.same_as(buf_dom->dom)) {
+      return buf_dom;
+    } else {
+      return BufferDomain(it->second, std::move(dom));
     }
   }
 

@@ -187,6 +187,7 @@ struct BlockVarDomainInfo {
       PrimExpr max = set.HasUpperBound() ? analyzer->Simplify(set.max()) : set.max();
       return arith::IntSet::Interval(min, max);
     };
+    LOG(INFO) << dom;
     // if no dom specified, try use bound as dom
     if (dom.IsNothing()) {
       if (bound.HasLowerBound() && bound.HasUpperBound()) {
@@ -200,6 +201,7 @@ struct BlockVarDomainInfo {
     bound = to_simplified(bound);
     // if can proof the dom is within bound, remove bound
     auto intersect = to_simplified(arith::Intersect({dom, bound}));
+    LOG(INFO) << dom;
     if (analyzer->CanProveEqual(dom.min(), intersect.min()) &&
         analyzer->CanProveEqual(dom.max(), intersect.max())) {
       bound = arith::IntSet::Nothing();
@@ -208,6 +210,7 @@ struct BlockVarDomainInfo {
       dom = bound;
       bound = arith::IntSet::Nothing();
     }
+    LOG(INFO) << dom;
   }
 };
 
@@ -335,7 +338,8 @@ void RelaxBufferRegions(const Map<Var, PrimExpr>& binding,
                         const Array<BufferRegion>& buffer_regions,
                         const StmtSRef& relax_path_low_inclusive,
                         const StmtSRef& relax_path_high_exclusive,
-                        std::unordered_map<const BufferNode*, std::vector<NDIntSet>>* relaxed) {
+                        std::unordered_map<const BufferNode*, std::vector<NDIntSet>>* relaxed,
+                        const Map<Buffer, Range> buf_dom) {
   runtime::StorageScope global_scope{runtime::StorageRank::kGlobal, ""};
   // We cache the variable domains
   runtime::StorageRank previous_rank = runtime::StorageRank::kGlobal;
@@ -437,6 +441,7 @@ void UpdateBlockVarDomain(const arith::IntSet& provided, const arith::IntSet& re
   ICHECK(var.same_as(var_with_bound.first));
   auto it = iter_doms->find(var.get());
   if (it != iter_doms->end()) {
+    LOG(INFO) << var_dom << " " << var_bound;
     it->second.Union({var_dom, var_bound});
   } else {
     ICHECK(analyzer->CanProveEqual(provided.min(), required.min()));
@@ -522,7 +527,8 @@ void CalculateProvidedRequiredRegions(
     std::unordered_map<const BlockNode*, const BlockRealizeNode*> block2realize,
     Array<StmtSRef> producer_srefs, Array<StmtSRef> consumer_srefs,
     std::unordered_map<const BufferNode*, std::vector<NDIntSet>>* provided_regions,
-    std::unordered_map<const BufferNode*, std::vector<NDIntSet>>* required_regions) {
+    std::unordered_map<const BufferNode*, std::vector<NDIntSet>>* required_regions,
+    const Map<Buffer, Range>& buf_dom) {
   // Step 1. Calculate the region provided by a single execution instance of `block`
   const Array<BufferRegion>& provided_buffers = is_compute_at ? block->writes : block->reads;
   provided_regions->reserve(provided_buffers.size());
@@ -541,7 +547,8 @@ void CalculateProvidedRequiredRegions(
           /*binding=*/GetBindings(GetRef<BlockRealize>(block2realize.at(required_block))),
           /*buffer_regions=*/is_compute_at ? required_block->reads : required_block->writes,
           /*relax_path_low_inclusive=*/GetRef<StmtSRef>(required_block_sref->parent),
-          /*relax_path_high_exclusive=*/loop_sref, /*relaxed=*/required_regions);
+          /*relax_path_high_exclusive=*/loop_sref, /*relaxed=*/required_regions,
+          /*buf_dom=*/buf_dom);
     }
   }
 }
@@ -595,7 +602,8 @@ void ComputeAtOrReverseComputeAtImpl(ScheduleState self, const StmtSRef& block_s
       /*block=*/block, /*loop_sref=*/loop_sref, /*block2realize=*/std::move(block2realize),
       /*producer_srefs=*/std::move(producer_srefs),
       /*consumer_srefs=*/std::move(consumer_srefs),
-      /*provided_regions=*/&provided_regions, /*required_regions=*/&required_regions);
+      /*provided_regions=*/&provided_regions, /*required_regions=*/&required_regions,
+      /*analyzer=*/self->buf_dom_map);
   // Step 5. Calculate the iteration domain for each block var
   std::vector<BlockVarDomainInfo> iter_doms =
       CalculateBlockVarDomain(/*iter_vars=*/block->iter_vars,
@@ -623,6 +631,7 @@ void ComputeAtOrReverseComputeAtImpl(ScheduleState self, const StmtSRef& block_s
 void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& loop_sref,
                bool preserve_unit_loops) {
   arith::Analyzer analyzer;
+  analyzer.Bind(self->buf_dom_map);
   ComputeAtOrReverseComputeAtImpl<true>(self, block_sref, loop_sref, preserve_unit_loops,
                                         &analyzer);
 }
@@ -630,6 +639,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
 void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& loop_sref,
                       bool preserve_unit_loops) {
   arith::Analyzer analyzer;
+  analyzer.Bind(self->buf_dom_map);
   ComputeAtOrReverseComputeAtImpl<false>(self, block_sref, loop_sref, preserve_unit_loops,
                                          &analyzer);
 }

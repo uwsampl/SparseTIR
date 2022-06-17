@@ -607,6 +607,7 @@ class BaseBlockCreator {
         /*init=*/init_block,
         /*alloc_buffers=*/{},
         /*match_buffers=*/{},
+        /*buf_doms=*/{},
         /*annotations=*/old_block_realize_->block->annotations);
     new_block_realize_ = BlockRealize(iter_values_, predicate, new_block_);
   }

@@ -1064,6 +1064,48 @@ class Prefetch : public Stmt {
 };
 
 /*!
+ * \brief Representing the domain of elements in a buffer.
+ */
+class BufferDomainNode : public Object {
+ public:
+  /*! \brief The buffer of the buffer domain. */
+  Buffer buffer;
+  /*! \brief The domain of the buffer domain. */
+  Range dom;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("buffer", &buffer);
+    v->Visit("dom", &dom);
+  }
+
+  bool SEqualReduce(const BufferDomainNode* other, SEqualReducer equal) const {
+    return equal(buffer, other->buffer) && equal(dom, other->dom);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce(buffer);
+    hash_reduce(dom);
+  }
+
+  static constexpr const char* _type_key = "tir.BufferDomain";
+  static constexpr const bool _type_has_method_sequal_reduce = true;
+  static constexpr const bool _type_has_method_shash_reduce = true;
+  TVM_DECLARE_FINAL_OBJECT_INFO(BufferDomainNode, Object);
+};
+
+/*!
+ * \brief Managed reference to BufferDomNode.
+ * \sa BufferDomNode
+ */
+class BufferDomain : public ObjectRef {
+ public:
+  TVM_DLL explicit BufferDomain(Buffer buffer, Range dom);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(BufferDomain, ObjectRef, BufferDomainNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(BufferDomainNode);
+};
+
+/*!
  * \brief Representing the region of multi-dimensional buffer access.
  */
 class BufferRegionNode : public Object {
@@ -1212,6 +1254,8 @@ class BlockNode : public StmtNode {
   Array<Buffer> alloc_buffers;
   /*! \brief The match buffer regions. */
   Array<MatchBufferRegion> match_buffers;
+  /*! \brief The buffer domains. */
+  Array<BufferDomain> buf_doms;
   /*! \brief The annotation of the block. */
   Map<String, ObjectRef> annotations;
 
@@ -1224,6 +1268,7 @@ class BlockNode : public StmtNode {
     v->Visit("init", &init);
     v->Visit("alloc_buffers", &alloc_buffers);
     v->Visit("match_buffers", &match_buffers);
+    v->Visit("buf_doms", &buf_doms);
     v->Visit("annotations", &annotations);
   }
 
@@ -1231,15 +1276,16 @@ class BlockNode : public StmtNode {
     // Need first reduce iter_vars, alloc_buffers and match_buffers to define new vars
     return equal.DefEqual(iter_vars, other->iter_vars) &&
            equal(alloc_buffers, other->alloc_buffers) &&
-           equal(match_buffers, other->match_buffers) && equal(reads, other->reads) &&
-           equal(writes, other->writes) && equal(body, other->body) && equal(init, other->init) &&
-           equal(annotations, other->annotations);
+           equal(match_buffers, other->match_buffers) && equal(buf_doms, other->buf_doms) &&
+           equal(reads, other->reads) && equal(writes, other->writes) && equal(body, other->body) &&
+           equal(init, other->init) && equal(annotations, other->annotations);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
     hash_reduce.DefHash(iter_vars);
     hash_reduce(alloc_buffers);
     hash_reduce(match_buffers);
+    hash_reduce(buf_doms);
     hash_reduce(reads);
     hash_reduce(writes);
     hash_reduce(body);
@@ -1262,6 +1308,7 @@ class Block : public Stmt {
                          Optional<Stmt> init = NullOpt,
                          Array<Buffer> alloc_buffers = Array<Buffer>(),
                          Array<MatchBufferRegion> match_buffers = Array<MatchBufferRegion>(),
+                         Array<BufferDomain> buf_doms = Array<BufferDomain>(),
                          Map<String, ObjectRef> annotations = Map<String, ObjectRef>(),
                          Span span = Span());
 

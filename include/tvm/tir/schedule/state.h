@@ -86,6 +86,8 @@ class ScheduleStateNode : public Object {
  public:
   /*! \brief The AST of the module being scheduled */
   IRModule mod;
+  /*! \brief Buffer domain map defined in the module.*/
+  Map<Buffer, Range> buf_dom_map;
   /*!
    * \brief Mapping from a block sref to its correpsonding BlockInfo,
    * tracking the dependency inside the block scope,

@@ -49,8 +49,8 @@ class PrimFunc(BaseFunc):
     preflattened_buffer_map : Optional[Map[tvm.tir.Var, tvm.tir.Buffer]]
         The buffer binding map, prior to any flattening.
 
-    sp_axes : Array[Axis]
-        Sparse axes declared in the primitive function.
+    sp_axes : List[Axis]
+        Sparse axes declared in the function.
 
     attrs: Optional[tvm.Attrs]
         Attributes of the function, can be None

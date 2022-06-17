@@ -407,6 +407,7 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
   }
   // Currently, loops not starting with 0 are not supported
   arith::Analyzer analyzer;
+  analyzer.Bind(self->buf_dom_map);
   if (!analyzer.CanProve(loop->min == 0)) {
     throw LoopNotStartWithZeroError(self->mod, GetRef<For>(loop));
   }
@@ -470,6 +471,7 @@ StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs) {
   StmtSRef outer_loop_sref{nullptr};
   const ForNode* outer_loop = nullptr;
   arith::Analyzer analyzer;
+  analyzer.Bind(self->buf_dom_map);
   std::unordered_set<const VarNode*> outer_loop_vars;
   // Step 1. check correctness
   for (const StmtSRef& sref : loop_srefs) {

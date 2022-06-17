@@ -584,7 +584,9 @@ transform::Sequential MixedModulePassManager(IRModule mixed_mod, Target target) 
   mixed_pass_list.push_back(tir::transform::InferFragment());
   mixed_pass_list.push_back(tir::transform::LowerThreadAllreduce());
   // Move storage rewrite after lower thread allreduce to share allocated shared memory for allreduce.
+  // mixed_pass_list.push_back(transform::PrintIR());
   // mixed_pass_list.push_back(tir::transform::StorageRewrite());
+  // mixed_pass_list.push_back(transform::PrintIR());
 
   bool unpacked_api = mixed_mod->GetAttr<relay::Executor>(tvm::attr::kExecutor)
                           .value_or(relay::Executor::Create("graph", {}))

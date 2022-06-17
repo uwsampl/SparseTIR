@@ -779,6 +779,26 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << "}\n";
     });
 
+// BufferDomain
+BufferDomain::BufferDomain(Buffer buffer, Range dom) {
+  ObjectPtr<BufferDomainNode> node = make_object<BufferDomainNode>();
+  node->buffer = buffer;
+  node->dom = dom;
+  data_ = std::move(node);
+}
+
+TVM_REGISTER_GLOBAL("tir.BufferDomain").set_body_typed([](Buffer buffer, Range dom) {
+  return BufferDomain(buffer, dom);
+});
+
+TVM_REGISTER_NODE_TYPE(BufferDomainNode);
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<BufferDomainNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const BufferDomainNode*>(node.get());
+      p->stream << "buffer_domain(" << op->buffer->name << ", dom=" << op->dom << ")";
+    });
+
 // BufferRegion
 BufferRegion::BufferRegion(Buffer buffer, Array<Range> region) {
   CHECK_EQ(buffer->shape.size(), region.size())
@@ -903,8 +923,8 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 // Block
 Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
              String name_hint, Stmt body, Optional<Stmt> init, Array<Buffer> alloc_buffers,
-             Array<MatchBufferRegion> match_buffers, Map<String, ObjectRef> annotations,
-             Span span) {
+             Array<MatchBufferRegion> match_buffers, Array<BufferDomain> buf_doms,
+             Map<String, ObjectRef> annotations, Span span) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
   node->iter_vars = std::move(iter_vars);
   node->reads = std::move(reads);
@@ -914,6 +934,7 @@ Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRe
   node->init = std::move(init);
   node->alloc_buffers = std::move(alloc_buffers);
   node->match_buffers = std::move(match_buffers);
+  node->buf_doms = std::move(buf_doms);
   node->annotations = std::move(annotations);
   node->span = std::move(span);
   data_ = std::move(node);
@@ -923,9 +944,10 @@ TVM_REGISTER_GLOBAL("tir.Block")
     .set_body_typed([](Array<IterVar> iter_vars, Array<BufferRegion> reads,
                        Array<BufferRegion> writes, String name_hint, Stmt body, Optional<Stmt> init,
                        Array<Buffer> alloc_buffers, Array<MatchBufferRegion> match_buffers,
-                       Map<String, ObjectRef> annotations, Span span) {
+                       Array<BufferDomain> buf_doms, Map<String, ObjectRef> annotations,
+                       Span span) {
       return Block(iter_vars, reads, writes, name_hint, body, init, alloc_buffers, match_buffers,
-                   annotations, span);
+                   buf_doms, annotations, span);
     });
 
 TVM_REGISTER_NODE_TYPE(BlockNode);
@@ -963,6 +985,11 @@ void PrintBlockSignature(const BlockNode* op, ReprPrinter* p) {
   for (const auto& match_buf : op->match_buffers) {
     p->Print(match_buf);
   }
+  // Print buffer domains
+  for (const auto& buf_dom : op->buf_doms) {
+    p->Print(buf_dom);
+  }
+  // Print annotations
   if (!op->annotations.empty()) {
     p->PrintIndent();
     p->stream << "annotations(" << op->annotations << ")\n";

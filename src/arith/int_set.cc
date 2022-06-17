@@ -347,6 +347,8 @@ class IntervalSetEvaluator : public ExprFunctor<IntervalSet(const PrimExpr&)> {
  public:
   IntervalSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map, bool eval_vec = false)
       : analyzer_(analyzer), dom_map_(dom_map), eval_vec_(eval_vec) {}
+  IntervalSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map, const Map<Buffer, Range> buf_dom_map, bool eval_vec=false)
+      : analyzer_(analyzer), dom_map_(dom_map), buf_dom_map_(buf_dom_map), eval_vec_(eval_vec) {}
 
   IntervalSet Eval(const PrimExpr& val) { return this->VisitExpr(val); }
   // evaluate and relax the set
@@ -465,7 +467,13 @@ class IntervalSetEvaluator : public ExprFunctor<IntervalSet(const PrimExpr&)> {
       if (UsesVar(index, [dom_map = &this->dom_map_](const VarNode* var) {
             return dom_map->find(GetRef<Var>(var)) != dom_map->end();
           })) {
-        return IntervalSet::Everything();
+        Optional<Range> maybe_range = buf_dom_map_.Get(op->buffer);
+        if (maybe_range.defined()) {
+          Range range = maybe_range.value();
+          return IntervalSet(range->min, range->extent);
+        } else {
+          return IntervalSet::Everything();
+        }
       }
     }
     return IntervalSet::SinglePoint(GetRef<PrimExpr>(op));
@@ -498,6 +506,7 @@ class IntervalSetEvaluator : public ExprFunctor<IntervalSet(const PrimExpr&)> {
   // analyzer
   Analyzer* analyzer_;
   const Map<Var, IntSet>& dom_map_;
+  Map<Buffer, Range> buf_dom_map_;
   bool eval_vec_{false};
 };
 

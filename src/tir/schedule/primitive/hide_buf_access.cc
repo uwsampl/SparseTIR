@@ -51,7 +51,7 @@ void HideBufAccess(ScheduleState self, const StmtSRef& block_sref, const String&
   }
 
   Block new_block(block->iter_vars, reads, writes, block->name_hint, block->body, block->init,
-                  block->alloc_buffers, block->match_buffers, block->annotations);
+                  block->alloc_buffers, block->match_buffers, block->buf_doms, block->annotations);
   Map<Block, Block> blk_map;
   blk_map.Set(GetRef<Block>(block), new_block);
   self->Replace(block_sref, new_block, blk_map);

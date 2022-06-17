@@ -37,6 +37,7 @@ from tvm.tir.sparse import (
     sparse_fixed_axis,
     sparse_variable_axis,
 )
+from tvm.tir.stmt import BufferDomain
 
 from .node import BufferSlice
 from .utils import buffer_slice_to_region
@@ -1213,3 +1214,22 @@ class AllocSparseBuffer(SpecialStmt):
             self.context.update_symbol(buffer_name, buffer, self.node)
 
         super().__init__(alloc_sparse_buffer, def_symbol=True)
+
+
+@register
+class AssumeBufferRange(SpecialStmt):
+    """Special Stmt assume_buffer_domain()"""
+
+    def __init__(self):
+        def assume_buffer_domain(
+            buf: tvm.tir.Buffer,
+            dom: Tuple[PrimExpr, PrimExpr], 
+            span: Optional[Span] = None,
+        ):
+            dom = Range.from_min_extent(dom[0], dom[1] - dom[0])
+            if self.context.current_block_scope():
+                self.context.current_block_scope().buf_doms.append(BufferDomain(buf, dom))
+            else:
+                self.context.root_buf_doms.append(BufferDomain(buf, dom))
+
+        super().__init__(assume_buffer_domain, def_symbol=False)
