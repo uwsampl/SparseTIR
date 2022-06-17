@@ -89,10 +89,7 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     ko, kio, kii = sch.get_loops(rf_blk)[-3:]
     sch.reorder(ko, ji)
     # schedule read A
-    sch.compute_at(read_A, ko, True)
-    print(sch.mod["main"].script())
-    assert False
-    # sch.compute_at(read_A, ji, True)
+    sch.compute_at(read_A, ji, True)
     ax0, ax1 = sch.split(sch.get_loops(read_A)[-1], [8, 4])
     sch.bind(ax0, "threadIdx.x")
     sch.vectorize(ax1)
