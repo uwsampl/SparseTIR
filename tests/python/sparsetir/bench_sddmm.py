@@ -68,13 +68,25 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     preproc = tvm.build(mod["main"], target="cuda")
 
-    ty = 4 
+    # compute mid
+    a_nd = tvm.nd.array(a.view(-1).numpy(), tvm.cuda())
+    b_nd = tvm.nd.array(b.view(-1).numpy(), tvm.cuda())
+    c_nd = tvm.nd.array(c.numpy(), tvm.cuda())
+    indptr_nd = tvm.nd.array(indptr.numpy(), tvm.cuda())
+    indices_nd = tvm.nd.array(indices.numpy(), tvm.cuda())
+    mid_nd = tvm.nd.array(np.zeros((nnz,), np.int32), tvm.cuda())
+
+    preproc(a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd)
+
+    ty = 4
+    # tx = feat_size // 4
+    tx = 8
 
     # schedule compute
     sch = tir.Schedule(mod_sddmm)
     blk = sch.get_block("sddmm0")
     j, k = sch.get_loops(blk)
-    ko, kio, kii = sch.split(k, [None, 8, 4])
+    ko, kio, kii = sch.split(k, [None, tx, 4])
     rf_blk = sch.rfactor(kio, 2)
     j = sch.get_loops(rf_blk)[0]
     joo, joi, ji = sch.split(j, [None, ty, 4])
@@ -90,12 +102,12 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     sch.reorder(ko, ji)
     # schedule read A
     sch.compute_at(read_A, ji, True)
-    ax0, ax1 = sch.split(sch.get_loops(read_A)[-1], [8, 4])
+    ax0, ax1 = sch.split(sch.get_loops(read_A)[-1], [tx, 4])
     sch.bind(ax0, "threadIdx.x")
     sch.vectorize(ax1)
     # schedule read B
     sch.compute_at(read_B, ji, True)
-    ax0, ax1 = sch.split(sch.get_loops(read_B)[-1], [8, 4])
+    ax0, ax1 = sch.split(sch.get_loops(read_B)[-1], [tx, 4])
     sch.bind(ax0, "threadIdx.x")
     sch.vectorize(ax1)
     # schedule write C
@@ -112,18 +124,8 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     sch.bind(ax0, "threadIdx.x")
     sch.unroll(ax1)
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
+    # print(mod["main"].script())
     sddmm = tvm.build(mod["main"], target="cuda")
-    # print(sddmm.imported_modules[0].get_source())
-
-    # compute mid
-    a_nd = tvm.nd.array(a.view(-1).numpy(), tvm.cuda())
-    b_nd = tvm.nd.array(b.view(-1).numpy(), tvm.cuda())
-    c_nd = tvm.nd.array(c.numpy(), tvm.cuda())
-    indptr_nd = tvm.nd.array(indptr.numpy(), tvm.cuda())
-    indices_nd = tvm.nd.array(indices.numpy(), tvm.cuda())
-    mid_nd = tvm.nd.array(np.zeros((nnz,), np.int32), tvm.cuda())
-
-    preproc(a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd)
 
     # compute
     accum_time = 0.0
@@ -132,8 +134,8 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     for i in range(10):
         with TorchOpTimer() as timer:
             sddmm(a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd)
-        # if i == 0:
-        #     tvm.testing.assert_allclose(c_nd.numpy(), c_golden.view(-1).cpu(), rtol=1e-5)
+        if i == 0:
+            tvm.testing.assert_allclose(c_nd.numpy(), c_golden.view(-1).cpu(), rtol=1e-5)
         if i >= cold_start_time:
             accum_time += timer.time
             runs += 1
@@ -159,7 +161,7 @@ def get_dataset(name: str):
         g = reddit[0]
     else:
         raise KeyError("Unknown dataset {}.".format(name))
-    # g = dgl.graph(g.edges("uv", "srcdst"), num_nodes=g.num_nodes())
+    g = dgl.graph(g.edges("uv", "srcdst"), num_nodes=g.num_nodes())
     return g.int()
 
 
