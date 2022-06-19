@@ -78,69 +78,76 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
 
     preproc(a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd)
 
-    ty = 4
-    # tx = feat_size // 4
-    tx = 8
+    best = 1e9
+    for ty in [1, 2, 4, 8]:
+        for tx in [8, 16, 32]:
+            for vec_size in [1, 2, 4]:
+                for group_size in [1, 2, 4]:
+                    if tx * vec_size > feat_size:
+                        continue
+                    # schedule compute
+                    sch = tir.Schedule(mod_sddmm)
+                    blk = sch.get_block("sddmm0")
+                    j, k = sch.get_loops(blk)
+                    ko, kio, kii = sch.split(k, [None, tx, vec_size])
+                    rf_blk = sch.rfactor(kio, 2)
+                    j = sch.get_loops(rf_blk)[0]
+                    joo, joi, ji = sch.split(j, [None, ty, group_size])
+                    sch.bind(joo, "blockIdx.x")
+                    sch.bind(joi, "threadIdx.y")
+                    # sch.unroll(ji)
+                    sch.reverse_compute_at(blk, joi, True)
+                    sch.set_scope(rf_blk, 0, "local")
+                    read_A = sch.cache_read(rf_blk, 0, "local")
+                    read_B = sch.cache_read(rf_blk, 2, "local")
+                    write_C = sch.cache_write(blk, 0, "local")
+                    ko, kio, kii = sch.get_loops(rf_blk)[-3:]
+                    sch.reorder(ko, ji)
+                    # schedule read A
+                    sch.compute_at(read_A, ji, True)
+                    ax0, ax1 = sch.split(sch.get_loops(read_A)[-1], [tx, vec_size])
+                    sch.bind(ax0, "threadIdx.x")
+                    sch.vectorize(ax1)
+                    # schedule read B
+                    sch.compute_at(read_B, ji, True)
+                    ax0, ax1 = sch.split(sch.get_loops(read_B)[-1], [tx, vec_size])
+                    sch.bind(ax0, "threadIdx.x")
+                    sch.vectorize(ax1)
+                    # schedule write C
+                    sch.reverse_compute_at(write_C, joi, True)
+                    ax0, ax1 = sch.get_loops(write_C)[-2:]
+                    sch.vectorize(ax1)
+                    # schedule rf
+                    sch.bind(kio, "threadIdx.x")
+                    sch.unroll(kii)
+                    sch.unroll(ko)
+                    # schedule write back
+                    ax0, ax1, ax2 = sch.get_loops(blk)[-3:]
+                    sch.reorder(ax1, ax2, ax0)
+                    sch.bind(ax0, "threadIdx.x")
+                    sch.unroll(ax2)
+                    sch.unroll(ax1)
+                    mod = tvm.sparse.lower_sparse_buffer(sch.mod)
+                    sddmm = tvm.build(mod["main"], target="cuda")
+                    # print(sddmm.imported_modules[0].get_source())
 
-    # schedule compute
-    sch = tir.Schedule(mod_sddmm)
-    blk = sch.get_block("sddmm0")
-    j, k = sch.get_loops(blk)
-    ko, kio, kii = sch.split(k, [None, tx, 4])
-    rf_blk = sch.rfactor(kio, 2)
-    j = sch.get_loops(rf_blk)[0]
-    joo, joi, ji = sch.split(j, [None, ty, 4])
-    sch.bind(joo, "blockIdx.x")
-    sch.bind(joi, "threadIdx.y")
-    sch.unroll(ji)
-    sch.reverse_compute_at(blk, joi)
-    sch.set_scope(rf_blk, 0, "local")
-    read_A = sch.cache_read(rf_blk, 0, "local")
-    read_B = sch.cache_read(rf_blk, 2, "local")
-    write_C = sch.cache_write(blk, 0, "local")
-    ko, kio, kii = sch.get_loops(rf_blk)[-3:]
-    sch.reorder(ko, ji)
-    # schedule read A
-    sch.compute_at(read_A, ji, True)
-    ax0, ax1 = sch.split(sch.get_loops(read_A)[-1], [tx, 4])
-    sch.bind(ax0, "threadIdx.x")
-    sch.vectorize(ax1)
-    # schedule read B
-    sch.compute_at(read_B, ji, True)
-    ax0, ax1 = sch.split(sch.get_loops(read_B)[-1], [tx, 4])
-    sch.bind(ax0, "threadIdx.x")
-    sch.vectorize(ax1)
-    # schedule write C
-    sch.reverse_compute_at(write_C, joi, True)
-    ax0, ax1 = sch.get_loops(write_C)[-2:]
-    sch.vectorize(ax1)
-    # schedule rf
-    sch.bind(kio, "threadIdx.x")
-    sch.unroll(kii)
-    sch.unroll(ko)
-    # schedule write back
-    ax0, ax1 = sch.get_loops(blk)[-2:]
-    sch.reorder(ax1, ax0)
-    sch.bind(ax0, "threadIdx.x")
-    sch.unroll(ax1)
-    mod = tvm.sparse.lower_sparse_buffer(sch.mod)
-    # print(mod["main"].script())
-    sddmm = tvm.build(mod["main"], target="cuda")
+                    # compute
+                    accum_time = 0.0
+                    runs = 0
+                    cold_start_time = 3
+                    for i in range(10):
+                        with TorchOpTimer() as timer:
+                            sddmm(a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd)
+                        if i == 0:
+                            tvm.testing.assert_allclose(c_nd.numpy(), c_golden.view(-1).cpu(), rtol=1e-5)
+                        if i >= cold_start_time:
+                            accum_time += timer.time
+                            runs += 1
 
-    # compute
-    accum_time = 0.0
-    runs = 0
-    cold_start_time = 3
-    for i in range(10):
-        with TorchOpTimer() as timer:
-            sddmm(a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd)
-        if i == 0:
-            tvm.testing.assert_allclose(c_nd.numpy(), c_golden.view(-1).cpu(), rtol=1e-5)
-        if i >= cold_start_time:
-            accum_time += timer.time
-            runs += 1
-
-    print("Sparse-TIR:\t", accum_time / runs * 1000)
+                    print("tx={},\tty={},\tvec_size={}\tgroup_size={}".format(tx, ty, vec_size, group_size))
+                    if accum_time / runs * 1000 < best:
+                        best = accum_time / runs * 1000
+    print("sparse tir\t:{}".format(best))
 
 
 def get_dataset(name: str):
