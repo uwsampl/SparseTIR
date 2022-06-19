@@ -9,6 +9,7 @@ import dgl.function as fn
 import torch as th
 from tvm.script import tir as T
 from dgl.data.rdf import AIFBDataset, MUTAGDataset, BGSDataset, AMDataset
+from ogb.linkproppred import DglLinkPropPredDataset
 from sparse_tir_scripts import rgcn_forward
 
 
@@ -21,6 +22,8 @@ def get_dataset_by_name(name: str):
         return BGSDataset()
     elif name == "am":
         return AMDataset()
+    elif name == 'biokg':
+        return DglLinkPropPredDataset(name='ogbl-biokg')
     else:
         raise KeyError("Unknown dataset {}.".format(name))
 
@@ -81,7 +84,7 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
                     y_dgl_lowmem = dgl.ops.copy_e_sum(g, msg)
             if epoch >= cold_start:
                 accum += timer.time
-        print("dgl-lowmem:\t\t {}ms".format(accum / (total - cold_start)))
+        print("dgl-lowmem:\t\t {}".format(accum / (total - cold_start)))
     except RuntimeError as err:
         print("dgl-lowmem: OOM")
         y_dgl_lowmem = None
@@ -105,7 +108,7 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
                     y_dgl = g.dstdata["y"].squeeze(-1)
             if epoch >= cold_start:
                 accum += timer.time
-        print("dgl-bmm:\t\t {}ms".format(accum / (total - cold_start)))
+        print("dgl-bmm:\t\t {}".format(accum / (total - cold_start)))
     except RuntimeError as err:
         print("dgl-bmm: OOM")
         y_dgl = None
@@ -150,7 +153,7 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
         if epoch >= cold_start:
             accum += timer.time
 
-    print("sparse-tir:\t\t {}ms".format(accum / (total - cold_start)))
+    print("sparse-tir:\t\t {}".format(accum / (total - cold_start)))
 
     if y_dgl is not None:
         tvm.testing.assert_allclose(y_dgl.view(-1).cpu().numpy(), Y.numpy(), rtol=1e-2)
@@ -159,8 +162,8 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
 
 
 if __name__ == "__main__":
-    for feat_size in [32]:  # [4, 8, 16, 32]:
-        for name in ["aifb"]:  # ["aifb", "mutag", "bgs", "am"]:
+    for feat_size in [4, 8, 16, 32]:
+        for name in ["biokg"]:#["aifb", "mutag", "bgs", "am"]:
             print("dataset {}, feat_size={}:".format(name, feat_size))
             dataset = get_dataset_by_name(name)
             g = dataset[0]

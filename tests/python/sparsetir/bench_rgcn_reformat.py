@@ -8,6 +8,7 @@ import dgl.function as fn
 import torch as th
 from tvm.script import tir as T
 from dgl.data.rdf import AIFBDataset, MUTAGDataset, BGSDataset, AMDataset
+from ogb.linkproppred import DglLinkPropPredDataset
 from sparse_tir_scripts import rgcn_hetero_forward_2
 from tvm.sparse import lower_sparse_iter, lower_sparse_buffer
 
@@ -19,6 +20,8 @@ def get_dataset_by_name(name: str):
         return MUTAGDataset()
     elif name == "bgs":
         return BGSDataset()
+    elif name == 'biokg':
+        return DglLinkPropPredDataset(name='ogbl-biokg')
     elif name == "am":
         return AMDataset()
     else:
@@ -177,7 +180,7 @@ def test_lower_rgcn_hetero(
 
 if __name__ == "__main__":
     for feat_size in [32]:  # [4, 8, 16, 32, 64]:
-        for name in ["am"]:  # ['aifb', 'mutag', 'bgs', 'am']:
+        for name in ["aifb"]:  # ['aifb', 'mutag', 'bgs', 'am']:
             dataset = get_dataset_by_name(name)
             g = dataset[0]
             type_pointers = prepare_hetero_graph_simplified(g)
@@ -196,7 +199,7 @@ if __name__ == "__main__":
             g.ntype_pointer = type_pointers["ntype_node_pointer"]
             g.etype_pointer = type_pointers["etype_edge_pointer"]
             for split_factor_f in [2, 4, 8, 16]:
-                for bucket_size in [128, 256, 512, 1024, 2048]:
+                for bucket_size in [32, 64, 128, 256, 512, 1024, 2048]:
                     print(
                         "dataset {}, split_factor_f {}, bucket_size {}".format(
                             name, split_factor_f, bucket_size
