@@ -1,3 +1,4 @@
+from statistics import mean
 import dgl
 import tvm
 import argparse
@@ -14,6 +15,7 @@ from sparse_tir_lowered_iter_scripts import fused_sddmm
 
 class TorchOpTimer(object):
     def __enter__(self):
+        th.cuda.synchronize()
         self.start_event = th.cuda.Event(enable_timing=True)
         self.end_event = th.cuda.Event(enable_timing=True)
         self.start_event.record()
@@ -95,7 +97,7 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
                     joo, joi, ji = sch.split(j, [None, ty, group_size])
                     sch.bind(joo, "blockIdx.x")
                     sch.bind(joi, "threadIdx.y")
-                    # sch.unroll(ji)
+                    sch.unroll(ji)
                     sch.reverse_compute_at(blk, joi, True)
                     sch.set_scope(rf_blk, 0, "local")
                     read_A = sch.cache_read(rf_blk, 0, "local")
@@ -129,25 +131,21 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
                     sch.unroll(ax1)
                     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
                     sddmm = tvm.build(mod["main"], target="cuda")
-                    # print(sddmm.imported_modules[0].get_source())
 
-                    # compute
-                    accum_time = 0.0
-                    runs = 0
-                    cold_start_time = 3
-                    for i in range(10):
-                        with TorchOpTimer() as timer:
-                            sddmm(a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd)
-                        if i == 0:
-                            tvm.testing.assert_allclose(c_nd.numpy(), c_golden.view(-1).cpu(), rtol=1e-5)
-                        if i >= cold_start_time:
-                            accum_time += timer.time
-                            runs += 1
+                    # check result
+                    args = [a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd]
+                    sddmm(*args)
+                    tvm.testing.assert_allclose(c_nd.numpy(), c_golden.view(-1).cpu(), rtol=1e-5)
 
-                    print("tx={},\tty={},\tvec_size={}\tgroup_size={}".format(tx, ty, vec_size, group_size))
-                    if accum_time / runs * 1000 < best:
-                        best = accum_time / runs * 1000
+                    # evaluate time
+                    evaluator = sddmm.time_evaluator(sddmm.entry_name, tvm.cuda(0), number=10)
+                    mean_time = evaluator(*args).mean * 1000
+
+                    if mean_time < best:
+                        best = mean_time
+                        best_config = (tx, ty, vec_size, group_size)
     print("sparse tir\t:{}".format(best))
+    print("best config:\t{}".format(best_config))
 
 
 def get_dataset(name: str):
