@@ -144,7 +144,7 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
                     if mean_time < best:
                         best = mean_time
                         best_config = (tx, ty, vec_size, group_size)
-    print("sparse tir\t:{}".format(best))
+    print("sparse tir:\t{}".format(best))
     print("best config:\t{}".format(best_config))
 
 
