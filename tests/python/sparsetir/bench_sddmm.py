@@ -11,6 +11,7 @@ from tvm.script import tir as T
 import tvm.sparse
 from ogb.nodeproppred import DglNodePropPredDataset
 from sparse_tir_lowered_iter_scripts import fused_sddmm
+from torch.profiler import profile, ProfilerActivity, schedule
 
 
 class TorchOpTimer(object):
@@ -39,19 +40,29 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     c = th.zeros(nnz).to(th.float32)
 
     # dgl
-    accum_time = 0.0
-    runs = 0
-    cold_start_time = 3
     a_gpu = a.to(0)
     b_gpu = b.to(0)
     g = g.to(0)
-    for i in range(10):
-        with TorchOpTimer() as timer:
-            c_golden = dgl.ops.u_dot_v(g, a_gpu, b_gpu)
-        if i >= cold_start_time:
-            accum_time += timer.time
-            runs += 1
-    print("dgl:\t\t", accum_time / runs * 1000)
+
+    with profile(activities=[ProfilerActivity.CUDA], schedule=schedule(wait=0, warmup=10, active=100)) as prof:
+        with th.no_grad():
+            for epoch in range(100):
+                c_golden = dgl.ops.u_dot_v(g, a_gpu, b_gpu)
+                prof.step()
+    print(prof.key_averages())
+    return
+
+    # accum_time = 0.0
+    # runs = 0
+    # cold_start_time = 3
+
+    # for i in range(10):
+    #     with TorchOpTimer() as timer:
+    #         c_golden = dgl.ops.u_dot_v(g, a_gpu, b_gpu)
+    #     if i >= cold_start_time:
+    #         accum_time += timer.time
+    #         runs += 1
+    # print("dgl:\t\t", accum_time / runs * 1000)
 
     # tvm
     mod = tvm.IRModule.from_expr(fused_sddmm.specialize({M: m, N: n, F: feat_size, NNZ: nnz}))
