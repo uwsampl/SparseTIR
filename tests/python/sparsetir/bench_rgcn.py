@@ -7,10 +7,12 @@ import scipy.sparse as sp
 import numpy as np
 import dgl.function as fn
 import torch as th
+from torch_scatter import scatter
 from tvm.script import tir as T
 from dgl.data.rdf import AIFBDataset, MUTAGDataset, BGSDataset, AMDataset
 from ogb.linkproppred import DglLinkPropPredDataset
 from sparse_tir_scripts import rgcn_forward
+from torch.profiler import profile, ProfilerActivity, schedule
 
 
 def get_dataset_by_name(name: str):
@@ -61,7 +63,7 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
     out = th.zeros(g.num_dst_nodes(), feat_size).to(0) / 100
     weight = th.rand(g.num_rels, feat_size, feat_size).to(0)
     indptr, indices, eid = g.adj_sparse(fmt="csc")
-    etype = g.edata[dgl.ETYPE][eid]
+    etype = g.edata[dgl.ETYPE][eid.long()]
 
     cold_start = 10
     total = 100
@@ -71,20 +73,36 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
     try:
         g.srcdata["feat"] = feat.unsqueeze(-1)
         us, vs = g.edges()
-        feat_transformed = feat[us]
+        us = us.long()
+        vs = vs.long()
+        feat_transformed = feat[us.long()]
         msg = th.zeros(g.num_edges(), feat_size).to(0)
         weight_T = weight.permute(0, 2, 1).contiguous()
-        for epoch in range(total):
-            with TorchOpTimer() as timer:
-                with th.no_grad():
+        with profile(activities=[ProfilerActivity.CUDA], schedule=schedule(wait=0, warmup=10, active=100), record_shapes=True) as prof:
+            with th.no_grad():
+                for epoch in range(100):
                     for i in range(1, len(g.etype_pointer)):
                         start = g.etype_pointer[i - 1]
                         end = g.etype_pointer[i]
                         msg[start:end] = feat_transformed[start:end] @ weight_T[i - 1]
-                    y_dgl_lowmem = dgl.ops.copy_e_sum(g, msg)
-            if epoch >= cold_start:
-                accum += timer.time
-        print("dgl-lowmem:\t\t {}".format(accum / (total - cold_start)))
+                    # y_dgl_lowmem = dgl.ops.copy_e_sum(g, msg)
+                    y_dgl_lowmem = scatter(msg, vs, dim=0, reduce='sum')
+                    prof.step()
+        print(prof.key_averages())
+
+        # for epoch in range(total):
+        #     with TorchOpTimer() as timer:
+        #         with th.no_grad():
+        #             for i in range(1, len(g.etype_pointer)):
+        #                 start = g.etype_pointer[i - 1]
+        #                 end = g.etype_pointer[i]
+        #                 msg[start:end] = feat_transformed[start:end] @ weight_T[i - 1]
+        #             # y_dgl_lowmem = dgl.ops.copy_e_sum(g, msg)
+        #             y_dgl_lowmem = scatter(msg, vs, dim=0, reduce='sum')
+        #     if epoch >= cold_start:
+        #         accum += timer.time
+        #         print(timer.time)
+        # print("dgl-lowmem:\t\t {}".format(accum / (total - cold_start)))
     except RuntimeError as err:
         print("dgl-lowmem: OOM")
         y_dgl_lowmem = None
@@ -92,29 +110,29 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
         print(err)
         raise
 
-    # dgl-bmm
+    # # dgl-bmm
 
-    def msg_func(edges):
-        h = edges.src["feat"]
-        W = weight[edges.data[dgl.ETYPE]]
-        return {"msg": W @ h}
+    # def msg_func(edges):
+    #     h = edges.src["feat"]
+    #     W = weight[edges.data[dgl.ETYPE]]
+    #     return {"msg": W @ h}
 
-    try:
-        g.srcdata["feat"] = feat.unsqueeze(-1)
-        for epoch in range(10):
-            with TorchOpTimer() as timer:
-                with th.no_grad():
-                    g.update_all(msg_func, fn.sum("msg", "y"))
-                    y_dgl = g.dstdata["y"].squeeze(-1)
-            if epoch >= cold_start:
-                accum += timer.time
-        print("dgl-bmm:\t\t {}".format(accum / (total - cold_start)))
-    except RuntimeError as err:
-        print("dgl-bmm: OOM")
-        y_dgl = None
-    except BaseException as err:
-        print(err)
-        raise
+    # try:
+    #     g.srcdata["feat"] = feat.unsqueeze(-1)
+    #     for epoch in range(10):
+    #         with TorchOpTimer() as timer:
+    #             with th.no_grad():
+    #                 g.update_all(msg_func, fn.sum("msg", "y"))
+    #                 y_dgl = g.dstdata["y"].squeeze(-1)
+    #         if epoch >= cold_start:
+    #             accum += timer.time
+    #     print("dgl-bmm:\t\t {}".format(accum / (total - cold_start)))
+    # except RuntimeError as err:
+    #     print("dgl-bmm: OOM")
+    #     y_dgl = None
+    # except BaseException as err:
+    #     print(err)
+    #     raise
 
     # tir
     N, R, FEAT_SIZE, NNZ = rgcn_forward.params[-4:]
@@ -146,19 +164,19 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
 
     args = [E, W, X, Y, indptr, indices]
     f(*args)
-    if y_dgl is not None:
-        tvm.testing.assert_allclose(y_dgl.view(-1).cpu().numpy(), Y.numpy(), rtol=1e-2)
+    # if y_dgl is not None:
+    #     tvm.testing.assert_allclose(y_dgl.view(-1).cpu().numpy(), Y.numpy(), rtol=1e-2)
     if y_dgl_lowmem is not None:
         tvm.testing.assert_allclose(y_dgl_lowmem.view(-1).cpu().numpy(), Y.numpy(), rtol=1e-2)
 
     # evaluate time
-    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=100)
     print("sparse-tir:\t\t {}".format(evaluator(*args).mean * 1000))
 
 
 if __name__ == "__main__":
-    for feat_size in [4, 8, 16, 32]:
-        for name in ["aifb", "mutag", "bgs", "am"]:
+    for feat_size in [32]:#[4, 8, 16, 32]:
+        for name in ["aifb", "mutag", "bgs", "am", "biokg"]:
             print("dataset {}, feat_size={}:".format(name, feat_size))
             dataset = get_dataset_by_name(name)
             g = dataset[0]
@@ -168,4 +186,5 @@ if __name__ == "__main__":
             g.etype_pointer = type_pointers["etype_edge_pointer"]
             g.num_ntypes = max(g.ndata[dgl.NTYPE]).item() + 1
             g.num_rels = max(g.edata[dgl.ETYPE]).item() + 1
+            g = g.int()
             test_rgcn(g, feat_size)
