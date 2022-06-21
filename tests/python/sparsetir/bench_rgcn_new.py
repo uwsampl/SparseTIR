@@ -154,19 +154,12 @@ def test_lower_rgcn_hetero(
     f = tvm.build(mod["main"], target="cuda")
     # print(f.imported_modules[0].get_source())
 
-    cold_start = 3
-    total = 10
-    accum = 0
+    args = [W, X, Y, indptr_i, indices_i, indptr_j, indices_j]
+    f(*args)
 
-    for epoch in range(10):
-        with TorchOpTimer() as timer:
-            f(W, X, Y, indptr_i, indices_i, indptr_j, indices_j)
-        if epoch == 0:
-            tvm.testing.assert_allclose(Y.numpy(), ground_truth_y, rtol=1e-2)
-        if epoch >= cold_start:
-            accum += timer.time
-
-    print("sparse-tir:\t\t {}ms".format(accum / (total - cold_start)))
+    # evaluate time
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
+    print("sparse-tir: {:.3f}".format(evaluator(*args).mean * 1000))
 
 
 if __name__ == "__main__":

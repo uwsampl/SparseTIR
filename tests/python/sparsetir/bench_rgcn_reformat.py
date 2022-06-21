@@ -163,24 +163,17 @@ def test_lower_rgcn_hetero(
     mod = lower_sparse_buffer(sch.mod)
     f = tvm.build(mod["main"], target="cuda")
 
-    cold_start = 3
-    total = 10
-    accum = 0
+    args = [W, X, Y, etypes, indptr_i, indices_i, indptr_j, indices_j]
+    f(*args)
 
-    for epoch in range(10):
-        with TorchOpTimer() as timer:
-            f(W, X, Y, etypes, indptr_i, indices_i, indptr_j, indices_j)
-        if epoch == 0:
-            tvm.testing.assert_allclose(Y.numpy(), ground_truth_y, rtol=1e-2)
-        if epoch >= cold_start:
-            accum += timer.time
-
-    print("sparse-tir:\t\t {}ms".format(accum / (total - cold_start)))
+    # evaluate time
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
+    print("sparse-tir:\t\t {}".format(evaluator(*args).mean * 1000))
 
 
 if __name__ == "__main__":
     for feat_size in [32]:  # [4, 8, 16, 32, 64]:
-        for name in ["aifb"]:  # ['aifb', 'mutag', 'bgs', 'am']:
+        for name in ["am"]:  # ['aifb', 'mutag', 'bgs', 'am']:
             dataset = get_dataset_by_name(name)
             g = dataset[0]
             type_pointers = prepare_hetero_graph_simplified(g)
@@ -199,7 +192,7 @@ if __name__ == "__main__":
             g.ntype_pointer = type_pointers["ntype_node_pointer"]
             g.etype_pointer = type_pointers["etype_edge_pointer"]
             for split_factor_f in [2, 4, 8, 16]:
-                for bucket_size in [32, 64, 128, 256, 512, 1024, 2048]:
+                for bucket_size in [128, 256, 512, 1024, 2048]:
                     print(
                         "dataset {}, split_factor_f {}, bucket_size {}".format(
                             name, split_factor_f, bucket_size

@@ -63,8 +63,8 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
     indptr, indices, eid = g.adj_sparse(fmt="csc")
     etype = g.edata[dgl.ETYPE][eid]
 
-    cold_start = 3
-    total = 10
+    cold_start = 10
+    total = 100
     accum = 0
 
     # dgl-lowmem
@@ -74,7 +74,7 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
         feat_transformed = feat[us]
         msg = th.zeros(g.num_edges(), feat_size).to(0)
         weight_T = weight.permute(0, 2, 1).contiguous()
-        for epoch in range(10):
+        for epoch in range(total):
             with TorchOpTimer() as timer:
                 with th.no_grad():
                     for i in range(1, len(g.etype_pointer)):
@@ -143,27 +143,22 @@ def test_rgcn(g: DGLHeteroGraph, feat_size: int):
     indptr = tvm.nd.array(indptr.cpu().numpy().astype("int32"), device=tvm.cuda(0))
     indices = tvm.nd.array(indices.cpu().numpy().astype("int32"), device=tvm.cuda(0))
 
-    cold_start = 3
-    total = 10
-    accum = 0
 
-    for epoch in range(10):
-        with TorchOpTimer() as timer:
-            f(E, W, X, Y, indptr, indices)
-        if epoch >= cold_start:
-            accum += timer.time
-
-    print("sparse-tir:\t\t {}".format(accum / (total - cold_start)))
-
+    args = [E, W, X, Y, indptr, indices]
+    f(*args)
     if y_dgl is not None:
         tvm.testing.assert_allclose(y_dgl.view(-1).cpu().numpy(), Y.numpy(), rtol=1e-2)
     if y_dgl_lowmem is not None:
         tvm.testing.assert_allclose(y_dgl_lowmem.view(-1).cpu().numpy(), Y.numpy(), rtol=1e-2)
 
+    # evaluate time
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
+    print("sparse-tir:\t\t {}".format(evaluator(*args).mean * 1000))
+
 
 if __name__ == "__main__":
     for feat_size in [4, 8, 16, 32]:
-        for name in ["biokg"]:#["aifb", "mutag", "bgs", "am"]:
+        for name in ["aifb", "mutag", "bgs", "am"]:
             print("dataset {}, feat_size={}:".format(name, feat_size))
             dataset = get_dataset_by_name(name)
             g = dataset[0]
