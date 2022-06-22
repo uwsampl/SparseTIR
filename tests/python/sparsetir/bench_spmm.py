@@ -271,17 +271,20 @@ def bench_hyb(
     tvm.testing.assert_allclose(c_nd.numpy().reshape(-1, feat_size), y_golden.numpy(), rtol=1e-4)
 
     # evaluate time
-    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
-    print("tir hyb time: {:.3f}ms".format(evaluator(*args).mean * 1000))
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=100)
+    print("tir hyb time: {:.5f}ms".format(evaluator(*args).mean * 1000))
 
 
-col_part_config = {"arxiv": 1, "proteins": 8, "pubmed": 1, "ppi": 16, "reddit": 8}
+col_part_config = {"arxiv": 1, "proteins": 8, "pubmed": 1, "citeseer": 1, "cora": 1, "ppi": 16, "reddit": 8, "products": 16}
 
 bucketing_config = {
     "arxiv": [1, 2, 4, 8, 16, 32],
     "proteins": [1, 2, 4, 8, 16, 32, 64, 128, 256],
     "pubmed": [1, 2, 4, 8, 16, 32],
+    "citeseer": [1, 2, 4],
+    "cora": [1, 2, 4],
     "ppi": [1, 2, 4, 8, 16, 32],
+    "products": [1, 2, 4, 8, 16, 32],
     "reddit": [1, 2, 4, 8, 16, 32, 64, 128, 256, 512],
 }
 
@@ -293,9 +296,18 @@ def get_dataset(name: str):
     elif name == "proteins":
         proteins = DglNodePropPredDataset(name="ogbn-proteins")
         g = proteins[0][0]
+    elif name == "products":
+        products = DglNodePropPredDataset(name="ogbn-products")
+        g = products[0][0]
     elif name == "pubmed":
         pubmed = dgl.data.PubmedGraphDataset()
         g = pubmed[0]
+    elif name == "citeseer":
+        citeseer = dgl.data.CiteseerGraphDataset()
+        g = citeseer[0]
+    elif name == "cora":
+        cora = dgl.data.CoraGraphDataset()
+        g = cora[0]
     elif name == "ppi":
         ppi = dgl.data.PPIDataset()
         g = dgl.batch(ppi)
