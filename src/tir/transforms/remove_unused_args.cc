@@ -31,13 +31,17 @@ namespace tir {
 
 class UnusedArgsRemover : public StmtExprVisitor {
  public:
-  explicit UnusedArgsRemover() {}
+  explicit UnusedArgsRemover(const Map<Var, Buffer> data_buf_map): data_buf_map_(data_buf_map) {}
   std::unordered_set<const VarNode*> used_vars;
   std::unordered_set<const BufferNode*> used_bufs;
 
  private:
   void VisitExpr_(const VarNode* op) final {
+    Var var = GetRef<Var>(op);
     used_vars.insert(op);
+    if (data_buf_map_.count(var)) {
+      used_bufs.insert(data_buf_map_.Get(var).value().get());
+    }
     StmtExprVisitor::VisitExpr_(op);
   }
 
@@ -50,12 +54,31 @@ class UnusedArgsRemover : public StmtExprVisitor {
     used_bufs.insert(op->buffer.get());
     StmtExprVisitor::VisitStmt_(op);
   }
+
+  void VisitStmt_(const BlockNode* op) final {
+    for (const MatchBufferRegion match_buf_region: op->match_buffers) {
+      const Buffer& buf = match_buf_region->buffer;
+      data_buf_map_.Set(buf->data, buf);
+    }
+    for (const Buffer& buf: op->alloc_buffers) {
+      data_buf_map_.Set(buf->data, buf);
+    }
+    StmtExprVisitor::VisitStmt_(op);
+  }
+
+ private:
+  Map<Var, Buffer> data_buf_map_;
 };
 
 PrimFunc RemoveUnusedArgs(PrimFunc f) {
   if (!IsFromLegacyTESchedule(f)) {
     PrimFuncNode* fptr = f.CopyOnWrite();
-    UnusedArgsRemover remover;
+    Map<Var, Buffer> data_buf_map_;
+    for (const auto& kv: f->buffer_map) {
+      const Buffer& buf = kv.second;
+      data_buf_map_.Set(buf->data, buf);
+    }
+    UnusedArgsRemover remover(data_buf_map_);
     remover(fptr->body);
     CHECK(fptr->sp_axes.empty()) << "Only applicable to non-sparse tir scripts.";
     Array<Var> new_params;

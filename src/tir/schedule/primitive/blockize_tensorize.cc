@@ -568,7 +568,10 @@ void RemapTensorIntrinBuffers(
 }
 
 void Tensorize(ScheduleState self, const StmtSRef& block_or_loop_sref,
-               const TensorIntrin& intrinsic) {
+               const TensorIntrin& intrinsic_) {
+  // NOTE(Zihao): Deep copy the intrinsic.
+  // Otherwise tensorize would be problematic when apply a TensorIntrin twice.
+  TensorIntrin intrinsic = Downcast<TensorIntrin>(LoadJSON(SaveJSON(intrinsic_)));
   /*!
    * Check:
    *   - Check buffer binding, including type, alignment, shape and etc.
