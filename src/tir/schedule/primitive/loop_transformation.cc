@@ -419,11 +419,9 @@ Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref,
   for (int i = 0; i < n; i++) {
     const PrimExpr& factor = factors[i];
     Var var = loop->loop_var.copy_with_suffix("_" + std::to_string(i));
+    // NOTE(zihao): fix the bug in hybrid spmm.
     if (!is_one(factor) || IsHorizontalFuse(self)) substitute_value = substitute_value * factor + var;
-    if (!IsHorizontalFuse(self)) {
-      // NOTE(zihao): fix the bug in hybrid spmm.
-      analyzer.Bind(var, Range::FromMinExtent(0, factor));
-    }
+    analyzer.Bind(var, Range::FromMinExtent(0, factor));
     new_loop_vars.emplace_back(std::move(var));
   }
   Map<Block, Block> opaque_block_reuse;
