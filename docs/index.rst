@@ -33,9 +33,9 @@ SparseTIR is a compiler infrastructure for programming and optimizing sparse wor
 
 .. toctree::
    :maxdepth: 1
-   :caption: Developer Guide
+   :caption: Migration Plan
 
-   developer/developer_guide.rst
+   TODO
 
 Indices and tables
 ==================
