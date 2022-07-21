@@ -40,7 +40,10 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Install SparseTIR</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Install SparseTIR</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#build-from-source">Build from Source</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="tutorials/quickstart.html">Quick Start</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
@@ -82,6 +85,19 @@
              
   <section id="install-sparsetir">
 <h1>Install SparseTIR<a class="headerlink" href="#install-sparsetir" title="Permalink to this heading"></a></h1>
+<section id="build-from-source">
+<h2>Build from Source<a class="headerlink" href="#build-from-source" title="Permalink to this heading"></a></h2>
+<blockquote>
+<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git clone --recursive git@github.com:uwsampl/sparsetir.git
+mkdir build
+<span class="nb">cd</span> build
+cp ../cmake.config .
+cmake ..
+make -j<span class="k">$(</span>nproc<span class="k">)</span>
+</pre></div>
+</div>
+</div></blockquote>
+</section>
 </section>
 
 
