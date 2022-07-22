@@ -1,6 +1,8 @@
 Install SparseTIR
 =================
 
+Currently we only support build SparseTIR from source code.
+
 Build from Source
 -----------------
 
@@ -9,6 +11,5 @@ Build from Source
     git clone --recursive git@github.com:uwsampl/sparsetir.git
     mkdir build
     cd build
-    cp ../cmake.config .
-    cmake ..
+    cmake .. -DUSE_CUDA -DUSE_LLVM
     make -j$(nproc)
