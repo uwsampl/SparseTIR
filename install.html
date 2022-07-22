@@ -85,14 +85,14 @@
              
   <section id="install-sparsetir">
 <h1>Install SparseTIR<a class="headerlink" href="#install-sparsetir" title="Permalink to this heading"></a></h1>
+<p>Currently we only support build SparseTIR from source code.</p>
 <section id="build-from-source">
 <h2>Build from Source<a class="headerlink" href="#build-from-source" title="Permalink to this heading"></a></h2>
 <blockquote>
 <div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git clone --recursive git@github.com:uwsampl/sparsetir.git
 mkdir build
 <span class="nb">cd</span> build
-cp ../cmake.config .
-cmake ..
+cmake .. -DUSE_CUDA -DUSE_LLVM
 make -j<span class="k">$(</span>nproc<span class="k">)</span>
 </pre></div>
 </div>

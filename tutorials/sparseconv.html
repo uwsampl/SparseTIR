@@ -16,6 +16,7 @@
         <script src="../_static/underscore.js"></script>
         <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
         <script src="../_static/doctools.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
@@ -82,6 +83,10 @@
              
   <section id="sparse-convolution">
 <h1>Sparse Convolution<a class="headerlink" href="#sparse-convolution" title="Permalink to this heading"></a></h1>
+<p>The computation of sparse convolution can be formulated as:</p>
+<div class="math notranslate nohighlight">
+\[\mathbf{Y}_{n, fout, y, x} = \sum_{i=0}^{K-1}\sum_{j=0}^{K-1}\sum_{fin=0}^{D_{in}} \mathbf{W}_{fout, fin, y, x} \mathbf{X}_{n, fin, y+j, x+i}\]</div>
+<p>Where <span class="math notranslate nohighlight">\(n\)</span> iterates over each instance in a batch, <span class="math notranslate nohighlight">\(\mathbf{W}\)</span> is a sparse matrix.</p>
 </section>
 
 
