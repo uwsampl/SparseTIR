@@ -15,7 +15,7 @@ The sparsity of convolution could come from model weights (weight sparsity) or f
 Weight Sparsity
 ---------------
 
-Sparse convolution with weight sparsity was proposed in paper `Faster CNNs with Direct Sparse Convolutions and Guided Prunning <https://arxiv.org/pdf/1608.01409.pdf>`_, where they store the :math:`W` in formula `eq:sp-conv`_ as a sparse matrix.
+Sparse convolution with weight sparsity was proposed in paper `Faster CNNs with Direct Sparse Convolutions and Guided Prunning <https://arxiv.org/pdf/1608.01409.pdf>`_, where they store the :math:`W` in formula :ref:`eq:sp-conv` as a sparse matrix.
 
 Activation Sparsity
 -------------------
