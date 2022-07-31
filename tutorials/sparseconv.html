@@ -94,7 +94,7 @@
 <p>The sparsity of convolution could come from model weights (weight sparsity) or from the features (activation sparsity), some paper studies the configuration of dual sparsity where both weights and activations are sparse, however, acceleration of dual sparsity on GPU architecture requires specific acceleration unit support (e.g. <a class="reference external" href="https://arxiv.org/pdf/2105.09564.pdf">Dual-Side Sparse Tensor Core</a>), and we only focus on either weight/activation sparsity in this tutorial.</p>
 <section id="weight-sparsity">
 <h2>Weight Sparsity<a class="headerlink" href="#weight-sparsity" title="Permalink to this heading"></a></h2>
-<p>Sparse convolution with weight sparsity was proposed in paper <a class="reference external" href="https://arxiv.org/pdf/1608.01409.pdf">Faster CNNs with Direct Sparse Convolutions and Guided Prunning</a>, where they store the <span class="math notranslate nohighlight">\(W\)</span> in formula <a href="#id1"><span class="problematic" id="id2">`eq:sp-conv`_</span></a> as a sparse matrix.</p>
+<p>Sparse convolution with weight sparsity was proposed in paper <a class="reference external" href="https://arxiv.org/pdf/1608.01409.pdf">Faster CNNs with Direct Sparse Convolutions and Guided Prunning</a>, where they store the <span class="math notranslate nohighlight">\(W\)</span> in formula <span class="xref std std-ref">eq:sp-conv</span> as a sparse matrix.</p>
 </section>
 <section id="activation-sparsity">
 <h2>Activation Sparsity<a class="headerlink" href="#activation-sparsity" title="Permalink to this heading"></a></h2>
