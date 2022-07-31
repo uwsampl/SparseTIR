@@ -50,7 +50,11 @@
 <li class="toctree-l1"><a class="reference internal" href="sddmm.html">Sampled Dense Dense Matrix Multiplication (SDDMM)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="rgcn.html">Relational Graph Convolution</a></li>
 <li class="toctree-l1"><a class="reference internal" href="blocksparse.html">BlockSparse Operators</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Sparse Convolution</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Sparse Convolution</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#weight-sparsity">Weight Sparsity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#activation-sparsity">Activation Sparsity</a></li>
+</ul>
+</li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">System Overview</span></p>
 <ul>
@@ -83,10 +87,19 @@
              
   <section id="sparse-convolution">
 <h1>Sparse Convolution<a class="headerlink" href="#sparse-convolution" title="Permalink to this heading"></a></h1>
-<p>The computation of sparse convolution can be formulated as:</p>
-<div class="math notranslate nohighlight">
-\[\mathbf{Y}_{n, fout, y, x} = \sum_{i=0}^{K-1}\sum_{j=0}^{K-1}\sum_{fin=0}^{D_{in}} \mathbf{W}_{fout, fin, y, x} \mathbf{X}_{n, fin, y+j, x+i}\]</div>
-<p>Where <span class="math notranslate nohighlight">\(n\)</span> iterates over each instance in a batch, <span class="math notranslate nohighlight">\(\mathbf{W}\)</span> is a sparse matrix.</p>
+<p>The convolution operator can be formulated as:</p>
+<div class="math notranslate nohighlight" id="equation-eq-sp-conv">
+<span class="eqno">(1)<a class="headerlink" href="#equation-eq-sp-conv" title="Permalink to this equation"></a></span>\[\mathbf{Y}_{n, fout, y, x} = \sum_{i=0}^{K-1}\sum_{j=0}^{K-1}\sum_{fin=0}^{D_{in}} \mathbf{W}_{fout, fin, y, x} \mathbf{X}_{n, fin, y+j, x+i}\]</div>
+<p>where <span class="math notranslate nohighlight">\(n\)</span> iterates over each instance in a batch, <span class="math notranslate nohighlight">\(x\)</span> and <span class="math notranslate nohighlight">\(y\)</span> iterates over columns and rows.</p>
+<p>The sparsity of convolution could come from model weights (weight sparsity) or from the features (activation sparsity), some paper studies the configuration of dual sparsity where both weights and activations are sparse, however, acceleration of dual sparsity on GPU architecture requires specific acceleration unit support (e.g. <a class="reference external" href="https://arxiv.org/pdf/2105.09564.pdf">Dual-Side Sparse Tensor Core</a>), and we only focus on either weight/activation sparsity in this tutorial.</p>
+<section id="weight-sparsity">
+<h2>Weight Sparsity<a class="headerlink" href="#weight-sparsity" title="Permalink to this heading"></a></h2>
+<p>Sparse convolution with weight sparsity was proposed in paper <a class="reference external" href="https://arxiv.org/pdf/1608.01409.pdf">Faster CNNs with Direct Sparse Convolutions and Guided Prunning</a>, where they store the <span class="math notranslate nohighlight">\(W\)</span> in formula <a href="#id1"><span class="problematic" id="id2">`eq:sp-conv`_</span></a> as a sparse matrix.</p>
+</section>
+<section id="activation-sparsity">
+<h2>Activation Sparsity<a class="headerlink" href="#activation-sparsity" title="Permalink to this heading"></a></h2>
+<p><a class="reference external" href="https://github.com/mit-han-lab/torchsparse">torchsparse</a> and <a class="reference external" href="https://github.com/traveller59/spconv">spconv</a> are two libraries optimizing convolution of activation sparsity.</p>
+</section>
 </section>
 
 

@@ -92,7 +92,7 @@
 <div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git clone --recursive git@github.com:uwsampl/sparsetir.git
 mkdir build
 <span class="nb">cd</span> build
-cmake .. -DUSE_CUDA -DUSE_LLVM
+cmake .. -DUSE_CUDA<span class="o">=</span>ON -DUSE_LLVM<span class="o">=</span>ON
 make -j<span class="k">$(</span>nproc<span class="k">)</span>
 </pre></div>
 </div>

@@ -11,5 +11,5 @@ Build from Source
     git clone --recursive git@github.com:uwsampl/sparsetir.git
     mkdir build
     cd build
-    cmake .. -DUSE_CUDA -DUSE_LLVM
+    cmake .. -DUSE_CUDA=ON -DUSE_LLVM=ON
     make -j$(nproc)
