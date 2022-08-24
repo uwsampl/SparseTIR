@@ -243,6 +243,9 @@ def bench_hyb(
             ell_a.append(a)
             ell_rows[-1] = new_rows
 
+            print(ell_indices, ell_a, ell_rows)
+            assert False
+
         cached_bucketing_format = ell_indices, ell_a, ell_rows
 
     # prepare nd array
