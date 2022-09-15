@@ -59,7 +59,7 @@ Axis GetRootAxis(const Axis& axis) {
 /*! \brief Default constructor of Axis */
 Axis::Axis(String name, Optional<ObjectRef> parent, PrimExpr length, PrimExpr nnz,
            Optional<PrimExpr> nnz_cols, Optional<Var> indptr, Optional<Var> indices,
-           DataType idtype) {
+           DataType idtype, bool sorted) {
   ObjectPtr<AxisNode> node = make_object<AxisNode>();
   node->name = std::move(name);
   node->length = std::move(length);
@@ -69,6 +69,7 @@ Axis::Axis(String name, Optional<ObjectRef> parent, PrimExpr length, PrimExpr nn
   node->indptr = std::move(indptr);
   node->indices = std::move(indices);
   node->idtype = std::move(idtype);
+  node->sorted = sorted;
   data_ = std::move(node);
 };
 
@@ -77,9 +78,9 @@ TVM_REGISTER_NODE_TYPE(AxisNode);
 TVM_REGISTER_GLOBAL("tir.sparse.Axis")
     .set_body_typed([](String name, Optional<Axis> parent, PrimExpr length, PrimExpr nnz,
                        Optional<PrimExpr> nnz_cols, Optional<Var> indptr, Optional<Var> indices,
-                       DataType idtype) {
+                       DataType idtype, bool sorted) {
       return Axis(std::move(name), std::move(parent), std::move(length), std::move(nnz),
-                  std::move(nnz_cols), std::move(indptr), std::move(indices), std::move(idtype));
+                  std::move(nnz_cols), std::move(indptr), std::move(indices), std::move(idtype), sorted);
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)

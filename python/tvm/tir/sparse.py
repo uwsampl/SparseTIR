@@ -64,6 +64,9 @@ class Axis(Object):
 
     idtype : str
         The index data type.
+
+    sorted : bool
+        The indices are sorted or not.
     """
 
     name: str
@@ -74,9 +77,12 @@ class Axis(Object):
     indptr: Optional[Var]
     indices: Optional[Var]
     idtype: str
+    sorted: bool
 
-    def __init__(self, name, parent, length, nnz, nnz_cols, indptr, indices, idtype) -> None:
-        self.__init_handle_by_constructor__(_ffi_api.Axis, name, parent, length, nnz, nnz_cols, indptr, indices, idtype)  # type: ignore
+    def __init__(
+        self, name, parent, length, nnz, nnz_cols, indptr, indices, idtype, sorted
+    ) -> None:
+        self.__init_handle_by_constructor__(_ffi_api.Axis, name, parent, length, nnz, nnz_cols, indptr, indices, idtype, sorted)  # type: ignore
 
 
 def dense_fixed_axis(name: str, length: PrimExpr, idtype: str) -> Axis:
@@ -93,7 +99,7 @@ def dense_fixed_axis(name: str, length: PrimExpr, idtype: str) -> Axis:
     idtype : str
         The index data type
     """
-    return Axis(name, None, length, length, length, None, None, idtype)
+    return Axis(name, None, length, length, length, None, None, idtype, True)
 
 
 def dense_variable_axis(
@@ -121,11 +127,17 @@ def dense_variable_axis(
     idtype : str
         The index data type
     """
-    return Axis(name, parent, length, nnz, None, indptr, None, idtype)
+    return Axis(name, parent, length, nnz, None, indptr, None, idtype, True)
 
 
 def sparse_fixed_axis(
-    name: str, parent: Axis, length: PrimExpr, nnz_cols: PrimExpr, indices: Var, idtype: str
+    name: str,
+    parent: Axis,
+    length: PrimExpr,
+    nnz_cols: PrimExpr,
+    indices: Var,
+    idtype: str,
+    sorted: bool = True,
 ) -> Axis:
     """Sparse-fixed axis creator.
 
@@ -148,12 +160,24 @@ def sparse_fixed_axis(
 
     idtype : str
         The index data type
+
+    sorted : bool
+        The indices are sorted or not.
     """
-    return Axis(name, parent, length, parent.nnz * nnz_cols, nnz_cols, None, indices, idtype)
+    return Axis(
+        name, parent, length, parent.nnz * nnz_cols, nnz_cols, None, indices, idtype, sorted
+    )
 
 
 def sparse_variable_axis(
-    name: str, parent: Axis, length: PrimExpr, nnz: PrimExpr, indptr: Var, indices: Var, idtype: str
+    name: str,
+    parent: Axis,
+    length: PrimExpr,
+    nnz: PrimExpr,
+    indptr: Var,
+    indices: Var,
+    idtype: str,
+    sorted: bool = True,
 ) -> Axis:
     """Sparse-variable axis creator.
 
@@ -179,8 +203,11 @@ def sparse_variable_axis(
 
     idtype : str
         The index data type
+
+    sorted : bool
+        The indices are sorted or not.
     """
-    return Axis(name, parent, length, nnz, None, indptr, indices, idtype)
+    return Axis(name, parent, length, nnz, None, indptr, indices, idtype, sorted)
 
 
 @tvm._ffi.register_object("tir.sparse.FusedAxis")

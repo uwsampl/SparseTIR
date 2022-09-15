@@ -62,6 +62,8 @@ class AxisNode : public Object {
   Optional<Var> indices;
   /* The index data type. */
   DataType idtype;
+  /* Whether the indices are sorted or not. */
+  bool sorted;
 
   /* Whether current axis is a variable axis. */
   bool IsVariable() const { return indptr.defined(); }
@@ -80,13 +82,14 @@ class AxisNode : public Object {
     v->Visit("indptr", &indptr);
     v->Visit("indices", &indices);
     v->Visit("idtype", &idtype);
+    v->Visit("sorted", &sorted);
   }
 
   bool SEqualReduce(const AxisNode* other, SEqualReducer equal) const {
     return equal(name, other->name) && equal(length, other->length) && equal(nnz, other->nnz) &&
            equal(nnz_cols, other->nnz_cols) && equal(parent, other->parent) &&
            equal(indptr, other->indptr) && equal(indices, other->indices) &&
-           equal(idtype, other->idtype);
+           equal(idtype, other->idtype) && equal(sorted, other->sorted);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
@@ -98,6 +101,7 @@ class AxisNode : public Object {
     hash_reduce(indptr);
     hash_reduce(indices);
     hash_reduce(idtype);
+    hash_reduce(sorted);
   }
 
   static constexpr const char* _type_key = "tir.sparse.Axis";
@@ -114,7 +118,7 @@ class Axis : public ObjectRef {
  public:
   TVM_DLL explicit Axis(String name, Optional<ObjectRef> parent, PrimExpr length, PrimExpr nnz,
                         Optional<PrimExpr> nnz_cols, Optional<Var> indptr, Optional<Var> indices,
-                        DataType idtype);
+                        DataType idtype, bool sorted=true);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Axis, ObjectRef, AxisNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(AxisNode);

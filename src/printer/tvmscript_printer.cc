@@ -1695,22 +1695,25 @@ Doc TVMScriptPrinter::PrintPrimFunc(const PrimFunc& primFunc) {
     } else {
       switch (axis->kind()) {
         case AxisKind::kDenseFixed:
-          body << "dense_fixed(" << Print(axis->length) << ", " << PrintDType(axis->idtype) << ")";
+          body << "dense_fixed(" << Print(axis->length) << ", idtype=" << PrintDType(axis->idtype)
+               << ")";
           break;
         case AxisKind::kDenseVariable:
           body << "dense_variable(" << Print(GetParentAxis(axis)) << ", (" << Print(axis->length)
-               << ", " << Print(axis->nnz) << "), " << Print(axis->indptr) << ", "
-               << PrintDType(axis->idtype) << ")";
+               << ", " << Print(axis->nnz) << "), " << Print(axis->indptr)
+               << ", idtype=" << PrintDType(axis->idtype) << ")";
           break;
         case AxisKind::kSparseFixed:
           body << "sparse_fixed(" << Print(GetParentAxis(axis)) << ", (" << Print(axis->length)
-               << ", " << Print(axis->nnz_cols) << "), " << Print(axis->indices) << ", "
-               << PrintDType(axis->idtype) << ")";
+               << ", " << Print(axis->nnz_cols) << "), " << Print(axis->indices)
+               << ", idtype=" << PrintDType(axis->idtype)
+               << ", sorted=" << (axis->sorted ? "True" : "False") << ")";
           break;
         case AxisKind::kSparseVariable:
           body << "sparse_variable(" << Print(GetParentAxis(axis)) << ", (" << Print(axis->length)
                << ", " << Print(axis->nnz) << "), (" << Print(axis->indptr) << ", "
-               << Print(axis->indices) << "), " << PrintDType(axis->idtype) << ")";
+               << Print(axis->indices) << "), idtype=" << PrintDType(axis->idtype)
+               << " sorted=" << (axis->sorted ? "True" : "False") << ")";
           break;
       }
     }

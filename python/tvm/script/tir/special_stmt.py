@@ -1099,6 +1099,7 @@ class SparseFixed(SpecialStmt):
             shape: Tuple[PrimExpr, PrimExpr],
             indices_var: Var,
             idtype: str = "int32",
+            sorted: bool = True,
             span: Optional[Span] = None,
         ):
             names = [x.id.name for x in self.node.lhs]
@@ -1108,7 +1109,9 @@ class SparseFixed(SpecialStmt):
                 )
 
             length, nnz_cols = shape
-            axis = sparse_fixed_axis(names[0], parent_axis, length, nnz_cols, indices_var, idtype)
+            axis = sparse_fixed_axis(
+                names[0], parent_axis, length, nnz_cols, indices_var, idtype, sorted=sorted
+            )
             self.context.func_sp_axes.append(axis)
             self.context.update_symbol(names[0], axis, self.node)
 
@@ -1125,6 +1128,7 @@ class SparseVariable(SpecialStmt):
             shape: Tuple[PrimExpr, PrimExpr],
             data: Tuple[Var, Var],
             idtype: str = "int32",
+            sorted: bool = True,
             span: Optional[Span] = None,
         ):
             names = [x.id.name for x in self.node.lhs]
@@ -1136,7 +1140,7 @@ class SparseVariable(SpecialStmt):
             length, nnz = shape
             indptr_var, indices_var = data
             axis = sparse_variable_axis(
-                names[0], parent_axis, length, nnz, indptr_var, indices_var, idtype
+                names[0], parent_axis, length, nnz, indptr_var, indices_var, idtype, sorted=sorted
             )
             self.context.func_sp_axes.append(axis)
             self.context.update_symbol(names[0], axis, self.node)
@@ -1223,7 +1227,7 @@ class AssumeBufferRange(SpecialStmt):
     def __init__(self):
         def assume_buffer_domain(
             buf: tvm.tir.Buffer,
-            dom: Tuple[PrimExpr, PrimExpr], 
+            dom: Tuple[PrimExpr, PrimExpr],
             span: Optional[Span] = None,
         ):
             dom = Range.from_min_extent(dom[0], dom[1] - dom[0])
