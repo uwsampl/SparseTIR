@@ -277,7 +277,6 @@ tvm_file_glob(GLOB_RECURSE COMPILER_SRCS
     src/parser/*.cc
     src/printer/*.cc
     src/support/*.cc
-    src/sparse/*.cc
     )
 
 tvm_file_glob(GLOB CODEGEN_SRCS
@@ -287,6 +286,9 @@ tvm_file_glob(GLOB CODEGEN_SRCS
 
 list(APPEND COMPILER_SRCS ${CODEGEN_SRCS})
 
+tvm_file_glob(GLOB SPARSE_SRCS
+    src/sparse/*.cc
+)
 tvm_file_glob(GLOB_RECURSE RELAY_OP_SRCS
     src/relay/op/*.cc
     )
@@ -310,6 +312,7 @@ list(APPEND COMPILER_SRCS ${RELAY_PASS_SRCS})
 list(APPEND COMPILER_SRCS ${RELAY_BACKEND_SRCS})
 list(APPEND COMPILER_SRCS ${RELAY_IR_SRCS})
 list(APPEND COMPILER_SRCS ${RELAY_QNN_SRCS})
+list(APPEND COMPILER_SRCS ${SPARSE_SRCS})
 
 tvm_file_glob(GLOB DATATYPE_SRCS src/target/datatype/*.cc)
 list(APPEND COMPILER_SRCS ${DATATYPE_SRCS})
@@ -319,6 +322,7 @@ tvm_file_glob(GLOB RUNTIME_SRCS
   src/runtime/*.cc
   src/runtime/vm/*.cc
 )
+
 
 if(BUILD_FOR_HEXAGON)
   if(NOT BUILD_STATIC_RUNTIME)

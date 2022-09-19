@@ -15,8 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from ast import copy_location
 import tvm
-from tvm.sparse import FormatRewriteRule
+import dgl
+import numpy as np
+from tvm.sparse import FormatRewriteRule, column_part_hyb
 from sparse_tir_scripts import csrmm
 from sparse_tir_format_rewrite_scripts import (
     bsr,
@@ -121,7 +124,111 @@ def test_csrmm_padding_rewrite():
     tvm.ir.assert_structural_equal(mod["main"], padding_rewrite_with_preprocess, True)
 
 
+def scipy_column_part_hyb(g, column_part, bucket_sizes):
+    mat = g.adj(transpose=True, scipy_fmt="csr")
+    buckets = bucket_sizes * column_part
+    m = mat.shape[0]
+    n = mat.shape[1]
+    nnz = mat.nnz
+    per_column_part_size = (n + column_part - 1) // column_part
+    sub_mats = [
+        mat[:, i * per_column_part_size : (i + 1) * per_column_part_size]
+        for i in range(column_part)
+    ]
+
+    num_buckets = len(buckets)
+    ell_n = []
+
+    for partition in range(column_part):
+        sub_mat = sub_mats[partition]
+        in_degrees = sub_mat.indptr[1:] - sub_mat.indptr[:-1]
+        for i, bucket_size in enumerate(bucket_sizes[:-1]):
+            last_bucket_size = 0 if i == 0 else bucket_sizes[i - 1]
+            ell_n.append(int(((in_degrees > last_bucket_size) & (in_degrees <= bucket_size)).sum()))
+        sub_indegrees = in_degrees[in_degrees > bucket_sizes[-2]]
+        ell_n.append(int(((sub_indegrees + bucket_sizes[-1] - 1) // bucket_sizes[-1]).sum()))
+
+        ell_rows = []
+        ell_indices = []
+
+    for partition in range(column_part):
+        sub_mat = sub_mats[partition]
+        in_degrees = sub_mat.indptr[1:] - sub_mat.indptr[:-1]
+
+        for i, bucket_size in enumerate(bucket_sizes[:-1]):
+            last_bucket_size = 0 if i == 0 else bucket_sizes[i - 1]
+            ell_rows.append(
+                ((in_degrees > last_bucket_size) & (in_degrees <= bucket_size)).nonzero()[0]
+            )
+        ell_rows.append((in_degrees > bucket_sizes[-2]).nonzero()[0])
+
+        for i, bucket_size in enumerate(bucket_sizes[:-1]):
+            indices = np.zeros(
+                (ell_n[partition * len(bucket_sizes) + i], bucket_size), dtype=np.int32
+            )
+            for j, row_id in enumerate(ell_rows[partition * len(bucket_sizes) + i]):
+                row = sub_mat[row_id]
+                indices[j, : row.nnz] = row.indices + partition * per_column_part_size
+            ell_indices.append(indices)
+
+        # split rows for the last bucket
+        indices = np.zeros(
+            (ell_n[(partition + 1) * len(bucket_sizes) - 1], bucket_sizes[-1]), dtype=np.int32
+        )
+        new_rows = np.zeros((ell_n[(partition + 1) * len(bucket_sizes) - 1],), dtype=np.int32)
+        bucket_size = bucket_sizes[-1]
+        i = 0
+        for row_id in ell_rows[-1]:
+            row = sub_mat[row_id]
+            for start_offset in range(0, row.nnz, bucket_size):
+                if start_offset + bucket_size >= row.nnz:
+                    # last bucket
+                    indices[i, : row.nnz - start_offset] = (
+                        row.indices[start_offset:] + partition * per_column_part_size
+                    )
+                else:
+                    indices[i] = (
+                        row.indices[start_offset : start_offset + bucket_size]
+                        + partition * per_column_part_size
+                    )
+                new_rows[i] = row_id
+                i += 1
+
+        ell_indices.append(indices)
+        ell_rows[-1] = new_rows
+
+    return ell_rows, ell_indices
+
+
+def test_column_part_hyb():
+    g = dgl.rand_graph(1000, 10000).int()
+    column_parts = 4
+    buckets = [1, 2, 4, 8]
+    indptr, indices, _ = g.adj_sparse("csc")
+    indptr_nd = tvm.nd.array(indptr.numpy(), device=tvm.cpu())
+    indices_nd = tvm.nd.array(indices.numpy(), device=tvm.cpu())
+    # built-in c++ funcion
+    row_indices, col_indices = column_part_hyb(
+        g.num_dst_nodes(), g.num_src_nodes(), indptr_nd, indices_nd, column_parts, buckets
+    )
+    # compute indices with scipy
+    row_indices_scipy, col_indices_scipy = scipy_column_part_hyb(g, column_parts, buckets)
+
+    for part_id in range(column_parts):
+        for bucket_id, _ in enumerate(buckets):
+            assert np.array_equal(
+                row_indices[part_id][bucket_id].numpy(),
+                row_indices_scipy[part_id * len(buckets) + bucket_id],
+            )
+            assert np.array_equal(
+                col_indices[part_id][bucket_id].numpy(),
+                col_indices_scipy[part_id * len(buckets) + bucket_id],
+            )
+
+
 if __name__ == "__main__":
-    test_csrmm_bsr_rewrite()
-    test_csrmm_ell_rewrite()
-    test_csrmm_padding_rewrite()
+    # test_csrmm_bsr_rewrite()
+    # test_csrmm_ell_rewrite()
+    # test_csrmm_padding_rewrite()
+    test_column_part_hyb()
+    # test_condense()

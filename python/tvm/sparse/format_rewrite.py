@@ -82,3 +82,9 @@ class FormatRewriteRule(Object):
             idx_map,
             inv_idx_map,
         )  # type: ignore
+
+
+def column_part_hyb(num_rows, num_cols, indptr_nd, indices_nd, num_col_parts, buckets):
+    return _ffi_api.ColumnPartHyb(
+        num_rows, num_cols, indptr_nd, indices_nd, num_col_parts, buckets  # type: ignore
+    )
