@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from ast import copy_location
 import tvm
 import dgl
 import numpy as np
