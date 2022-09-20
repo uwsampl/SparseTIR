@@ -7,7 +7,7 @@ import argparse
 import numpy as np
 import torch as th
 from tvm.script import tir as T
-from tvm.sparse import FormatRewriteRule, lower_sparse_buffer, lower_sparse_iter
+from tvm.sparse import FormatRewriteRule, lower_sparse_buffer, lower_sparse_iter, column_part_hyb
 import tvm.sparse
 from ogb.nodeproppred import DglNodePropPredDataset
 from sparse_tir_format_rewrite_scripts import ell, padding
@@ -65,62 +65,48 @@ def csr2ell_index_map(i, j):
 
 cached_bucketing_format = None
 
+
 def bench_hyb(
     g,
     x,
     y_golden,
     feat_size=128,
     bucket_sizes=[],
-    cwm=2,
-    column_part=1,
+    coersening_factor=2,
+    num_col_parts=1,
 ):
+    num_buckets = len(bucket_sizes)
+    coersening_factor = min(coersening_factor, feat_size // 32)
+    indptr, indices, _ = g.adj_sparse("csc")
+    m = g.num_dst_nodes()
+    n = g.num_src_nodes()
+    nnz = g.num_edges()
     global cached_bucketing_format
-    mat = g.adj(transpose=True, scipy_fmt="csr")
-    del g
-    cwm = min(cwm, feat_size // 32)
-    buckets = bucket_sizes * column_part
-    m = mat.shape[0]
-    n = mat.shape[1]
-    nnz = mat.nnz
-    per_column_part_size = (n + column_part - 1) // column_part
-    sub_mats = [mat[:, i * per_column_part_size : (i + 1) * per_column_part_size] for i in range(column_part)]
-
-    num_buckets = len(buckets)
-    ell_n = []
-    is_bucket_atomic = []
-
-    for partition in range(column_part):
-        sub_mat = sub_mats[partition]
-        in_degrees = sub_mat.indptr[1:] - sub_mat.indptr[:-1]
-        for i, bucket_size in enumerate(bucket_sizes[:-1]):
-            last_bucket_size = 0 if i == 0 else bucket_sizes[i - 1]
-            ell_n.append(int(((in_degrees > last_bucket_size) & (in_degrees <= bucket_size)).sum()))
-            if column_part == 1:
-                is_bucket_atomic.append(False)
-            else:
-                is_bucket_atomic.append(True)
-        sub_indegrees = in_degrees[in_degrees > bucket_sizes[-2]]
-        ell_n.append(int(((sub_indegrees + bucket_sizes[-1] - 1) // bucket_sizes[-1]).sum()))
-        is_bucket_atomic.append(True)
-    print(ell_n)
-    print(nnz / (sum([b * sub_nnz for b, sub_nnz in zip(buckets, ell_n)])))
+    if cached_bucketing_format is None:
+        indptr_nd = tvm.nd.array(indptr.numpy(), device=tvm.cpu())
+        indices_nd = tvm.nd.array(indices.numpy(), device=tvm.cpu())
+        cached_bucketing_format = column_part_hyb(
+            m, n, indptr_nd, indices_nd, num_col_parts, bucket_sizes
+        )
+    row_indices, col_indices, mask = cached_bucketing_format
 
     # rewrite csrmm
     nnz_cols_symbol = ell.params[-1]
     rewrites = []
-    for i, bucket_size in enumerate(buckets):
-        rewrites.append(
-            FormatRewriteRule(
-                str(i),
-                ell.specialize({nnz_cols_symbol: bucket_size}),
-                ["A"],
-                ["I", "J"],
-                ["O", "I", "J"],
-                {"I": ["O", "I"], "J": ["J"]},
-                csr2ell_index_map,
-                csr2ell_inv_index_map,
+    for part_id in range(num_col_parts):
+        for bucket_id, bucket_size in enumerate(bucket_sizes):
+            rewrites.append(
+                FormatRewriteRule(
+                    str(part_id) + "_" + str(bucket_id),
+                    ell.specialize({nnz_cols_symbol: bucket_size}),
+                    ["A"],
+                    ["I", "J"],
+                    ["O", "I", "J"],
+                    {"I": ["O", "I"], "J": ["J"]},
+                    csr2ell_index_map,
+                    csr2ell_inv_index_map,
+                )
             )
-        )
     mod = tvm.IRModule.from_expr(csrmm)
     mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
     mod = tvm.tir.transform.RemovePreprocess()(mod)
@@ -130,20 +116,25 @@ def bench_hyb(
     param_map = {
         params[5]: m,  # m
         params[6]: n,  # n
-        params[7]: feat_size // cwm // 32,  # num_tiles,
+        params[7]: feat_size // coersening_factor // 32,  # num_tiles,
         params[8]: nnz,  # nnz
-        params[9]: cwm,  # cwm
+        params[9]: coersening_factor,  # coersening_factor
     }
-    for i, bucket_size in enumerate(buckets):
-        param_map[params[10 + 7 * i + 4]] = m
-        param_map[params[10 + 7 * i + 5]] = n
-        param_map[params[10 + 7 * i + 6]] = ell_n[i]
+    for part_id in range(num_col_parts):
+        for bucket_id in range(num_buckets):
+            param_map[params[10 + 7 * (part_id * num_buckets + bucket_id) + 4]] = m
+            param_map[params[10 + 7 * (part_id * num_buckets + bucket_id) + 5]] = n
+            param_map[params[10 + 7 * (part_id * num_buckets + bucket_id) + 6]] = row_indices[
+                part_id
+            ][bucket_id].shape[0]
 
     mod["main"] = mod["main"].specialize(param_map).with_attr("horizontal_fuse", True)
 
     # schedule
     sch = tvm.tir.Schedule(mod)
-    for sp_iter_name in ["csrmm_{}".format(i) for i in range(num_buckets)]:
+    for sp_iter_name in [
+        "csrmm_{}_{}".format(i, j) for j in range(num_buckets) for i in range(num_col_parts)
+    ]:
         sp_iteration = sch.get_sparse_iteration(sp_iter_name)
         o, i, j, k1, k2, k3 = sch.get_sp_iters(sp_iteration)
         sch.sparse_fuse(sp_iteration, [o, i])
@@ -151,99 +142,32 @@ def bench_hyb(
     mod = sch.mod
     mod = tvm.sparse.lower_sparse_iter(mod)
     sch = tvm.tir.Schedule(mod)
-    for i, bucket_size in enumerate(buckets):
-        is_atomic = is_bucket_atomic[i]
-        bucket_size = buckets[i]
-        blk = sch.get_block("csrmm_{}0".format(i))
-        i, j, foo, foi, fi = sch.get_loops(blk)
-        sch.reorder(foo, fi, j, foi)
-        if is_atomic:
-            sch.annotate(blk, "atomic", True)
-            write_blk = sch.cache_write(blk, 0, "local")
-            sch.reverse_compute_at(write_blk, fi, True)
-            # sch.unroll(sch.get_loops(write_blk)[-2])
-        sch.bind(fi, "threadIdx.x")
-        sch.bind(foo, "blockIdx.y")
-        sch.unroll(foi)
-        sch.unroll(j)
-        io, ioi, ii = sch.split(i, [None, bucket_sizes[-1] // bucket_size, 8])
-        sch.bind(io, "blockIdx.x")
-        sch.bind(ii, "threadIdx.y")
-        init_blk = sch.decompose_reduction(blk, fi)
-        ax0, ax1 = sch.get_loops(init_blk)[-2:]
-        sch.bind(ax0, "threadIdx.x")
-        sch.unroll(ax1)
+    for part_id in range(num_col_parts):
+        for bucket_id, bucket_size in enumerate(bucket_sizes):
+            is_atomic = num_col_parts > 1 or bucket_id + 1 == num_buckets
+            blk = sch.get_block("csrmm_{}_{}0".format(part_id, bucket_id))
+            i, j, foo, foi, fi = sch.get_loops(blk)
+            sch.reorder(foo, fi, j, foi)
+            if is_atomic:
+                sch.annotate(blk, "atomic", True)
+                write_blk = sch.cache_write(blk, 0, "local")
+                sch.reverse_compute_at(write_blk, fi, True)
+                # sch.unroll(sch.get_loops(write_blk)[-2])
+            sch.bind(fi, "threadIdx.x")
+            sch.bind(foo, "blockIdx.y")
+            sch.unroll(foi)
+            sch.unroll(j)
+            io, ioi, ii = sch.split(i, [None, bucket_sizes[-1] // bucket_size, 8])
+            sch.bind(io, "blockIdx.x")
+            sch.bind(ii, "threadIdx.y")
+            init_blk = sch.decompose_reduction(blk, fi)
+            ax0, ax1 = sch.get_loops(init_blk)[-2:]
+            sch.bind(ax0, "threadIdx.x")
+            sch.unroll(ax1)
 
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
     f = tvm.build(mod, target="cuda")
-
-    # prepare new formats
-    if cached_bucketing_format is not None:
-        ell_indices, ell_a, ell_rows = cached_bucketing_format
-    else:
-        ell_rows = []
-        ell_indices = []
-        ell_a = []
-
-        for partition in range(column_part):
-            sub_mat = sub_mats[partition]
-            in_degrees = sub_mat.indptr[1:] - sub_mat.indptr[:-1]
-
-            for i, bucket_size in enumerate(bucket_sizes[:-1]):
-                last_bucket_size = 0 if i == 0 else bucket_sizes[i - 1]
-                ell_rows.append(
-                    ((in_degrees > last_bucket_size) & (in_degrees <= bucket_size)).nonzero()[0]
-                )
-            ell_rows.append((in_degrees > bucket_sizes[-2]).nonzero()[0])
-
-            for i, bucket_size in enumerate(bucket_sizes[:-1]):
-                indices = np.zeros(
-                    (ell_n[partition * len(bucket_sizes) + i], bucket_size), dtype=np.int32
-                )
-                a = np.zeros(
-                    (ell_n[partition * len(bucket_sizes) + i], bucket_size), dtype=np.float32
-                )
-                for j, row_id in enumerate(ell_rows[partition * len(bucket_sizes) + i]):
-                    row = sub_mat[row_id]
-                    indices[j, : row.nnz] = row.indices + partition * per_column_part_size
-                    a[j, : row.nnz] = row.data
-                ell_indices.append(indices)
-                ell_a.append(a)
-
-            # split rows for the last bucket
-            indices = np.zeros(
-                (ell_n[(partition + 1) * len(bucket_sizes) - 1], bucket_sizes[-1]), dtype=np.int32
-            )
-            a = np.zeros(
-                (ell_n[(partition + 1) * len(bucket_sizes) - 1], bucket_sizes[-1]), dtype=np.float32
-            )
-            new_rows = np.zeros((ell_n[(partition + 1) * len(bucket_sizes) - 1],), dtype=np.int32)
-            bucket_size = bucket_sizes[-1]
-            i = 0
-            for row_id in ell_rows[-1]:
-                row = sub_mat[row_id]
-                for start_offset in range(0, row.nnz, bucket_size):
-                    if start_offset + bucket_size >= row.nnz:
-                        # last bucket
-                        indices[i, : row.nnz - start_offset] = (
-                            row.indices[start_offset:] + partition * per_column_part_size
-                        )
-                        a[i, : row.nnz - start_offset] = row.data[start_offset:]
-                    else:
-                        indices[i] = (
-                            row.indices[start_offset : start_offset + bucket_size]
-                            + partition * per_column_part_size
-                        )
-                        a[i].fill(1)
-                    new_rows[i] = row_id
-                    i += 1
-
-            ell_indices.append(indices)
-            ell_a.append(a)
-            ell_rows[-1] = new_rows
-
-        cached_bucketing_format = ell_indices, ell_a, ell_rows
 
     # prepare nd array
     b_nd = tvm.nd.array(
@@ -251,20 +175,22 @@ def bench_hyb(
         device=tvm.cuda(0),
     )
     c_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
-    ell_indices_i_nd = []
-    ell_a_nd = []
-    ell_indices_j_nd = []
-    for i in range(num_buckets):
-        ell_indices_i_nd.append(tvm.nd.array(ell_rows[i].astype("int32"), device=tvm.cuda(0)))
-        ell_a_nd.append(tvm.nd.array(ell_a[i].reshape(-1).astype("float32"), device=tvm.cuda(0)))
-        ell_indices_j_nd.append(
-            tvm.nd.array(ell_indices[i].reshape(-1).astype("int32"), device=tvm.cuda(0))
-        )
-
     # prepare args
     args = [b_nd, c_nd]
-    for i in range(num_buckets):
-        args += [ell_a_nd[i], ell_indices_i_nd[i], ell_indices_j_nd[i]]
+
+    for part_id in range(num_col_parts):
+        for bucket_id, _ in enumerate(bucket_sizes):
+            weight = tvm.nd.array(
+                mask[part_id][bucket_id].numpy().reshape(-1).astype("float32"), device=tvm.cuda(0)
+            )
+            rows = tvm.nd.array(
+                row_indices[part_id][bucket_id].numpy().astype("int32"), device=tvm.cuda(0)
+            )
+            cols = tvm.nd.array(
+                col_indices[part_id][bucket_id].numpy().reshape(-1).astype("int32"),
+                device=tvm.cuda(0),
+            )
+            args += [weight, rows, cols]
 
     # test accuracy
     f(*args)
@@ -275,7 +201,16 @@ def bench_hyb(
     print("tir hyb time: {:.5f}ms".format(evaluator(*args).mean * 1000))
 
 
-col_part_config = {"arxiv": 1, "proteins": 8, "pubmed": 1, "citeseer": 1, "cora": 1, "ppi": 16, "reddit": 8, "products": 16}
+col_part_config = {
+    "arxiv": 1,
+    "proteins": 8,
+    "pubmed": 1,
+    "citeseer": 1,
+    "cora": 1,
+    "ppi": 16,
+    "reddit": 8,
+    "products": 16,
+}
 
 bucketing_config = {
     "arxiv": [1, 2, 4, 8, 16, 32],
@@ -321,7 +256,7 @@ def get_dataset(name: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("hybrid format spmm in sparse-tir")
-    parser.add_argument("--dataset", "-d", type=str, default='arxiv', help="dataset name")
+    parser.add_argument("--dataset", "-d", type=str, default="arxiv", help="dataset name")
     args = parser.parse_args()
     name = args.dataset
     g = get_dataset(name)
@@ -336,6 +271,6 @@ if __name__ == "__main__":
             y_golden,
             feat_size=feat_size,
             bucket_sizes=bucketing_config[name],
-            cwm=2,
-            column_part=col_part_config[name],
+            coersening_factor=2,
+            num_col_parts=col_part_config[name],
         )

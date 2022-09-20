@@ -27,7 +27,6 @@
 #include <tvm/runtime/ndarray.h>
 #include <tvm/runtime/registry.h>
 
-
 namespace tvm {
 
 using runtime::NDArray;
@@ -63,11 +62,13 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
   /* (num_parts, num_buckets, ...) */
   std::vector<std::vector<std::vector<int>>> row_indices(num_col_parts);
   std::vector<std::vector<std::vector<int>>> col_indices(num_col_parts);
+  std::vector<std::vector<std::vector<int>>> mask{num_col_parts};
   // init row_indices and col_indices
   for (int part_id = 0; part_id < num_col_parts; ++part_id) {
     for (int bucket_id = 0; bucket_id < num_bkts; ++bucket_id) {
       row_indices[part_id].push_back(std::vector<int>());
       col_indices[part_id].push_back(std::vector<int>());
+      mask[part_id].push_back(std::vector<int>());
     }
   }
   for (int i = 0; i < num_rows; ++i) {
@@ -89,6 +90,7 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
           // padding
           for (int k = remainder; k < bucket_size; ++k) {
             col_indices[part_id][bucket_id].push_back(0);
+            mask[part_id][bucket_id].push_back(0);
           }
           create_new_bucket = true;
         }
@@ -100,15 +102,18 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
         row_indices[part_id][bucket_id].push_back(row_id);
       }
       col_indices[part_id][bucket_id].push_back(col_id);
+      mask[part_id][bucket_id].push_back(1);
     }
   }
 
   // final padding and conversion to NDArray
   Array<Array<NDArray>> row_indices_nd;
   Array<Array<NDArray>> col_indices_nd;
+  Array<Array<NDArray>> mask_nd;
   for (int part_id = 0; part_id < num_col_parts; ++part_id) {
     Array<NDArray> row_indices_part_local;
     Array<NDArray> col_indices_part_local;
+    Array<NDArray> mask_part_local;
     for (int bucket_id = 0; bucket_id < num_bkts; ++bucket_id) {
       int bucket_size = buckets_vec[bucket_id];
       // padding
@@ -116,6 +121,7 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
       if (remainder != 0) {
         for (int k = remainder; k < bucket_size; ++k) {
           col_indices[part_id][bucket_id].push_back(0);
+          mask[part_id][bucket_id].push_back(0);
         }
       }
       // conversion to NDArray
@@ -124,20 +130,25 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
       NDArray row_indices_bucket_local = NDArray::Empty({nnz}, {kDLInt, 32, 1}, {kDLCPU, 0});
       NDArray col_indices_bucket_local =
           NDArray::Empty({nnz, bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
+      NDArray mask_bucket_local = NDArray::Empty({nnz, bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
       row_indices_bucket_local.CopyFromBytes(row_indices[part_id][bucket_id].data(),
                                              nnz * sizeof(int));
       col_indices_bucket_local.CopyFromBytes(col_indices[part_id][bucket_id].data(),
                                              nnz * bucket_size * sizeof(int));
+      mask_bucket_local.CopyFromBytes(mask[part_id][bucket_id].data(),
+                                      nnz * bucket_size * sizeof(int));
       row_indices_part_local.push_back(row_indices_bucket_local);
       col_indices_part_local.push_back(col_indices_bucket_local);
+      mask_part_local.push_back(mask_bucket_local);
     }
     row_indices_nd.push_back(row_indices_part_local);
     col_indices_nd.push_back(col_indices_part_local);
+    mask_nd.push_back(mask_part_local);
   }
 
   // convert to NDArray
 
-  return {row_indices_nd, col_indices_nd};
+  return {row_indices_nd, col_indices_nd, mask_nd};
 }
 
 namespace sparse {
