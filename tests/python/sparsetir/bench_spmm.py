@@ -74,6 +74,7 @@ def bench_hyb(
     bucket_sizes=[],
     coersening_factor=2,
     num_col_parts=1,
+    use_implicit_unroll=False,
 ):
     num_buckets = len(bucket_sizes)
     coersening_factor = min(coersening_factor, feat_size // 32)
@@ -156,7 +157,11 @@ def bench_hyb(
             sch.bind(fi, "threadIdx.x")
             sch.bind(foo, "blockIdx.y")
             sch.unroll(foi)
+            if use_implicit_unroll:
+                sch.annotate(foi, "pragma_unroll_explicit", 0)
             sch.unroll(j)
+            if use_implicit_unroll:
+                sch.annotate(j, "pragma_unroll_explicit", 0)
             io, ioi, ii = sch.split(i, [None, bucket_sizes[-1] // bucket_size, 8])
             sch.bind(io, "blockIdx.x")
             sch.bind(ii, "threadIdx.y")
@@ -164,6 +169,8 @@ def bench_hyb(
             ax0, ax1 = sch.get_loops(init_blk)[-2:]
             sch.bind(ax0, "threadIdx.x")
             sch.unroll(ax1)
+            if use_implicit_unroll:
+                sch.annotate(ax1, "pragma_unroll_explicit", 0)
 
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
@@ -257,6 +264,7 @@ def get_dataset(name: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("hybrid format spmm in sparse-tir")
     parser.add_argument("--dataset", "-d", type=str, default="arxiv", help="dataset name")
+    parser.add_argument("--implicit-unroll", "-i", action="store_true", help="use implicit unroll")
     args = parser.parse_args()
     name = args.dataset
     g = get_dataset(name)
@@ -273,4 +281,5 @@ if __name__ == "__main__":
             bucket_sizes=bucketing_config[name],
             coersening_factor=2,
             num_col_parts=col_part_config[name],
+            use_implicit_unroll=args.implicit_unroll,
         )
