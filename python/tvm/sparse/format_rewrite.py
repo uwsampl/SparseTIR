@@ -88,3 +88,8 @@ def column_part_hyb(num_rows, num_cols, indptr_nd, indices_nd, num_col_parts, bu
     return _ffi_api.ColumnPartHyb(
         num_rows, num_cols, indptr_nd, indices_nd, num_col_parts, buckets  # type: ignore
     )
+
+def condense(indptr_nd, indices_nd, bucket_size):
+    return _ffi_api.ConDense(
+        indptr_nd, indices_nd, bucket_size # type: ignore
+    )

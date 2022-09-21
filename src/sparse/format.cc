@@ -140,7 +140,52 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
   return {row_indices_nd, col_indices_nd};
 }
 
+Array<NDArray> ConDense(NDArray indptr, NDArray indices, int block_size) {
+  // Check inputs
+  CHECK_EQ(indptr->dtype.bits, 32) << "Only support int32 index data type, got "
+                                   << int(indptr->dtype.bits) << " bits for indptr.";
+  CHECK_EQ(indices->dtype.bits, 32) << "Only support int32 index data type, got "
+                                    << int(indices->dtype.bits) << " bits for indices.";
+  CHECK_EQ(indptr->device.device_type, kDLCPU) << "Only support ColumnPartHyb conversion on CPU.";
+  CHECK_EQ(indices->device.device_type, kDLCPU) << "Only support ColumnPartHyb conversion on CPU.";
+  // Get data from NDArrays
+  int* indptr_data = static_cast<int*>(indptr->data);
+  int* indices_data = static_cast<int*>(indices->data);
+  // Set up return values
+  int n = indptr->shape[0] - 1;
+  int num_blocks = (n + block_size - 1) / block_size;
+  std::vector<int> ret_indptr(num_blocks + 1);
+  std::vector<int> ret_indices;
+  ret_indptr[0] = 0;
+  // Condense matrix
+  for (int block_id = 0; block_id < num_blocks; block_id++) {
+    int curr_block = block_id * block_size;
+    int next_block = curr_block + block_size;
+    int lo = indptr_data[curr_block];
+    int hi = next_block > n ? indptr_data[n] : indptr_data[next_block];
+    // Find unique indices from lo to hi
+    std::vector<int> unique(hi - lo);
+    for (int i = 0; i < hi - lo; i++) {
+      unique[i] = indices_data[lo + i];
+    }
+    std::sort(unique.begin(), unique.end());
+    unique.erase(std::unique(unique.begin(), unique.end()), unique.end());
+    ret_indices.insert(ret_indices.end(), unique.begin(), unique.end());
+    ret_indptr[block_id + 1] = ret_indptr[block_id] + unique.size();
+  }
+
+  // Convert to NDArray
+  int ret_indptr_size = ret_indptr.size();
+  int ret_indices_size = ret_indices.size();
+  NDArray indptr_nd = NDArray::Empty({ret_indptr_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
+  NDArray indices_nd = NDArray::Empty({ret_indices_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
+  indptr_nd.CopyFromBytes(ret_indptr.data(), ret_indptr_size * sizeof(int));
+  indices_nd.CopyFromBytes(ret_indices.data(), ret_indices_size * sizeof(int));
+  return {indptr_nd, indices_nd};
+}
+
 namespace sparse {
 TVM_REGISTER_GLOBAL("tir.sparse.ColumnPartHyb").set_body_typed(ColumnPartHyb);
+TVM_REGISTER_GLOBAL("tir.sparse.ConDense").set_body_typed(ConDense);
 }  // namespace sparse
 }  // namespace tvm

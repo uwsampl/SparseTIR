@@ -18,7 +18,7 @@
 import tvm
 import dgl
 import numpy as np
-from tvm.sparse import FormatRewriteRule, column_part_hyb
+from tvm.sparse import FormatRewriteRule, column_part_hyb, condense
 from sparse_tir_scripts import csrmm
 from sparse_tir_format_rewrite_scripts import (
     bsr,
@@ -202,7 +202,7 @@ def scipy_column_part_hyb(g, column_part, bucket_sizes):
 def test_column_part_hyb():
     g = dgl.rand_graph(1000, 10000).int()
     column_parts = 4
-    buckets = [1, 2, 4, 8]
+    buckets = [1, 2, 4]
     indptr, indices, _ = g.adj_sparse("csc")
     indptr_nd = tvm.nd.array(indptr.numpy(), device=tvm.cpu())
     indices_nd = tvm.nd.array(indices.numpy(), device=tvm.cpu())
@@ -224,10 +224,44 @@ def test_column_part_hyb():
                 col_indices_scipy[part_id * len(buckets) + bucket_id],
             )
 
+def condense_py(indptr, indices, block_size):
+    m = len(indptr) - 1
+    ret_indptr = [0]
+    ret_indices = []
+    for block_id in range((m + block_size - 1) // block_size):
+        start_offset = indptr[block_id * block_size]
+        end_offset = indptr[-1] if (block_id + 1) * block_size > m else indptr[(block_id + 1) * block_size]
+        tile_indices = indices[start_offset: end_offset]
+        unique_col_indices = np.unique(tile_indices)
+        ret_indptr.append(ret_indptr[-1] + len(unique_col_indices))
+        ret_indices.append(unique_col_indices)
+    return np.array(ret_indptr), np.concatenate(ret_indices)
+
+def test_condense():
+    g = dgl.rand_graph(1000, 10000).int()
+    buckets = [1, 2, 4, 8]
+    indptr, indices, _ = g.adj_sparse("csc")
+    indptr = indptr.numpy()
+    indices = indices.numpy()
+    indptr_nd = tvm.nd.array(indptr, device=tvm.cpu())
+    indices_nd = tvm.nd.array(indices, device=tvm.cpu())
+    for bucket_size in buckets:
+        # built-in c++ function
+        indptr_ret, indices_ret = condense(indptr_nd, indices_nd, bucket_size)
+        # Python version of function
+        indptr_py, indices_py = condense_py(indptr, indices, bucket_size)
+        assert np.array_equal(
+            indptr_ret.numpy(),
+            indptr_py,
+        )
+        assert np.array_equal(
+            indices_ret.numpy(),
+            indices_py,
+        )
 
 if __name__ == "__main__":
     # test_csrmm_bsr_rewrite()
     # test_csrmm_ell_rewrite()
     # test_csrmm_padding_rewrite()
     test_column_part_hyb()
-    # test_condense()
+    test_condense()
