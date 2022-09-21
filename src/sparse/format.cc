@@ -62,7 +62,7 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
   /* (num_parts, num_buckets, ...) */
   std::vector<std::vector<std::vector<int>>> row_indices(num_col_parts);
   std::vector<std::vector<std::vector<int>>> col_indices(num_col_parts);
-  std::vector<std::vector<std::vector<int>>> mask{num_col_parts};
+  std::vector<std::vector<std::vector<int>>> mask(num_col_parts);
   // init row_indices and col_indices
   for (int part_id = 0; part_id < num_col_parts; ++part_id) {
     for (int bucket_id = 0; bucket_id < num_bkts; ++bucket_id) {
