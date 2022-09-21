@@ -114,6 +114,10 @@ class ConcreteScheduleNode : public ScheduleNode {
                     const String& storage_scope) override;
   BlockRV CacheWrite(const BlockRV& block_rv, int write_buffer_index,
                      const String& storage_scope) override;
+  BlockRV ReverseCacheRead(const BlockRV& block_rv, int read_buffer_index,
+                           const String& storage_scope) override;
+  BlockRV ReverseCacheWrite(const BlockRV& block_rv, int write_buffer_index,
+                            const String& storage_scope) override;
   /******** Schedule: Compute location ********/
   void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv, bool preserve_unit_loops) override;
   void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,

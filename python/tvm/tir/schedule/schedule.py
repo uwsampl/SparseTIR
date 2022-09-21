@@ -1083,6 +1083,18 @@ class Schedule(Object):
         return _ffi_api.ScheduleCacheWrite(  # type: ignore # pylint: disable=no-member
             self, block, write_buffer_index, storage_scope
         )
+    
+    @type_checked
+    def reverse_cache_read(self, block: BlockRV, read_buffer_index: int, storage_scope: str) -> BlockRV:
+        return _ffi_api.ScheduleReverseCacheRead( # type: ignore # pylint: disable=no-member
+            self, block, read_buffer_index, storage_scope
+        )
+
+    @type_checked
+    def reverse_cache_write(self, block: BlockRV, write_buffer_index: int, storage_scope: str) -> BlockRV:
+        return _ffi_api.ScheduleReverseCacheWrite( # type: ignore # pylint: disable=no-member
+            self, block, write_buffer_index, storage_scope
+        )
 
     ########## Schedule: Compute location ##########
 

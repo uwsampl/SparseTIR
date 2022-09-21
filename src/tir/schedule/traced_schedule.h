@@ -74,6 +74,10 @@ class TracedScheduleNode : public ConcreteScheduleNode {
                     const String& storage_scope) final;
   BlockRV CacheWrite(const BlockRV& block_rv, int write_buffer_index,
                      const String& storage_scope) final;
+  BlockRV ReverseCacheRead(const BlockRV& block_rv, int read_buffer_index,
+                           const String& storage_scope) final;
+  BlockRV ReverseCacheWrite(const BlockRV& block_rv, int write_buffer_index,
+                            const String& storage_scope) final;
   /******** Schedule: Compute location ********/
   void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv, bool preserve_unit_loops) final;
   void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
