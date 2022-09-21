@@ -146,8 +146,8 @@ Array<NDArray> ConDense(NDArray indptr, NDArray indices, int block_size) {
                                    << int(indptr->dtype.bits) << " bits for indptr.";
   CHECK_EQ(indices->dtype.bits, 32) << "Only support int32 index data type, got "
                                     << int(indices->dtype.bits) << " bits for indices.";
-  CHECK_EQ(indptr->device.device_type, kDLCPU) << "Only support ColumnPartHyb conversion on CPU.";
-  CHECK_EQ(indices->device.device_type, kDLCPU) << "Only support ColumnPartHyb conversion on CPU.";
+  CHECK_EQ(indptr->device.device_type, kDLCPU) << "Only support ConDense conversion on CPU.";
+  CHECK_EQ(indices->device.device_type, kDLCPU) << "Only support ConDense conversion on CPU.";
   // Get data from NDArrays
   int* indptr_data = static_cast<int*>(indptr->data);
   int* indices_data = static_cast<int*>(indices->data);
