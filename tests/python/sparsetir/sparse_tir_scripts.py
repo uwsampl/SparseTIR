@@ -306,16 +306,17 @@ def fused_sddmm(
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
     I = T.dense_fixed(m)
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
+    IJ = T.dense_fixed(nnz, "int32")
     J_detach = T.dense_fixed(n)
     K = T.dense_fixed(feat_size)
     A = T.match_sparse_buffer(a, (I, K), "float32")
     B = T.match_sparse_buffer(b, (J_detach, K), "float32")
     C = T.match_sparse_buffer(c, (I, J), "float32")
 
-    with T.iter([T.fuse(I, J), K], "SSR", "sddmm") as [i, j, k]:
+    with T.iter([IJ, K], "SSR", "sddmm") as [ij, k]:
         with T.init():
-            C[i, j] = 0.0
-        C[i, j] = C[i, j] + A[i, k] * B[j, k]
+            C[ij] = 0.0
+        C[ij] = C[ij] + A[T.sparse_fuse_decode((I, J), ij, 0), k] * B[T.sparse_fuse_decode([I, J], ij, 1), k]
 
 
 @T.prim_func
@@ -393,14 +394,15 @@ def fused_reduction_4d_2d(
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
     I = T.dense_fixed(n)
     J = T.dense_variable(I, (32768, nnz_j), indptr_j, "int32")
+    IJ = T.dense_fixed(nnz_j)
     K = T.dense_variable(J, (32768, nnz_k), indptr_k, "int32")
     L = T.dense_variable(K, (32768, nnz_l), indptr_l, "int32")
     X = T.match_sparse_buffer(x, (I, J, K, L), "float32")
     Y = T.match_sparse_buffer(y, (I, J), "float32")
-    with T.iter([T.fuse(I, J), K, L], "SSRR", "reduction_4d_2d") as [i, j, k, l]:
+    with T.iter([IJ, K, L], "SSRR", "reduction_4d_2d") as [ij, k, l]:
         with T.init():
-            Y[i, j] = 0.0
-        Y[i, j] = Y[i, j] + X[i, j, k, l]
+            Y[ij] = 0.0
+        Y[ij] = Y[ij] + X[ij, k, l]
 
 
 @T.prim_func
@@ -419,13 +421,14 @@ def fused_reduction_4d_3d(
     I = T.dense_fixed(n)
     J = T.dense_variable(I, (32768, nnz_j), indptr_j, "int32")
     K = T.dense_variable(J, (32768, nnz_k), indptr_k, "int32")
+    IJK = T.dense_fixed(nnz_k)
     L = T.dense_variable(K, (32768, nnz_l), indptr_l, "int32")
-    X = T.match_sparse_buffer(x, (I, J, K, L), "float32")
-    Y = T.match_sparse_buffer(y, (I, J, K), "float32")
-    with T.iter([T.fuse(I, J, K), L], "SSSR", "reduction_4d_3d") as [i, j, k, l]:
+    X = T.match_sparse_buffer(x, (IJK, L), "float32")
+    Y = T.match_sparse_buffer(y, (IJK), "float32")
+    with T.iter([IJK, L], "SSSR", "reduction_4d_3d") as [ijk, l]:
         with T.init():
-            Y[i, j, k] = 0.0
-        Y[i, j, k] = Y[i, j, k] + X[i, j, k, l]
+            Y[ijk] = 0.0
+        Y[ijk] = Y[ijk] + X[ijk, l]
 
 
 @T.prim_func
