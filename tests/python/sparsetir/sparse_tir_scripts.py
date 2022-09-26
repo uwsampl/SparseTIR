@@ -554,7 +554,7 @@ def sparse_softmax(
             TMP[i] = T.max(TMP[i], A[i, j])
         with T.iter([J], "R", "exp_and_sum") as [j]:
             with T.init():
-                TMP1[i] = T.float32(-100000)
+                TMP1[i] = T.float32(0)
             TMP1[i] = TMP1[i] + T.exp(A[i, j] - TMP[i], dtype="float32")
         with T.iter([J], "S", "div") as [j]:
             B[i, j] = T.exp(A[i, j], dtype="float32") / TMP1[i]

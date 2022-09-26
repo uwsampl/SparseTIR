@@ -949,7 +949,7 @@ def sparse_softmax(
                     T.writes(TMP1[vi])
                     T.block_attr({"sparse": True})
                     with T.init():
-                        TMP1[vi] = T.float32(-100000)
+                        TMP1[vi] = T.float32(0)
                     TMP1[vi] = TMP1[vi] + T.exp(A[vi, vj] - TMP[vi], dtype="float32")
             for j in T.serial(J_indptr[vi + 1] - J_indptr[vi]):
                 with T.block("div0"):

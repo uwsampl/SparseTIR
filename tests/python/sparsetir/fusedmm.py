@@ -55,7 +55,7 @@ def fusedmm(
     with T.iter([I], "S", "softmax") as [i]:
         with T.iter([J], "R", "computer_max") as [j]:
             with T.init():
-                temp[i] = score[i, j]
+                temp[i] = -T.float32(100000)
             temp[i] = T.max(temp[i], score[i, j])
         with T.iter([J], "R", "sum_of_exp") as [j]:
             with T.init():
