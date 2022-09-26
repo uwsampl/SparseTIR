@@ -42,6 +42,9 @@ def fusedmm(
     O = T.match_sparse_buffer(o, [I, F], "float32")
 
     score = T.alloc_sparse_buffer([I, J], "float32")
+    temp = T.alloc_sparse_buffer([I,], "float32")
+    temp1 = T.alloc_sparse_buffer([I,], "float32")
+    softmax = T.alloc_sparse_buffer([I, J], "float32")
     # Q^T * K
     with T.iter([I, J, F], "SSR", "sddmm") as [i, j, f]:
         with T.init():
@@ -49,13 +52,10 @@ def fusedmm(
         score[i, j] += Q[i, f] * K[j, f]
 
     # softmax
-    temp = T.alloc_sparse_buffer([I,], "float32")
-    temp1 = T.alloc_sparse_buffer([I,], "float32")
-    softmax = T.alloc_sparse_buffer([I, J], "float32")
     with T.iter([I], "S", "softmax") as [i]:
         with T.iter([J], "R", "computer_max") as [j]:
             with T.init():
-                temp[i] = T.float32(score[i, j])
+                temp[i] = score[i, j]
             temp[i] = T.max(temp[i], score[i, j])
         with T.iter([J], "R", "sum_of_exp") as [j]:
             with T.init():
