@@ -465,6 +465,7 @@ def rgcn_forward(
 
 @T.prim_func
 def rgcn_hetero_forward(
+    a: T.handle,
     w: T.handle,
     x: T.handle,
     y: T.handle,
@@ -486,13 +487,14 @@ def rgcn_hetero_forward(
     J_detach = T.dense_fixed(n)
     F_in = T.dense_fixed(feat_size)
     F_out = T.dense_fixed(feat_size)
+    A = T.match_sparse_buffer(a, (R, I, J), "float32")
     W = T.match_sparse_buffer(w, (R, F_out, F_in), "float32")
     X = T.match_sparse_buffer(x, (J_detach, F_in), "float32")
     Y = T.match_sparse_buffer(y, (I_detach, F_out), "float32")
     with T.iter([F_out, R, I, J, F_in], "SSSRR", "rgcn-hetero-forward") as [fo, r, i, j, fi]:
         with T.init():
             Y[i, fo] = 0.0
-        Y[i, fo] = Y[i, fo] + W[r, fo, fi] * X[j, fi]
+        Y[i, fo] = Y[i, fo] + A[r, i, j] * W[r, fo, fi] * X[j, fi]
 
 
 @T.prim_func

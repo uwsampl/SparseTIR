@@ -826,6 +826,7 @@ def rgcn_forward(
 
 @T.prim_func
 def rgcn_hetero_forward(
+    a: T.handle,
     w: T.handle,
     x: T.handle,
     y: T.handle,
@@ -841,15 +842,16 @@ def rgcn_hetero_forward(
 ) -> None:
     # function attr dict
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
-    R = T.dense_fixed(num_rels, "int32")
-    I = T.sparse_variable(R, (n, nnz_i), (indptr_i, indices_i), "int32")
-    I_dense = T.dense_variable(R, (n, nnz_i), indptr_i, "int32")
-    J = T.sparse_variable(I, (n, nnz_j), (indptr_j, indices_j), "int32")
-    J_dense = T.dense_variable(I, (n, nnz_j), indptr_j, "int32")
-    I_detach = T.dense_fixed(n, "int32")
-    J_detach = T.dense_fixed(n, "int32")
-    F_in = T.dense_fixed(feat_size, "int32")
-    F_out = T.dense_fixed(feat_size, "int32")
+    R = T.dense_fixed(num_rels, idtype="int32")
+    I = T.sparse_variable(R, (n, nnz_i), (indptr_i, indices_i), idtype="int32")
+    I_dense = T.dense_variable(R, (n, nnz_i), indptr_i, idtype="int32")
+    J = T.sparse_variable(I, (n, nnz_j), (indptr_j, indices_j), idtype="int32")
+    J_dense = T.dense_variable(I, (n, nnz_j), indptr_j, idtype="int32")
+    I_detach = T.dense_fixed(n, idtype="int32")
+    J_detach = T.dense_fixed(n, idtype="int32")
+    F_in = T.dense_fixed(feat_size, idtype="int32")
+    F_out = T.dense_fixed(feat_size, idtype="int32")
+    A = T.match_sparse_buffer(a, [R, I, J], dtype="float32")
     W = T.match_sparse_buffer(w, [R, F_out, F_in], dtype="float32")
     X = T.match_sparse_buffer(x, [J_detach, F_in], dtype="float32")
     Y = T.match_sparse_buffer(y, [I_detach, F_out], dtype="float32")
@@ -870,6 +872,7 @@ def rgcn_hetero_forward(
                 I_indptr[vr : vr + 2],
                 J_indptr[vr, 0 : n + 1],
                 I_indices[vr, 0:n],
+                A[vr, 0:n, 0:n],
                 W[vr, vfo, 0:feat_size],
                 X[0:n, 0:feat_size],
                 J_indices[vr, 0:n, 0:n],
@@ -882,6 +885,7 @@ def rgcn_hetero_forward(
                     T.reads(
                         J_indptr[vr, vi : vi + 2],
                         I_indices[vr, vi],
+                        A[vr, vi, 0:n],
                         W[vr, vfo, 0:feat_size],
                         X[0:n, 0:feat_size],
                         J_indices[vr, vi, 0:n],
@@ -894,6 +898,7 @@ def rgcn_hetero_forward(
                             vfi = T.axis.reduce(feat_size, fi)
                             T.reads(
                                 I_indices[vr, vi],
+                                A[vr, vi, vj],
                                 W[vr, vfo, vfi],
                                 X[J_indices[vr, vi, vj], vfi],
                                 J_indices[vr, vi, vj],
@@ -904,7 +909,7 @@ def rgcn_hetero_forward(
                                 Y[I_indices[vr, vi], vfo] = T.float32(0)
                             Y[I_indices[vr, vi], vfo] = (
                                 Y[I_indices[vr, vi], vfo]
-                                + W[vr, vfo, vfi] * X[J_indices[vr, vi, vj], vfi]
+                                + A[vr, vi, vj] * W[vr, vfo, vfi] * X[J_indices[vr, vi, vj], vfi]
                             )
 
 

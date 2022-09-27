@@ -835,6 +835,7 @@ def rgcn_forward(
 
 @T.prim_func
 def rgcn_hetero_forward(
+    a: T.handle,
     w: T.handle,
     x: T.handle,
     y: T.handle,
@@ -850,6 +851,7 @@ def rgcn_hetero_forward(
 ) -> None:
     # function attr dict
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 0})
+    A_data = T.match_buffer(a, [nnz_j], dtype="float32", strides=[1])
     W_data = T.match_buffer(w, [num_rels * feat_size * feat_size], dtype="float32", strides=[1])
     X_data = T.match_buffer(x, [n * feat_size], dtype="float32", strides=[1])
     Y_data = T.match_buffer(y, [n * feat_size], dtype="float32", strides=[1])
@@ -866,6 +868,7 @@ def rgcn_hetero_forward(
                 I_indptr_data[0 : num_rels + 1],
                 J_indptr_data[0 : nnz_i + 1],
                 I_indices_data[0:nnz_i],
+                A_data[0:nnz_j],
                 W_data[0 : num_rels * feat_size * feat_size],
                 X_data[0 : n * feat_size],
                 J_indices_data[0:nnz_j],
@@ -878,6 +881,7 @@ def rgcn_hetero_forward(
                     T.reads(
                         J_indptr_data[0 : nnz_i + 1],
                         I_indices_data[vi + I_indptr_data[vr]],
+                        A_data[0:nnz_j],
                         W_data[0 : num_rels * feat_size * feat_size],
                         X_data[0 : n * feat_size],
                         J_indices_data[0:nnz_j],
@@ -894,6 +898,7 @@ def rgcn_hetero_forward(
                             vfi = T.axis.reduce(feat_size, fi)
                             T.reads(
                                 I_indices_data[vi + I_indptr_data[vr]],
+                                A_data[vj + J_indptr_data[vi + I_indptr_data[vr]]],
                                 W_data[vr * (feat_size * feat_size) + vfo * feat_size + vfi],
                                 X_data[
                                     J_indices_data[vj + J_indptr_data[vi + I_indptr_data[vr]]]
@@ -912,7 +917,8 @@ def rgcn_hetero_forward(
                                 ] = T.float32(0)
                             Y_data[I_indices_data[vi + I_indptr_data[vr]] * feat_size + vfo] = (
                                 Y_data[I_indices_data[vi + I_indptr_data[vr]] * feat_size + vfo]
-                                + W_data[vr * (feat_size * feat_size) + vfo * feat_size + vfi]
+                                + A_data[vj + J_indptr_data[vi + I_indptr_data[vr]]]
+                                * W_data[vr * (feat_size * feat_size) + vfo * feat_size + vfi]
                                 * X_data[
                                     J_indices_data[vj + J_indptr_data[vi + I_indptr_data[vr]]]
                                     * feat_size

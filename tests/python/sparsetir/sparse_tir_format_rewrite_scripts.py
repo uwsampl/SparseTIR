@@ -72,6 +72,25 @@ def ell(
 
 
 @T.prim_func
+def ell3d(
+    a: T.handle,
+    indptr_1: T.handle,
+    indices_1: T.handle,
+    indices_2: T.handle,
+    d0: T.int32,
+    d1: T.int32,
+    d2: T.int32,
+    nnz_1: T.int32,
+    nnz_cols_2: T.int32,
+) -> None:
+    R = T.dense_fixed(d0, idtype="int32")
+    I = T.sparse_variable(R, (d1, nnz_1), (indptr_1, indices_1), idtype="int32")
+    J = T.sparse_fixed(I, (d2, nnz_cols_2), indices_2, idtype="int32")
+    A = T.match_sparse_buffer(a, (R, I, J), dtype="float32")
+    T.evaluate(0)
+
+
+@T.prim_func
 def bsr_rewrite_with_preprocess(
     a: T.handle,
     b: T.handle,
