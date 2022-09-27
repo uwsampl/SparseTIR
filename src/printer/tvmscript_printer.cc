@@ -1713,7 +1713,7 @@ Doc TVMScriptPrinter::PrintPrimFunc(const PrimFunc& primFunc) {
           body << "sparse_variable(" << Print(GetParentAxis(axis)) << ", (" << Print(axis->length)
                << ", " << Print(axis->nnz) << "), (" << Print(axis->indptr) << ", "
                << Print(axis->indices) << "), idtype=" << PrintDType(axis->idtype)
-               << " sorted=" << (axis->sorted ? "True" : "False") << ")";
+               << ", sorted=" << (axis->sorted ? "True" : "False") << ")";
           break;
       }
     }

@@ -78,9 +78,10 @@ TVM_REGISTER_NODE_TYPE(AxisNode);
 TVM_REGISTER_GLOBAL("tir.sparse.Axis")
     .set_body_typed([](String name, Optional<Axis> parent, PrimExpr length, PrimExpr nnz,
                        Optional<PrimExpr> nnz_cols, Optional<Var> indptr, Optional<Var> indices,
-                       DataType idtype, bool sorted) {
+                       DataType idtype, Bool sorted) {
       return Axis(std::move(name), std::move(parent), std::move(length), std::move(nnz),
-                  std::move(nnz_cols), std::move(indptr), std::move(indices), std::move(idtype), sorted);
+                  std::move(nnz_cols), std::move(indptr), std::move(indices), std::move(idtype),
+                  sorted->value);
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
