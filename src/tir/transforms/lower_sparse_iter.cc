@@ -648,46 +648,50 @@ class IterTransformer : public StmtExprMutator {
     for (size_t j = 0; j < bsearch_structures.size(); ++j) {
       BinarySearchStructure& bsearch_structure = bsearch_structures[j];
       const std::vector<BlockInfo>& bsearch_block_info = bsearch_block_infos[j];
-      for (int i = static_cast<int>(bsearch_block_info.size()) - 1; i >= 0; --i) {
-        BlockInfo info = std::move(bsearch_block_info[i]);
-        Map<String, ObjectRef> annotations;
-        annotations.Set("sparse", Bool(true));
-        annotations.Set("preprocess", Bool(true));
-        Array<BufferRegion> reads, writes;
-        if (i == static_cast<int>(bsearch_block_info.size()) - 1) {
-          // innermost
-          reads = {bsearch_structure.read};
-          writes = {bsearch_structure.write};
-        } else {
-          ctx_.CollectRegion(true);  // update is_collecting_regions flag to true;
-          VisitStmt(bsearch_structure.body);
-          // Update read/writes regions.
-          writes = ctx_.CollectWriteRegions();
-          reads = ctx_.CollectReadRegions();
-          ctx_.ClearReadWriteBufferRegions();
-          ctx_.CollectRegion(false);  // update is_collecting_regions flag to false
-        }
-        Block block(/*iter_vars=*/info.block_iters,
-                    /*reads=*/reads,
-                    /*writes=*/writes,
-                    /*name_hint=*/bsearch_structure.name + "_" + std::to_string(i),
-                    /*body=*/bsearch_structure.body,
-                    /*init=*/{},
-                    /*alloc_buffers=*/bsearch_structure.alloc_buffers,
-                    /*match_buffers=*/{},
-                    /*buf_doms*/{},
-                    /*annotations=*/annotations);
-        bsearch_structure.alloc_buffers = {};
-        BlockRealize block_realize(
-            /*iter_values=*/info.iter_bindings,
-            /*predicate=*/const_true(),
-            /*block=*/std::move(block));
-        bsearch_structure.body = Substitute(
-            GenerateLoops(block_realize, info.block_iters, info.iter_bindings, info.block_axes),
-            bsearch_var_maps[j]);
-        // Update var dom.
-        for (const IterVar& iter_var : info.block_iters) {
-          ctx_.AddVarDom(iter_var->var, arith::IntSet::FromRange(iter_var->dom));
+      if (!bsearch_var_maps[j].empty()) {
+        // avoid unnecessary nested blocks, especially when there are multiple sparse iterations in
+        // the program.
+        for (int i = static_cast<int>(bsearch_block_info.size()) - 1; i >= 0; --i) {
+          BlockInfo info = std::move(bsearch_block_info[i]);
+          Map<String, ObjectRef> annotations;
+          annotations.Set("sparse", Bool(true));
+          annotations.Set("preprocess", Bool(true));
+          Array<BufferRegion> reads, writes;
+          if (i == static_cast<int>(bsearch_block_info.size()) - 1) {
+            // innermost
+            reads = {bsearch_structure.read};
+            writes = {bsearch_structure.write};
+          } else {
+            ctx_.CollectRegion(true);  // update is_collecting_regions flag to true;
+            VisitStmt(bsearch_structure.body);
+            // Update read/writes regions.
+            writes = ctx_.CollectWriteRegions();
+            reads = ctx_.CollectReadRegions();
+            ctx_.ClearReadWriteBufferRegions();
+            ctx_.CollectRegion(false);  // update is_collecting_regions flag to false
+          }
+          Block block(/*iter_vars=*/info.block_iters,
+                      /*reads=*/reads,
+                      /*writes=*/writes,
+                      /*name_hint=*/bsearch_structure.name + "_" + std::to_string(i),
+                      /*body=*/bsearch_structure.body,
+                      /*init=*/{},
+                      /*alloc_buffers=*/bsearch_structure.alloc_buffers,
+                      /*match_buffers=*/{},
+                      /*buf_doms*/ {},
+                      /*annotations=*/annotations);
+          bsearch_structure.alloc_buffers = {};
+          BlockRealize block_realize(
+              /*iter_values=*/info.iter_bindings,
+              /*predicate=*/const_true(),
+              /*block=*/std::move(block));
+          bsearch_structure.body = Substitute(
+              GenerateLoops(block_realize, info.block_iters, info.iter_bindings, info.block_axes),
+              bsearch_var_maps[j]);
+          // Update var dom.
+          for (const IterVar& iter_var : info.block_iters) {
+            ctx_.AddVarDom(iter_var->var, arith::IntSet::FromRange(iter_var->dom));
+          }
         }
       }
     }
@@ -930,7 +934,8 @@ class IterTransformer : public StmtExprMutator {
     String name = "binary_search_block_" + std::to_string(bsearch_blk_counter);
     bsearch_blk_counter++;
     root_alloc_buffers.push_back(mid);
-    alloc_buf_doms.push_back(BufferDomain(mid, Range::FromMinExtent(Integer(0), buf->shape.back())));
+    alloc_buf_doms.push_back(
+        BufferDomain(mid, Range::FromMinExtent(Integer(0), buf->shape.back())));
     Array<Range> read_regions, write_regions;
     for (const PrimExpr& index : prefix_indices) {
       read_regions.push_back(Range::FromMinExtent(index, Integer(1)));
@@ -1089,7 +1094,8 @@ PrimFunc LowerSparseIter(PrimFunc f) {
     // Step 1. Update the PrimFunc's buffer map.
     Map<Axis, Buffer> axis_indptr_map, axis_indices_map;
     Array<BufferDomain> buf_doms;
-    std::tie(axis_indptr_map, axis_indices_map, fptr->buffer_map, fptr->sp_axes, buf_doms) = UpdateMetadata(f);
+    std::tie(axis_indptr_map, axis_indices_map, fptr->buffer_map, fptr->sp_axes, buf_doms) =
+        UpdateMetadata(f);
     // Step 2. Lower iterations.
     IterTransformer lower_sparse(axis_indptr_map, axis_indices_map, fptr->sp_axes);
     Stmt body = lower_sparse(std::move(fptr->body));
@@ -1103,7 +1109,8 @@ PrimFunc LowerSparseIter(PrimFunc f) {
       body = SeqStmt(seq);
     }
     buf_doms = Concat(buf_doms, lower_sparse.alloc_buf_doms);
-    Block root_block({}, {}, {}, "root", body, NullOpt, lower_sparse.root_alloc_buffers, {}, buf_doms);
+    Block root_block({}, {}, {}, "root", body, NullOpt, lower_sparse.root_alloc_buffers, {},
+                     buf_doms);
     fptr->body = BlockRealize({}, const_true(), std::move(root_block));
     // Step 4. Lower sparse tir level.
     Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;
