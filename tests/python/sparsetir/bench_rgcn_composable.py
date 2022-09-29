@@ -84,6 +84,7 @@ def test_rgcn_composable_format(
     feat: th.Tensor,
     weight: th.Tensor,
     ground_truth: th.Tensor,
+    split_factor_f: int,
     buckets: List[int] = [1, 2, 4, 8],
 ):
     # preprocess data
@@ -118,7 +119,7 @@ def test_rgcn_composable_format(
                 csf_to_ell3d_inv_idx_map
             )
         )
-    mod = tvm.IRModule.from_expr(rgcn_hetero_forward)
+    mod = tvm.IRModule.from_expr(rgcn_hetero_forward.with_attr("horizontal_fuse", True))
     mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
     mod = tvm.tir.transform.RemovePreprocess()(mod)
 
@@ -129,16 +130,23 @@ def test_rgcn_composable_format(
         sch.sparse_reorder(sp_iteration, [r, io, ii, j, fo, fi])
         sch.sparse_fuse(sp_iteration, [r, io])
     mod = lower_sparse_iter(sch.mod) 
-    print(mod["main"].script())
+    mod = tvm.tir.transform.RemovePreprocess()(mod)
 
-    # sch = tir.Schedule(mod["main"])
-    # for bucket_id, bucket_size in enumerate(buckets):
-    #     blk_outer = sch.get_block("rgcn-hetero-forward_{}0".format(bucket_id))
-    #     blk_inner = sch.get_block("rgcn-hetero-forward_{}1".format(bucket_id))
-    #     i, j, fo, fi = sch.get_loops(blk_inner)
-    #     sch.split(i, [buckets[-1] // bucket_size, None])
+    sch = tir.Schedule(mod["main"])
+    for bucket_id, bucket_size in enumerate(buckets):
+        blk = sch.get_block("rgcn-hetero-forward_{}0".format(bucket_id))
+        io, ii, j, fo, fi = sch.get_loops(blk)
+        read_W = sch.cache_read(blk, 2, "local")
+        write_Y = sch.cache_write(blk, 0, "local")
+        sch.annotate(write_Y, "atomic", True)
+        print(sch.mod["main"].script())
+        assert False
+        # foo, foi = sch.split(fo, [split_factor_f, None])
+        # sch.bind(fi, "threadIdx.x")
+        # sch.bind(foi, "threadIdx.y")
+        # sch.bind(io, "blockIdx.x")
         
-    # print(sch.mod["main"].script())
+    print(sch.mod["main"].script())
     
  
 
@@ -154,4 +162,4 @@ if __name__ == "__main__":
     weight = th.rand(r, feat_size, feat_size).to(0)
     # homograph
     ground_truth_y = get_ground_truth(g, type_pointers, feat, weight)
-    test_rgcn_composable_format(g, feat_size, feat, weight, ground_truth_y)
+    test_rgcn_composable_format(g, feat_size, feat, weight, ground_truth_y, 2)
