@@ -78,11 +78,12 @@ Array<Axis> CollectAncestors(Axis axis, int max_depth = -1) {
 /*!
  * \brief Add indptr and indices buffer-matches to PrimFunc's buffer map.
  */
-std::tuple<Map<Axis, Buffer>, Map<Axis, Buffer>, Map<Var, Buffer>, Array<Axis>, Array<BufferDomain>>
+std::tuple<Map<Axis, SparseBuffer>, Map<Axis, SparseBuffer>, Map<Var, Buffer>, Array<Axis>,
+           Array<BufferDomain>>
 UpdateMetadata(PrimFunc f) {
   Map<Var, Buffer> buffer_map = f->buffer_map;
-  Map<Axis, Buffer> axis_indptr_map;
-  Map<Axis, Buffer> axis_indices_map;
+  Map<Axis, SparseBuffer> axis_indptr_map;
+  Map<Axis, SparseBuffer> axis_indices_map;
   std::unordered_map<const AxisNode*, Axis> to_dense_map;
   Array<Axis> new_sp_axes;
   Array<BufferDomain> buf_doms;
@@ -328,8 +329,8 @@ class LowerSparseIterContext {
  */
 class IterTransformer : public StmtExprMutator {
  public:
-  explicit IterTransformer(Map<Axis, Buffer> axis_indptr_map, Map<Axis, Buffer> axis_indices_map,
-                           const Array<Axis>& sp_axes)
+  explicit IterTransformer(Map<Axis, SparseBuffer> axis_indptr_map,
+                           Map<Axis, SparseBuffer> axis_indices_map, const Array<Axis>& sp_axes)
       : axis_indptr_map_(std::move(axis_indptr_map)),
         axis_indices_map_(std::move(axis_indices_map)),
         bsearch_blk_counter(0) {
@@ -398,7 +399,7 @@ class IterTransformer : public StmtExprMutator {
       const Axis& axis = block_axes[i];
       const Range& dom = iter_var->dom;
       PrimExpr extent = dom->extent;
-      Optional<Buffer> maybe_indptr_buf;
+      Optional<SparseBuffer> maybe_indptr_buf;
       bool is_attached_axis = false;
       if (const AttachedAxisNode* attached_axis = axis.as<AttachedAxisNode>()) {
         maybe_indptr_buf = axis_indptr_map_.Get(attached_axis->base);
@@ -408,7 +409,7 @@ class IterTransformer : public StmtExprMutator {
       }
       if (axis->IsVariable()) {
         ICHECK(maybe_indptr_buf.defined());
-        Buffer indptr_buf = maybe_indptr_buf.value();
+        SparseBuffer indptr_buf = maybe_indptr_buf.value();
         Array<PrimExpr> indices;
         Array<Axis> ancestors =
             is_attached_axis ? CollectAncestors(axis, 1) : CollectAncestors(axis);
@@ -749,9 +750,9 @@ class IterTransformer : public StmtExprMutator {
           PrimExpr offset = ctx_.GetIterVarFromAxis(fused_axis->group.back()).value()->var;
           for (int i = fused_axis->group.size() - 1; i > fused_axis->index; i--) {
             Axis original_axis = GetAxisBeforeFuse(fused_axis->group[i]);
-            Optional<Buffer> maybe_indptr_buf = axis_indptr_map_.Get(original_axis);
+            Optional<SparseBuffer> maybe_indptr_buf = axis_indptr_map_.Get(original_axis);
             ICHECK(maybe_indptr_buf.defined()) << "Not a variable axis.";
-            Buffer indptr_buf = maybe_indptr_buf.value();
+            SparseBuffer indptr_buf = maybe_indptr_buf.value();
             Array<Axis> ancestors = CollectAncestors(GetParentAxis(original_axis));
             Array<PrimExpr> prefix_indices;
             for (const Axis& ancestor : ancestors) {
@@ -767,9 +768,9 @@ class IterTransformer : public StmtExprMutator {
             return offset;
           } else {
             // if sparse, get indices according to offset.
-            Optional<Buffer> maybe_indices_buf = axis_indices_map_.Get(original_axis);
+            Optional<SparseBuffer> maybe_indices_buf = axis_indices_map_.Get(original_axis);
             ICHECK(maybe_indices_buf.defined()) << "Not a sparse axis.";
-            Buffer indices_buf = maybe_indices_buf.value();
+            SparseBuffer indices_buf = maybe_indices_buf.value();
             Array<Axis> ancestors = CollectAncestors(original_axis);
             Array<PrimExpr> indices;
             for (const Axis& ancestor : ancestors) {
@@ -779,7 +780,7 @@ class IterTransformer : public StmtExprMutator {
             return BufferLoad(indices_buf, indices);
           }
         } else {
-          Optional<Buffer> maybe_indices_buf;
+          Optional<SparseBuffer> maybe_indices_buf;
           bool is_attached_axis = false;
           if (const AttachedAxisNode* attached_axis = axis.as<AttachedAxisNode>()) {
             maybe_indices_buf = axis_indices_map_.Get(attached_axis->base);
@@ -788,7 +789,7 @@ class IterTransformer : public StmtExprMutator {
             maybe_indices_buf = axis_indices_map_.Get(axis);
           }
           if (maybe_indices_buf.defined()) {
-            Buffer indices_buf = maybe_indices_buf.value();
+            SparseBuffer indices_buf = maybe_indices_buf.value();
             Array<Axis> ancestors =
                 is_attached_axis ? CollectAncestors(axis, 1) : CollectAncestors(axis);
             Array<PrimExpr> indices;
@@ -823,7 +824,7 @@ class IterTransformer : public StmtExprMutator {
    * \brief Perform binary search inside TIR.
    * \return The buffer (size=1) containing the binary search result.
    */
-  PrimExpr BinarySearch(Buffer buf, Array<PrimExpr> prefix_indices, PrimExpr lb, PrimExpr ub,
+  PrimExpr BinarySearch(SparseBuffer buf, Array<PrimExpr> prefix_indices, PrimExpr lb, PrimExpr ub,
                         PrimExpr val, bool left, bool minus_one = false) {
     /* Algorithm:
      * - when left = true
@@ -843,6 +844,8 @@ class IterTransformer : public StmtExprMutator {
      */
     ICHECK(buf->shape.size() == prefix_indices.size() + 1)
         << "The dimensionality of buffer shoule equal the length of prefix indices plus 1.";
+    CHECK(buf->axes.back()->sorted)
+        << "The last axes of " << buf << " must be sorted to perform binary search on.";
     // Check bsearch_map_ to avoid duplicate searches.
     Array<ObjectRef> args;
     args.push_back(buf);
@@ -1004,10 +1007,10 @@ class IterTransformer : public StmtExprMutator {
           new_index = index;
         } else {
           PrimExpr coordinate = VisitExpr(index);
-          Optional<Buffer> maybe_indices_buf = axis_indices_map_.Get(buf_axis);
+          Optional<SparseBuffer> maybe_indices_buf = axis_indices_map_.Get(buf_axis);
           if (maybe_indices_buf.defined()) {
             // it's sparse axis.
-            Buffer indices_buf = maybe_indices_buf.value();
+            SparseBuffer indices_buf = maybe_indices_buf.value();
             Array<Axis> ancestors = CollectAncestors(buf_axis);
             Array<PrimExpr> indices_path;
             for (const Axis& ancestor : ancestors) {
@@ -1017,7 +1020,7 @@ class IterTransformer : public StmtExprMutator {
             }
             PrimExpr extent;
             if (buf_axis->IsVariable()) {
-              Buffer indptr_buf = axis_indptr_map_.Get(buf_axis).value();
+              SparseBuffer indptr_buf = axis_indptr_map_.Get(buf_axis).value();
               PrimExpr lb = BufferLoad(indptr_buf, indices_path), last_index = indices_path.back();
               indices_path.Set(indices_path.size() - 1, last_index + 1);
               PrimExpr ub = BufferLoad(indptr_buf, indices_path);
@@ -1078,9 +1081,9 @@ class IterTransformer : public StmtExprMutator {
     }
   }
 
-  LowerSparseIterContext ctx_;          // auxilliary context information.
-  Map<Axis, Buffer> axis_indptr_map_;   // axis to indptr buffer map.
-  Map<Axis, Buffer> axis_indices_map_;  // axis to indices buffer map.
+  LowerSparseIterContext ctx_;                // auxilliary context information.
+  Map<Axis, SparseBuffer> axis_indptr_map_;   // axis to indptr buffer map.
+  Map<Axis, SparseBuffer> axis_indices_map_;  // axis to indices buffer map.
   std::unordered_map<const VarNode*, arith::IntSet> base_dom_map_;  // The base dom map.
   std::unordered_map<ObjectRef, PrimExpr, StructuralHash, StructuralEqual>
       bsearch_map_;         // The map storing existing binary search keys and values.
@@ -1092,7 +1095,7 @@ PrimFunc LowerSparseIter(PrimFunc f) {
   if (!IsFromLegacyTESchedule(f) && SparseTIRLevel(f) == 2) {
     PrimFuncNode* fptr = f.CopyOnWrite();
     // Step 1. Update the PrimFunc's buffer map.
-    Map<Axis, Buffer> axis_indptr_map, axis_indices_map;
+    Map<Axis, SparseBuffer> axis_indptr_map, axis_indices_map;
     Array<BufferDomain> buf_doms;
     std::tie(axis_indptr_map, axis_indices_map, fptr->buffer_map, fptr->sp_axes, buf_doms) =
         UpdateMetadata(f);
