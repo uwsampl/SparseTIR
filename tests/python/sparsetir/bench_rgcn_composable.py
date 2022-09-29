@@ -70,12 +70,12 @@ def get_ground_truth(
     return y_dgl_lowmem
 
 
-def csf_to_ell3d_inv_idx_map(r, i, j):
-    return r, i, j
+def csf_to_ell3d_inv_idx_map(r, io, ii, j):
+    return r, ii, j
 
 
 def csf_to_ell3d_idx_map(r, i, j):
-    return r, i, j
+    return r, 0, i, j
 
 
 def test_rgcn_composable_format(
@@ -84,6 +84,7 @@ def test_rgcn_composable_format(
     feat: th.Tensor,
     weight: th.Tensor,
     ground_truth: th.Tensor,
+    buckets: List[int] = [1, 2, 4, 8],
 ):
     # preprocess data
     for etype in g.canonical_etypes:
@@ -99,28 +100,46 @@ def test_rgcn_composable_format(
         for end in range(0, len(unique_nodes)):
             pass
 
-    # d0, d1, d2, nnz_1, nnz_2 = ell3d.params[-5:]
-    nnz_cols_2 = ell3d.params[-1]
+    nnz_rows, nnz_cols = ell3d.params[-2:]
     rewrites = []
-    for bucket_id, bucket_size in enumerate([1, 2, 4, 8]):
+    for bucket_id, bucket_size in enumerate(buckets):
         rewrites.append(
             FormatRewriteRule(
                 str(bucket_id),
                 ell3d.specialize({
-                    nnz_cols_2: bucket_size,
+                    nnz_rows: buckets[-1] // bucket_size,
+                    nnz_cols: bucket_size,
                 }),
                 ["A"],
                 ["R", "I", "J"],
-                ["R", "I", "J"],
-                {"R": ["R"], "I": ["I"], "J": ["J"]},
+                ["R", "IO", "II", "J"],
+                {"R": ["R"], "I": ["IO", "II"], "J": ["J"]},
                 csf_to_ell3d_idx_map,
                 csf_to_ell3d_inv_idx_map
             )
         )
-    print(rewrites)
     mod = tvm.IRModule.from_expr(rgcn_hetero_forward)
     mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
+    mod = tvm.tir.transform.RemovePreprocess()(mod)
+
+    sch = tir.Schedule(mod["main"])
+    for bucket_id, _ in enumerate(buckets):
+        sp_iteration = sch.get_sparse_iteration("rgcn-hetero-forward_{}".format(bucket_id))
+        fo, r, io, ii, j, fi = sch.get_sp_iters(sp_iteration)
+        sch.sparse_reorder(sp_iteration, [r, io, ii, j, fo, fi])
+        sch.sparse_fuse(sp_iteration, [r, io])
+    mod = lower_sparse_iter(sch.mod) 
     print(mod["main"].script())
+
+    # sch = tir.Schedule(mod["main"])
+    # for bucket_id, bucket_size in enumerate(buckets):
+    #     blk_outer = sch.get_block("rgcn-hetero-forward_{}0".format(bucket_id))
+    #     blk_inner = sch.get_block("rgcn-hetero-forward_{}1".format(bucket_id))
+    #     i, j, fo, fi = sch.get_loops(blk_inner)
+    #     sch.split(i, [buckets[-1] // bucket_size, None])
+        
+    # print(sch.mod["main"].script())
+    
  
 
 
