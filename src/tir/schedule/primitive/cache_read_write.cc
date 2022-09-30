@@ -79,7 +79,18 @@ struct CacheStageInfo {
   Map<String, ObjectRef> annotations;
 };
 
-/*! \brief Return the buffer region realted with the buffer */
+struct ReverseCacheTouchedInfo {
+  /* Whether read or write. */
+  bool read;
+  /* Touched loop variable related information. */
+  Array<Var> loop_vars;
+  Array<Range> loop_ranges;
+  /* Touched block variable related information. */
+  Array<IterVar> block_vars;
+  Array<PrimExpr> iter_values;
+};
+
+/*! \brief Return the buffer region related with the buffer */
 Optional<BufferRegion> GetBufferRegionFromBuffer(const Array<BufferRegion>& buffer_regions,
                                                  const Buffer& buffer) {
   Optional<BufferRegion> res = NullOpt;
@@ -90,6 +101,99 @@ Optional<BufferRegion> GetBufferRegionFromBuffer(const Array<BufferRegion>& buff
     }
   }
   return res;
+}
+
+/*!
+ * \brief Create a loop nest that represents reverse cache copy (reverse_read / reverse_write) from
+ * read buffer to write buffer. \param cache_region The cached copy region. \param info The cache
+ * stage information, which will be updated in the function. \param storage_scope The storage scope
+ * of the cached buffer (only used in naming here) \returns A block indicating the body of the loop
+ * nesting.
+ */
+Block MakeReverseCacheStage(const BufferRegion& cache_region, ReverseCacheTouchedInfo* touched_info,
+                            CacheStageInfo* info, const String& storage_scope) {
+  /* Check whether cache region is a single point. */
+  bool single_point = true;
+  for (const Range& range : cache_region->region) {
+    const auto* ext_int = range->extent.as<IntImmNode>();
+    if (!ext_int || ext_int->value != 1) {
+      single_point = false;
+    }
+  }
+  CHECK(single_point) << "ReverseCacheStage is only valid when cache region is a single point.";
+  // loop variables
+  std::vector<Var> loop_vars;
+  // block variables
+  Array<IterVar> block_vars;
+  // bindings in block realize
+  std::vector<PrimExpr> iter_values;
+  // Create loop vars and block vars' binding_value
+  Map<Var, PrimExpr> var_map;
+  for (size_t i = 0; i < touched_info->loop_vars.size(); ++i) {
+    Var original_var = touched_info->loop_vars[i];
+    Var loop_var("ax" + std::to_string(i), original_var.dtype());
+    var_map.Set(original_var, loop_var);
+    loop_vars.push_back(loop_var);
+  }
+  for (size_t i = 0; i < touched_info->block_vars.size(); ++i) {
+    IterVar original_block_var = touched_info->block_vars[i];
+    PrimExpr original_iter_value = touched_info->iter_values[i];
+    IterVar block_var = IterVar(
+        /*dom=*/original_block_var->dom,
+        /*var=*/Var("v" + std::to_string(i), original_block_var->var.dtype()),
+        /*IterVarType=*/kDataPar);
+    var_map.Set(original_block_var->var, block_var->var);
+    block_vars.push_back(block_var);
+    iter_values.push_back(Substitute(original_iter_value, var_map));
+  }
+
+  // block access region for read/write buffers
+  Region read_access_region, write_access_region;
+  Array<PrimExpr> read_access_indices, write_access_indices;
+  // Compute read/write region and read/write access indices.
+  for (const Range& range : cache_region->region) {
+    if (touched_info->read) {
+      read_access_indices.push_back(Substitute(range->min, var_map));
+    } else {
+      write_access_indices.push_back(Substitute(range->min, var_map));
+    }
+  }
+  for (const IterVar& block_var : block_vars) {
+    if (touched_info->read) {
+      write_access_indices.push_back(block_var->var);
+    } else {
+      read_access_indices.push_back(block_var->var);
+    }
+  }
+
+  // Create New Block
+  Block block(
+      /*iter_vars*/ std::move(block_vars),
+      /*reads=*/{},
+      /*writes=*/{},
+      /*name_hint*/ cache_region->buffer->name + "_" + storage_scope,
+      /*body=*/
+      BufferStore(info->write_buffer, BufferLoad(info->read_buffer, read_access_indices),
+                  write_access_indices),
+      /*init=*/NullOpt,
+      /*alloc_buffers=*/{},
+      /*match_buffers=*/{},
+      /*buf_doms=*/{},
+      /*annotations=*/info->annotations);
+  // Create Block Realize node
+  Stmt body = BlockRealize(/*values=*/iter_values,
+                           /*predicate=*/const_true(),
+                           /*block=*/block);
+  // Create surrounding loops
+  for (size_t i = loop_vars.size(); i >= 1; --i) {
+    body = For(/*loop_var=*/loop_vars[i - 1],
+               /*min=*/touched_info->loop_ranges[i]->min,
+               /*extent=*/touched_info->loop_ranges[i]->extent,
+               /*kind=*/ForKind::kSerial,
+               /*body=*/body);
+  }
+  info->cache_stage = std::move(body);
+  return block;
 }
 
 /*!
@@ -742,6 +846,15 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_bu
   return result_block_sref;
 }
 
+class VarCollector : public ExprVisitor {
+ public:
+  explicit VarCollector() {}
+  std::unordered_set<const VarNode*> touched;
+
+ private:
+  void VisitExpr_(const VarNode* op) final { touched.insert(op); }
+};
+
 StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int read_buffer_index,
                           const String& storage_scope) {
   /*!
@@ -799,12 +912,39 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
     }
   }
 
-  // Step 4. Making new cache stage block and rewrite readers.
-  Block cache_read_stage = MakeCacheStage(/*cache_region=*/cache_region, /*info=*/&info,
-                                          /*storage_scope=*/storage_scope);
+  // Step 4. Create CacheTouchedInfo
+  ReverseCacheTouchedInfo touched_info;
+
+  // Step 5. Update CacheTouchedInfo
+  touched_info.read = true;
+  VarCollector collector;
+  for (const Range& range : cache_region->region) {
+    collector(range->min);
+  }
+  BlockRealize realize = GetBlockRealize(self, block_sref);
+  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
+    IterVar block_var = block->iter_vars[i];
+    if (collector.touched.count(block_var->var.get())) {
+      touched_info.block_vars.push_back(block_var);
+      touched_info.iter_values.push_back(realize->iter_values[i]);
+      collector(touched_info.iter_values.back());
+    }
+  }
+  for (const StmtSRef loop_sref : GetLoops(block_sref)) {
+    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+    if (collector.touched.count(loop->loop_var.get())) {
+      touched_info.loop_vars.push_back(loop->loop_var);
+      touched_info.loop_ranges.push_back(Range::FromMinExtent(loop->min, loop->extent));
+    }
+  }
+
+  // Step 6. Making new cache stage block and rewrite readers.
+  Block cache_read_stage = MakeReverseCacheStage(/*cache_region=*/cache_region,
+                                                 /*touched_info*/ &touched_info, /*info=*/&info,
+                                                 /*storage_scope=*/storage_scope);
   Stmt new_scope = CacheReadRewriter::Rewrite(/*scope_sref=*/scope_sref, /*info=*/&info);
 
-  // Step 5. Replacing and updating flags.
+  // Step 7. Replacing and updating flags.
   self->Replace(scope_sref, new_scope, info.block_reuse);
   StmtSRef result_block_sref = self->stmt2ref.at(cache_read_stage.get());
   BlockInfo& block_info = self->block_info[result_block_sref];
@@ -815,7 +955,64 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
 }
 
 StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_buffer_index,
-                           const String& storage_scope) {}
+                           const String& storage_scope) {
+  /*!
+   * Check:
+   *   - The index is in the array of block reading region
+   *   - There is only one block who write the buffer in the scope
+   *
+   * Mutate:
+   *   - Allocate new cache buffer under the current scope.
+   *   - Find the lowest ancestor of the block and ANY ONE of the producer blocks.
+   *   - Copy the buffer with the consumed region.
+   */
+
+  // Step 0. Check the input storage scope.
+  CheckStorageScope(self, storage_scope);
+
+  // Step 1. Checking index, getting the target buffer and the parent scope
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  Buffer write_buffer =
+      GetNthAccessBuffer(self, GetRef<Block>(block), write_buffer_index, /*is_write=*/true);
+  StmtSRef scope_sref = GetScopeRoot(self, block_sref, /*require_stage_pipeline=*/true);
+
+  // Step 2. Creating CacheStageInfo
+  CacheStageInfo info;
+  info.read_buffer = WithScope(write_buffer, storage_scope);
+  // Create the corresponding buffer to be written, i.e. result of cache_write
+  info.write_buffer = write_buffer;
+  // Create the corresponding buffer allocation
+  info.alloc = info.read_buffer;
+  info.annotations = block->annotations;
+
+  // Step 3. Check the only writer block.
+  if (!IsHorizontalFuse(self)) {
+    ICHECK_EQ(block_sref.get(), GetOnlyWriteBlock(self, scope_sref, write_buffer).get());
+  }
+
+  // Step 4. Find the producing region and insert position
+  BufferRegion region = GetBufferRegionFromBuffer(block->writes, write_buffer).value();
+  StmtSRef parent_sref = GetRef<StmtSRef>(block_sref->parent);
+  // Detect insert position
+  CacheLocDetector::Detect(self, block_sref, scope_sref, &info);
+  BufferRegion cache_region =
+      RelaxBufferRegion(self, region, block_sref, parent_sref, info.loc_sref);
+
+  // Step 5. Making new cache stage block and rewrite readers.
+  Block cache_write_stage = MakeCacheStage(/*cache_region=*/cache_region, /*info=*/&info,
+                                           /*storage_scope=*/storage_scope);
+  Stmt new_scope = CacheWriteRewriter::Rewrite(/*scope_sref=*/scope_sref,
+                                               /*writer_block_sref=*/block_sref, /*info=*/&info);
+
+  // Step 6. Replacing and updating flags.
+  self->Replace(scope_sref, new_scope, info.block_reuse);
+  StmtSRef result_block_sref = self->stmt2ref.at(cache_write_stage.get());
+  BlockInfo& block_info = self->block_info[result_block_sref];
+  block_info.affine_binding = CalculateAffineFlag(self, result_block_sref);
+  block_info.region_cover = true;
+  block_info.scope->stage_pipeline = true;
+  return result_block_sref;
+}
 
 /******** Instruction Registration ********/
 
