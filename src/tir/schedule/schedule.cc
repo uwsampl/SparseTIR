@@ -179,6 +179,10 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead")
     .set_body_method<Schedule>(&ScheduleNode::CacheRead);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
     .set_body_method<Schedule>(&ScheduleNode::CacheWrite);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReverseCacheRead")
+    .set_body_method<Schedule>(&ScheduleNode::ReverseCacheRead);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReverseCacheWrite")
+    .set_body_method<Schedule>(&ScheduleNode::ReverseCacheWrite);
 /******** (FFI) Compute location ********/
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeAt")
     .set_body_method<Schedule>(&ScheduleNode::ComputeAt);
