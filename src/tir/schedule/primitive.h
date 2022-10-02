@@ -417,9 +417,10 @@ TVM_DLL void SetScope(ScheduleState self, const StmtSRef& block_sref, int buffer
  * \brief Convert the subtree rooted at a specific loop into a block.
  * \param self The state of the schedule
  * \param loop_sref The root of the subtree
+ * \param inner_init Whether to place init block inside inner block or not.
  * \return The new block
  */
-TVM_DLL StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref);
+TVM_DLL StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, bool inner_init = false);
 
 /*!
  * \brief Tensorize the computation enclosed by loop with the tensor intrinsic.

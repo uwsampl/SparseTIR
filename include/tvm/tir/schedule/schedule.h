@@ -549,9 +549,10 @@ class ScheduleNode : public runtime::Object {
   /*!
    * \brief Convert the subtree rooted at a specific loop into a block.
    * \param loop_rv the root of the subtree
+   * \param inner_init whether to place init block inside inner block or not.
    * \return the new block
    */
-  virtual BlockRV Blockize(const LoopRV& loop_rv) = 0;
+  virtual BlockRV Blockize(const LoopRV& loop_rv, bool inner_init = false) = 0;
   /*!
    * \brief Tensorize the computation enclosed by loop with the tensor intrin.
    * \param loop_rv The loop to be tensorized

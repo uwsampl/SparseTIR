@@ -288,7 +288,8 @@ class BlockizedBindingExtractor {
    * \param division The result of the subspace division.
    */
   void ExtractBindings(const Array<IterVar>& iter_vars,
-                       const Array<Array<arith::IterMark>>& division, arith::Analyzer* analyzer) {
+                       const Array<Array<arith::IterMark>>& division, arith::Analyzer* analyzer,
+                       bool inner_init = false) {
     ICHECK_EQ(iter_vars.size() + 1, division.size());
     for (size_t i = 0; i < iter_vars.size(); ++i) {
       const IterVar& iter_var = iter_vars[i];
@@ -306,16 +307,19 @@ class BlockizedBindingExtractor {
       // The iter in the original block will be substituted with base + iter_inner where
       // base == iter_outer * iter_inner_extent
 
-      if (is_one(division[i][1]->extent)) {  // IsOuter
+      if (is_one(division[i][1]->extent) && !inner_init) {  // IsOuter
         // extract this iter var to outer block directly
         outer_bindings.push_back(
             arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(outer_binding)));
         outer_iter_vars.push_back(iter_var);
       } else {
         // create iter var for the outer block
+        if (inner_init && iter_var->iter_type == kCommReduce) {
+          CHECK(is_one(division[i][0]->extent)) << "When inner_init is set to true, outer reduction var length must be equal to one";
+        }
         const IterVar outer_var(/*dom=*/Range::FromMinExtent(0, division[i][0]->extent),
                                 /*var=*/iter_var->var.copy_with_suffix("_o"),
-                                /*iter_type=*/iter_var->iter_type);
+                                /*iter_type=*/inner_init ? kDataPar : iter_var->iter_type);
         outer_bindings.push_back(
             arith::NormalizeIterMapToExpr(GetRef<arith::IterMapExpr>(outer_binding)));
         outer_iter_vars.push_back(outer_var);
@@ -425,10 +429,10 @@ BufferRegion RelaxBlockizedInnerIters(const BufferRegion& buffer_region,
 BlockRealize GenerateBlockizedOuterBlock(const BlockizedBindingExtractor& extractor,
                                          const Block& block, BlockRealize inner_block_realize,
                                          const std::vector<const ForNode*>& inner_loops,
-                                         PrimExpr predicate) {
+                                         PrimExpr predicate, bool inner_init = false) {
   // Step 1: Generate the init block if needed
   Optional<Stmt> new_init = NullOpt;
-  if (block->init.defined()) {
+  if (block->init.defined() && !inner_init) {
     new_init = GenerateBlockizedInit(block, inner_block_realize, inner_loops);
   }
 
@@ -463,7 +467,7 @@ BlockRealize GenerateBlockizedOuterBlock(const BlockizedBindingExtractor& extrac
                             /*init=*/std::move(new_init)));
 }
 
-StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
+StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, bool inner_init) {
   const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   arith::Analyzer analyzer;
   analyzer.Bind(self->buf_dom_map);
@@ -491,7 +495,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   // Step 4: Generate bindings for the outer block and the inner block based on the result of
   // the subspace division.
   BlockizedBindingExtractor extractor;
-  extractor.ExtractBindings(block->iter_vars, division, &analyzer);
+  extractor.ExtractBindings(block->iter_vars, division, &analyzer, inner_init);
   const PrimExpr& outer_pred = division.back()[0]->extent;
   const PrimExpr& inner_pred = division.back()[1]->extent;
 
@@ -515,7 +519,9 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   inner_block_realize->block = new_block;
   BlockNode* inner_block = inner_block_realize->block.CopyOnWrite();
   inner_block->iter_vars = extractor.inner_iter_vars;
-  inner_block->init = NullOpt;
+  if (!inner_init) {
+    inner_block->init = NullOpt;
+  }
   /* Add write regions to read regions if
    * 1. there are outer reduction iter vars.
    * 2. the init block is defined for current block.
@@ -535,7 +541,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref) {
   // Step 6: Generate the outer block.
   BlockRealize outer_realize =
       GenerateBlockizedOuterBlock(extractor, new_block, GetRef<BlockRealize>(inner_block_realize),
-                                  collector.inner_loops, outer_pred);
+                                  collector.inner_loops, outer_pred, inner_init);
   // Step 7: Do the actual replacement
   self->Replace(loop_sref, outer_realize, block_sref_reuse);
 
@@ -669,16 +675,17 @@ struct BlockizeTraits : public UnpackedInstTraits<BlockizeTraits> {
 
  private:
   static constexpr size_t kNumInputs = 1;
-  static constexpr size_t kNumAttrs = 0;
+  static constexpr size_t kNumAttrs = 1;
   static constexpr size_t kNumDecisions = 0;
 
-  static BlockRV UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv) {
-    return sch->Blockize(loop_rv);
+  static BlockRV UnpackedApplyToSchedule(Schedule sch, LoopRV loop_rv, Bool inner_init) {
+    return sch->Blockize(loop_rv, inner_init);
   }
 
-  static String UnpackedAsPython(Array<String> outputs, String loop_rv) {
+  static String UnpackedAsPython(Array<String> outputs, String loop_rv, Bool inner_init) {
     PythonAPICall py("blockize");
     py.Input("loop", loop_rv);
+    py.Input("inner_init", inner_init->value);
     py.SingleOutput(outputs);
     return py.Str();
   }
