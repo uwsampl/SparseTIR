@@ -393,13 +393,13 @@ void TracedScheduleNode::SetScope(const BlockRV& block_rv, int buffer_index,
 
 /******** Schedule: Blockize & Tensorize ********/
 
-BlockRV TracedScheduleNode::Blockize(const LoopRV& loop_rv) {
-  BlockRV new_block = ConcreteScheduleNode::Blockize(loop_rv);
+BlockRV TracedScheduleNode::Blockize(const LoopRV& loop_rv, bool inner_init) {
+  BlockRV new_block = ConcreteScheduleNode::Blockize(loop_rv, inner_init);
   static const InstructionKind& kind = InstructionKind::Get("Blockize");
   trace_->Append(/*inst=*/Instruction(
       /*kind=*/kind,
       /*inputs=*/{loop_rv},
-      /*attrs=*/{},
+      /*attrs=*/{Bool(inner_init)},
       /*outputs=*/{new_block}));
   return new_block;
 }

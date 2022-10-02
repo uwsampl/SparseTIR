@@ -1083,16 +1083,20 @@ class Schedule(Object):
         return _ffi_api.ScheduleCacheWrite(  # type: ignore # pylint: disable=no-member
             self, block, write_buffer_index, storage_scope
         )
-    
+
     @type_checked
-    def reverse_cache_read(self, block: BlockRV, read_buffer_index: int, storage_scope: str) -> BlockRV:
-        return _ffi_api.ScheduleReverseCacheRead( # type: ignore # pylint: disable=no-member
+    def reverse_cache_read(
+        self, block: BlockRV, read_buffer_index: int, storage_scope: str
+    ) -> BlockRV:
+        return _ffi_api.ScheduleReverseCacheRead(  # type: ignore # pylint: disable=no-member
             self, block, read_buffer_index, storage_scope
         )
 
     @type_checked
-    def reverse_cache_write(self, block: BlockRV, write_buffer_index: int, storage_scope: str) -> BlockRV:
-        return _ffi_api.ScheduleReverseCacheWrite( # type: ignore # pylint: disable=no-member
+    def reverse_cache_write(
+        self, block: BlockRV, write_buffer_index: int, storage_scope: str
+    ) -> BlockRV:
+        return _ffi_api.ScheduleReverseCacheWrite(  # type: ignore # pylint: disable=no-member
             self, block, write_buffer_index, storage_scope
         )
 
@@ -1801,13 +1805,15 @@ class Schedule(Object):
     ########## Schedule: Blockize & Tensorize ##########
 
     @type_checked
-    def blockize(self, loop: LoopRV) -> BlockRV:
+    def blockize(self, loop: LoopRV, inner_init: bool = False) -> BlockRV:
         """Convert the subtree rooted at a specific loop into a block.
 
         Parameters
         ----------
         loop : LoopRV
             The root of the subtree.
+        init_init : bool
+            Whether to place init block inside inner block. (only valid when outside block variables are data parallel.)
 
         Returns
         -------
@@ -1872,7 +1878,7 @@ class Schedule(Object):
         block are divisible by the subspace represented by the loops starting at the given loop.
         """
 
-        return _ffi_api.ScheduleBlockize(self, loop)  # type: ignore # pylint: disable=no-member
+        return _ffi_api.ScheduleBlockize(self, loop, inner_init)  # type: ignore # pylint: disable=no-member
 
     @type_checked
     def tensorize(self, block_or_loop: Union[BlockRV, LoopRV], tensor_intrin: str) -> None:
