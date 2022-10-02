@@ -136,17 +136,21 @@ def test_rgcn_composable_format(
     for bucket_id, bucket_size in enumerate(buckets):
         blk = sch.get_block("rgcn-hetero-forward_{}0".format(bucket_id))
         io, ii, j, fo, fi = sch.get_loops(blk)
-        read_W = sch.cache_read(blk, 2, "local")
-        write_Y = sch.cache_write(blk, 0, "local")
+        foo, foi = sch.split(fo, [split_factor_f, None])
+        sch.reorder(io, ii, foo, foi, j, fi)
+        blk_outer, blk_inner = sch.blockize(j, True), blk
+        read_W = sch.cache_read(blk_inner, 2, "local")
+        write_Y = sch.cache_write(blk_inner, 0, "local")
         sch.annotate(write_Y, "atomic", True)
-        print(sch.mod["main"].script())
-        assert False
-        # foo, foi = sch.split(fo, [split_factor_f, None])
-        # sch.bind(fi, "threadIdx.x")
-        # sch.bind(foi, "threadIdx.y")
-        # sch.bind(io, "blockIdx.x")
+        sch.bind(fi, "threadIdx.x")
+        sch.bind(sch.get_loops(read_W)[-1], "threadIdx.x")
+        sch.unroll(j)
+        sch.bind(foi, "threadIdx.y")
+        sch.bind(io, "blockIdx.x")
         
-    print(sch.mod["main"].script())
+    mod = lower_sparse_buffer(sch.mod)
+    # print(sch.mod["main"].script())
+    print(mod["main"].script())
     
  
 
