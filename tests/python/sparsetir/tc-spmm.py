@@ -24,9 +24,9 @@ def wmma_sync_desc(a_frag: T.handle, b_frag: T.handle, c_frag: T.handle) -> None
     )
 
     with T.block("root"):
-        for i, j, k in T.grid(16, 16, 16):
+        for i, k, j in T.grid(16, 16, 16):
             with T.block("update"):
-                vii, vjj, vkk = T.axis.remap("SSR", [i, j, k])
+                vii, vkk, vjj = T.axis.remap("SRS", [i, k, j])
                 T.block_attr({"sparse": True})
                 C_frag[vii, vjj] = C_frag[vii, vjj] + A_frag[vii, vkk] * B_frag[vkk, vjj]
 
@@ -116,7 +116,7 @@ def wmma_load_a_impl(a: T.handle, a_frag: T.handle) -> None:
 
 @T.prim_func
 def wmma_load_b_desc(b: T.handle, b_frag: T.handle) -> None:
-    B = T.match_buffer(b, (16, 16), "float16", align=128, offset_factor=16, scope="global")
+    B = T.match_buffer(b, (16, 16), "float16", align=128, offset_factor=16, scope="shared")
     B_frag = T.match_buffer(
         b_frag, (16, 16), "float16", align=128, offset_factor=16, scope="wmma.matrix_b"
     )
@@ -132,7 +132,7 @@ def wmma_load_b_impl(b: T.handle, b_frag: T.handle) -> None:
     s0 = T.var("int32")
     s1 = T.var("int32")
     B = T.match_buffer(
-        b, (16, 16), "float16", align=128, offset_factor=16, scope="global", strides=[s0, s1]
+        b, (16, 16), "float16", align=128, offset_factor=16, scope="shared", strides=[s0, s1]
     )
     B_frag = T.match_buffer(
         b_frag, (16, 16), "float16", align=128, offset_factor=16, scope="wmma.matrix_b"
@@ -290,30 +290,43 @@ def tcspmm(
     with T.iter([IO, JO, II, JI, F], "SRSRS", "tcspmm") as [io, jo, ii, ji, f]:
         with T.init():
             C[io, ii, f] = T.float16(0)
-        C[io, ii, f] = (
-            C[io, ii, f] + A[io, jo, ii, ji] * B[ji, f]
-        )
+        C[io, ii, f] = C[io, ii, f] + A[io, jo, ii, ji] * B[ji, f]
 
 
 def bench_tc_spmm():
     MB, NB, NNZB, F, B = tcspmm.params[-5:]
-    mod = tvm.IRModule.from_expr(tcspmm.specialize({
-        MB: 128, NB: 128, NNZB: 1024, F: 64, B: 16
-    }))
+    mod = tvm.IRModule.from_expr(tcspmm.specialize({MB: 128, NB: 128, NNZB: 1024, F: 64, B: 16}))
     mod = lower_sparse_iter(mod)
     sch = tir.Schedule(mod)
     blk_outer = sch.get_block("tcspmm0")
     blk_inner = sch.get_block("tcspmm1")
-    i, = sch.get_loops(blk_outer)
+    (i,) = sch.get_loops(blk_outer)
+    sch.bind(i, "blockIdx.x")
     jo, ii, ji, f = sch.get_loops(blk_inner)
     fo, fi = sch.split(f, [None, 16])
-    sch.reorder(fo, ii, ji, fi)
-    new_blk = sch.blockize(ii)
-    A_local = sch.cache_read(blk_inner, 1, "wmma.matrix_a")
-    B_shared = sch.cache_read(blk_inner, 2, "shared")
-    print(sch.mod["main"].script())
-    
+    sch.reorder(fo, jo, ii, ji, fi)
+    blk_inner_outer, blk_inner_inner = sch.blockize(ii), blk_inner
+    A_wmma = sch.cache_read(blk_inner_inner, 1, "wmma.matrix_a")
+    B_shared = sch.reverse_cache_read(blk_inner_inner, 2, "shared")
+    B_wmma = sch.reverse_cache_read(blk_inner_inner, 2, "wmma.matrix_b")
+    C_wmma = sch.cache_write(blk_inner_outer, 0, "wmma.accumulator")
+    sch.reverse_compute_at(C_wmma, fo)
+    init_blk = sch.decompose_reduction(blk_inner_outer, jo)
+    sch.hide_buffer_access(blk_inner_inner, "read", [3])
+    sch.tensorize(sch.get_loops(A_wmma)[-2], "wmma_load_a")
+    sch.tensorize(sch.get_loops(C_wmma)[-2], "wmma_store")
+    sch.tensorize(sch.get_loops(B_wmma)[-2], "wmma_load_b")
+    sch.tensorize(sch.get_loops(blk_inner_inner)[-3], "wmma_sync")
+    ax0, ax1 = sch.get_loops(B_shared)
+    ax = sch.fuse(ax0, ax1)
+    ax0, ax1 = sch.split(ax, [32, None]) 
+    sch.bind(ax0, "threadIdx.x")
+    sch.vectorize(ax1)
+    sch.tensorize(sch.get_loops(sch.get_block("tcspmm1_init"))[-2], "wmma_fill")
 
+    mod = lower_sparse_buffer(sch.mod)
+    f = tvm.build(mod, target="cuda")
+    print(f.imported_modules[0].get_source())
 
 
 if __name__ == "__main__":
