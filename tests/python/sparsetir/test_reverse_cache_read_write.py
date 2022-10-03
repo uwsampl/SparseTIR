@@ -69,8 +69,8 @@ def test_tc_spmm_cache_read():
     fo, fi = sch.split(f, [None, 16])
     sch.reorder(fo, ii, ji, fi)
     new_blk = sch.blockize(ii)
-    print(sch.mod["main"].script())
-    B_local = sch.reverse_cache_read(blk_inner, 2, "shared")
+    B_shared = sch.reverse_cache_read(blk_inner, 2, "shared")
+    B_warp = sch.reverse_cache_read(blk_inner, 2, "wmma.matrix_b")
     print(sch.mod["main"].script())
 
 
