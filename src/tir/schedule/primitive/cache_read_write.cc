@@ -511,9 +511,9 @@ class ReverseCacheReadRewriter : public StmtExprMutator {
   explicit ReverseCacheReadRewriter(const StmtSRef& scope_sref, CacheStageInfo* info,
                                     ReverseCacheTouchedInfo* touched_info)
       : scope_sref_(scope_sref), info_(info) {
-      for (const IterVar& iter_var : touched_info->block_vars) {
-        new_indices_.push_back(iter_var->var);
-      }
+    for (const IterVar& iter_var : touched_info->block_vars) {
+      new_indices_.push_back(iter_var->var);
+    }
   }
 
   Stmt VisitStmt_(const ForNode* loop) final {
@@ -552,10 +552,10 @@ class ReverseCacheReadRewriter : public StmtExprMutator {
     } else {
       // Otherwise, update read regions and match_buffers
       Array<BufferRegion> reads;
-      for (const BufferRegion& buf_region: block->reads) {
+      for (const BufferRegion& buf_region : block->reads) {
         if (buf_region->buffer.same_as(info_->read_buffer)) {
           Array<Range> region;
-          for (const PrimExpr index: new_indices_) {
+          for (const PrimExpr index : new_indices_) {
             region.push_back(Range::FromMinExtent(index, Integer(1)));
           }
           reads.push_back(BufferRegion(info_->write_buffer, region));
@@ -994,9 +994,23 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
   info.annotations = block->annotations;
 
   // Step 3. Update cache stage info.
-  BufferRegion cache_region = GetBufferRegionFromBuffer(block->reads, read_buffer).value();
-  info.loc_sref = scope_sref;
-  info.loc_pos = 0;
+  Optional<BufferRegion> maybe_region = GetBufferRegionFromBuffer(block->reads, read_buffer);
+  ICHECK(maybe_region.defined()) << read_buffer
+                                 << " should appear in the block's read region: " << block->reads;
+  BufferRegion cache_region = maybe_region.value();
+  if (Optional<StmtSRef> _write_block_sref = GetOnlyWriteBlock(self, scope_sref, read_buffer)) {
+    // Case 1. The buffer is written inside the block.
+    StmtSRef write_block_sref = _write_block_sref.value();
+    const BlockNode* write_block = TVM_SREF_TO_BLOCK(write_block, write_block_sref);
+    // Find the producing region
+    StmtSRef parent_sref = GetRef<StmtSRef>(write_block_sref->parent);
+    // Detect insert position
+    CacheLocDetector::Detect(self, write_block_sref, scope_sref, &info);
+  } else {
+    // Case 2. The buffer is the input block for the scope.
+    info.loc_sref = scope_sref;
+    info.loc_pos = 0;
+  }
 
   // Step 4. Create CacheTouchedInfo
   ReverseCacheTouchedInfo touched_info;
