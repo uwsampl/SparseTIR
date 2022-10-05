@@ -218,7 +218,7 @@ def test_column_part_hyb():
     indptr_nd = tvm.nd.array(indptr.numpy(), device=tvm.cpu())
     indices_nd = tvm.nd.array(indices.numpy(), device=tvm.cpu())
     # built-in c++ funcion
-    row_indices, col_indices = column_part_hyb(
+    row_indices, col_indices, mask = column_part_hyb(
         g.num_dst_nodes(), g.num_src_nodes(), indptr_nd, indices_nd, column_parts, buckets
     )
     # compute indices with scipy
@@ -254,30 +254,29 @@ def condense_py(indptr, indices, block_size):
 
 def test_condense():
     g = dgl.rand_graph(1000, 10000).int()
-    buckets = [1, 2, 4, 8]
+    t = 4 
     indptr, indices, _ = g.adj_sparse("csc")
     indptr = indptr.numpy()
     indices = indices.numpy()
     indptr_nd = tvm.nd.array(indptr, device=tvm.cpu())
     indices_nd = tvm.nd.array(indices, device=tvm.cpu())
-    for bucket_size in buckets:
-        # built-in c++ function
-        indptr_ret, indices_ret = condense(indptr_nd, indices_nd, bucket_size)
-        # Python version of function
-        indptr_py, indices_py = condense_py(indptr, indices, bucket_size)
-        assert np.array_equal(
-            indptr_ret.numpy(),
-            indptr_py,
-        )
-        assert np.array_equal(
-            indices_ret.numpy(),
-            indices_py,
-        )
+    # built-in c++ function
+    indptr_ret, indices_ret, mask = condense(indptr_nd, indices_nd, t, 1)
+    # Python version of function
+    indptr_py, indices_py = condense_py(indptr, indices, t)
+    assert np.array_equal(
+        indptr_ret.numpy().flatten(),
+        indptr_py,
+    )
+    assert np.array_equal(
+        indices_ret.numpy().flatten(),
+        indices_py,
+    )
 
 
 if __name__ == "__main__":
-    # test_csrmm_bsr_rewrite()
-    # test_csrmm_ell_rewrite()
-    # test_csrmm_padding_rewrite()
+    test_csrmm_bsr_rewrite()
+    test_csrmm_ell_rewrite()
+    test_csrmm_padding_rewrite()
     test_column_part_hyb()
     test_condense()

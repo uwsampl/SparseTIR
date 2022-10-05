@@ -85,12 +85,54 @@ class FormatRewriteRule(Object):
 
 
 def column_part_hyb(num_rows, num_cols, indptr_nd, indices_nd, num_col_parts, buckets):
+    """Partition input CSR matrix by columns and collect rows into buckets according to non zero elements per row.
+
+    Parameters
+    ----------
+    num_rows : int
+        Number of rows in the CSR matrix.
+    num_cols : int
+        Number of columns in the CSR matrix.
+    indptr : NDArray
+        The indptr array of CSR matrix.
+    indices : NDArray
+        The indices array of CSR matrix.
+    num_col_parts : int
+        Number of column partitions.
+    buckets : List
+        The bucket sizes array.
+
+    Returns
+    -------
+    Tuple[List[List[NDArray]]]
+        The pair of (row_indices, col_indices, mask).
+        row_indices is stored as a list of lists with shape (num_col_parts, len(buckets)), where the innermost element is an NDArray.
+        col_indices and mask are stored in the same way.
+    """
     return _ffi_api.ColumnPartHyb(
         num_rows, num_cols, indptr_nd, indices_nd, num_col_parts, buckets  # type: ignore
     )
 
 
-def condense(indptr_nd, indices_nd, bucket_size):
-    return _ffi_api.ConDense(
-        indptr_nd, indices_nd, bucket_size  # type: ignore
-    )
+def condense(indptr_nd, indices_nd, t, g, threshold=1):
+    """Condense sparse matrix in CSR format to (t x 1) tiles, and group g tiles together.
+
+    Parameters
+    ----------
+    indptr : int
+        The indptr array of CSR format.
+    indices :int
+        The indices array of CSR format.
+    t : int
+        The tile size.
+    g : int
+        The group size.
+    threshold : int
+        The threshold for "How many nonzeros in a tile should be accepted".
+
+    Returns
+    -------
+    Tuple[NDArray]
+        The pair of (group_indptr, tile_indices, mask).
+    """
+    return _ffi_api.ConDense(indptr_nd, indices_nd, t, g, threshold)  # type: ignore

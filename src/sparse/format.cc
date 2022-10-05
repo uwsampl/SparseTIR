@@ -19,7 +19,7 @@
 
 /*!
  * \file format.cc
- * \brief format conversion routine.
+ * \brief Sparse format conversion routines.
  */
 
 #include <tvm/ir/expr.h>
@@ -33,11 +33,14 @@ using runtime::NDArray;
 
 /*!
  * \brief Partition input CSR matrix by columns and collect rows into buckets according to non zero
- * elements per row. \param num_rows Number of rows in the CSR matrix. \param num_cols Number of
- * columns in the CSR matrix. \param indptr The indptr array of CSR matrix. \param indices The
- * indices array of CSR matrix. \param num_col_parts Number of column partitions. \param buckets The
- * bucket sizes array. \return {row_indices, col_indices, mask}, each one of them is a
- * [num_col_parts, num_buckets] array.
+ * elements per row.
+ * \param num_rows Number of rows in the CSR matrix.
+ * \param num_cols Number of columns in the CSR matrix.
+ * \param indptr The indptr array of CSR matrix.
+ * \param indices The indices array of CSR matrix.
+ * \param num_col_parts Number of column partitions.
+ * \param buckets The bucket sizes array.
+ * \return {row_indices, col_indices, mask}, each one of them is a [num_col_parts, num_buckets] array.
  */
 Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray indptr,
                                            NDArray indices, int num_col_parts,
@@ -168,7 +171,7 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
  * \param threshold The threshold for "How many nonzeros in a tile should be accepted".
  * \return {group_indptr, tile_indices, mask}
  */
-Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g, int threshold = 1) {
+Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g, int threshold) {
   // Check inputs
   CHECK_EQ(indptr->dtype.bits, 32) << "Only support int32 index data type, got "
                                    << int(indptr->dtype.bits) << " bits for indptr.";
@@ -187,7 +190,7 @@ Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g, int thres
   group_indptr.reserve(num_tiles + 1);
   std::vector<int> tile_indices;
   std::vector<int> mask;
-  group_indptr[0] = 0;
+  group_indptr.push_back(0);
   std::multimap<int, int> col_row_map;
   // Condense matrix
   for (int row_tile_id = 0; row_tile_id < num_tiles; ++row_tile_id) {
@@ -215,8 +218,8 @@ Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g, int thres
       tile_indices[(nnz_groups - 1) * g + (counter - 1)] = col;
       auto range = col_row_map.equal_range(unique_col_itr->first);
       for (auto equal_itr = range.first; equal_itr != range.second; ++equal_itr) {
-        int row = equal_itr->second;
-        mask[(nnz_groups - 1) * t * g + row * g + (counter - 1)] = 1;
+        int row_local = equal_itr->second - tile_begin_row;
+        mask[(nnz_groups - 1) * t * g + row_local * g + (counter - 1)] = 1;
       }
       // reset counter
       if (counter == g) {
