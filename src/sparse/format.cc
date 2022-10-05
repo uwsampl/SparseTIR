@@ -31,6 +31,14 @@ namespace tvm {
 
 using runtime::NDArray;
 
+/*!
+ * \brief Partition input CSR matrix by columns and collect rows into buckets according to non zero
+ * elements per row. \param num_rows Number of rows in the CSR matrix. \param num_cols Number of
+ * columns in the CSR matrix. \param indptr The indptr array of CSR matrix. \param indices The
+ * indices array of CSR matrix. \param num_col_parts Number of column partitions. \param buckets The
+ * bucket sizes array. \return {row_indices, col_indices, mask}, each one of them is a
+ * [num_col_parts, num_buckets] array.
+ */
 Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray indptr,
                                            NDArray indices, int num_col_parts,
                                            Array<Integer> buckets) {
@@ -151,7 +159,16 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
   return {row_indices_nd, col_indices_nd, mask_nd};
 }
 
-Array<NDArray> ConDense(NDArray indptr, NDArray indices, int block_size) {
+/*!
+ * \brief Condense sparse matrix in CSR format to (t x 1) tiles, and group g tiles together.
+ * \param indptr The indptr array of CSR format.
+ * \param indices The indices array of CSR format.
+ * \param t The tile size.
+ * \param g The group size.
+ * \param threshold The threshold for "How many nonzeros in a tile should be accepted".
+ * \return {group_indptr, tile_indices, mask}
+ */
+Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g, int threshold = 1) {
   // Check inputs
   CHECK_EQ(indptr->dtype.bits, 32) << "Only support int32 index data type, got "
                                    << int(indptr->dtype.bits) << " bits for indptr.";
@@ -164,35 +181,63 @@ Array<NDArray> ConDense(NDArray indptr, NDArray indices, int block_size) {
   int* indices_data = static_cast<int*>(indices->data);
   // Set up return values
   int n = indptr->shape[0] - 1;
-  int num_blocks = (n + block_size - 1) / block_size;
-  std::vector<int> ret_indptr(num_blocks + 1);
-  std::vector<int> ret_indices;
-  ret_indptr[0] = 0;
+  int num_tiles = (n + t - 1) / t;
+  int nnz_groups = 0;
+  std::vector<int> group_indptr;
+  group_indptr.reserve(num_tiles + 1);
+  std::vector<int> tile_indices;
+  std::vector<int> mask;
+  group_indptr[0] = 0;
+  std::multimap<int, int> col_row_map;
   // Condense matrix
-  for (int block_id = 0; block_id < num_blocks; block_id++) {
-    int curr_block = block_id * block_size;
-    int next_block = curr_block + block_size;
-    int lo = indptr_data[curr_block];
-    int hi = next_block > n ? indptr_data[n] : indptr_data[next_block];
-    // Find unique indices from lo to hi
-    std::vector<int> unique(hi - lo);
-    for (int i = 0; i < hi - lo; i++) {
-      unique[i] = indices_data[lo + i];
+  for (int row_tile_id = 0; row_tile_id < num_tiles; ++row_tile_id) {
+    int tile_begin_row = row_tile_id * t;
+    int tile_end_row = std::min(tile_begin_row + t, n);
+    for (int i = tile_begin_row; i < tile_end_row; ++i) {
+      for (int j = indptr_data[i]; j < indptr_data[i + 1]; ++j) {
+        int row = i;
+        int col = indices_data[j];
+        col_row_map.insert({col, row});
+      }
     }
-    std::sort(unique.begin(), unique.end());
-    unique.erase(std::unique(unique.begin(), unique.end()), unique.end());
-    ret_indices.insert(ret_indices.end(), unique.begin(), unique.end());
-    ret_indptr[block_id + 1] = ret_indptr[block_id] + unique.size();
+
+    int counter = 0;
+    for (auto unique_col_itr = col_row_map.begin(); unique_col_itr != col_row_map.end();) {
+      int col = unique_col_itr->first;
+      counter++;
+      // new group
+      if (counter == 1) {
+        nnz_groups++;
+        tile_indices.resize(nnz_groups * g, 0);
+        mask.resize(nnz_groups * t * g, 0);
+      }
+      // update tile_indices and mask
+      tile_indices[(nnz_groups - 1) * g + (counter - 1)] = col;
+      auto range = col_row_map.equal_range(unique_col_itr->first);
+      for (auto equal_itr = range.first; equal_itr != range.second; ++equal_itr) {
+        int row = equal_itr->second;
+        mask[(nnz_groups - 1) * t * g + row * g + (counter - 1)] = 1;
+      }
+      // reset counter
+      if (counter == g) {
+        counter = 0;
+      }
+      unique_col_itr = range.second;
+    }
+    // update group indptr
+    group_indptr.push_back(nnz_groups);
+    // clear col-row multimap
+    col_row_map.clear();
   }
 
   // Convert to NDArray
-  int ret_indptr_size = ret_indptr.size();
-  int ret_indices_size = ret_indices.size();
-  NDArray indptr_nd = NDArray::Empty({ret_indptr_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
-  NDArray indices_nd = NDArray::Empty({ret_indices_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
-  indptr_nd.CopyFromBytes(ret_indptr.data(), ret_indptr_size * sizeof(int));
-  indices_nd.CopyFromBytes(ret_indices.data(), ret_indices_size * sizeof(int));
-  return {indptr_nd, indices_nd};
+  NDArray group_indptr_nd = NDArray::Empty({num_tiles + 1}, {kDLInt, 32, 1}, {kDLCPU, 0});
+  NDArray tile_indices_nd = NDArray::Empty({nnz_groups, g}, {kDLInt, 32, 1}, {kDLCPU, 0});
+  NDArray mask_nd = NDArray::Empty({nnz_groups, t, g}, {kDLInt, 32, 1}, {kDLCPU, 0});
+  group_indptr_nd.CopyFromBytes(group_indptr.data(), (num_tiles + 1) * sizeof(int));
+  tile_indices_nd.CopyFromBytes(tile_indices.data(), (nnz_groups * g) * sizeof(int));
+  mask_nd.CopyFromBytes(mask.data(), (nnz_groups * t * g) * sizeof(int));
+  return {group_indptr_nd, tile_indices_nd, mask_nd};
 }
 
 namespace sparse {
