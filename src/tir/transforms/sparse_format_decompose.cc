@@ -18,7 +18,7 @@
  */
 
 /*!
- * \brief sparse_format_rewrite.cc
+ * \brief sparse_format_decompose.cc
  */
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/format_rewrite.h>
@@ -184,10 +184,10 @@ class IndexRewriter {
   IndexMap inv_idx_map_;
 };
 
-class SparseFormatRewriter : public StmtExprMutator {
+class SparseFormatDecomposer : public StmtExprMutator {
  public:
-  explicit SparseFormatRewriter(const FormatRewriteRule& rule, const PrimFunc& new_func,
-                                Array<Axis> old_axes, Array<SparseBuffer> old_buffers) {
+  explicit SparseFormatDecomposer(const FormatRewriteRule& rule, const PrimFunc& new_func,
+                                  Array<Axis> old_axes, Array<SparseBuffer> old_buffers) {
     rewrite_suffix = "_" + rule->name;
     Array<Axis> old_axes_to_rewrite;
     for (const Axis& axis : old_axes) {
@@ -421,11 +421,11 @@ class SparseFormatRewriter : public StmtExprMutator {
   arith::Analyzer ana;
 };
 
-PrimFunc SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules, PrimFunc f,
-                             bool include_format_rewrite_blks = true) {
+PrimFunc SparseFormatDecompose(Array<FormatRewriteRule> composable_formats, PrimFunc f,
+                               bool include_format_rewrite_blks = true) {
   // Only apply this pass to TIR that is not from TE schedules
   if (!IsFromLegacyTESchedule(f)) {
-    // SparseFormatRewriter rewriter(format_rewrite_rules);
+    // SparseFormatDecomposer rewriter(composable_formats);
     PrimFuncNode* fptr = f.CopyOnWrite();
     Array<PrimFunc> format_descs;
     Array<Axis> old_sp_axes = f->sp_axes;
@@ -433,7 +433,7 @@ PrimFunc SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules, Prim
     for (const auto& kv : f->buffer_map) {
       old_buffers.push_back(Downcast<SparseBuffer>(kv.second));
     }
-    for (const FormatRewriteRule& rule : format_rewrite_rules) {
+    for (const FormatRewriteRule& rule : composable_formats) {
       format_descs.push_back(AddSuffix(rule->new_format_desc, "_" + rule->name));
     }
     fptr->params = UpdateParams(format_descs, f->params);
@@ -441,9 +441,9 @@ PrimFunc SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules, Prim
     fptr->sp_axes = UpdateSparseAxes(format_descs, f->sp_axes);
     Array<Stmt> format_rewrite_blks, compute_blks;
     // generate format rewrite blocks and compute blocks for each rule
-    for (size_t i = 0; i < format_rewrite_rules.size(); ++i) {
-      SparseFormatRewriter rewriter(format_rewrite_rules[i], format_descs[i], old_sp_axes,
-                                    old_buffers);
+    for (size_t i = 0; i < composable_formats.size(); ++i) {
+      SparseFormatDecomposer rewriter(composable_formats[i], format_descs[i], old_sp_axes,
+                                      old_buffers);
       rewriter(f->body);
       for (const Stmt& sp_iter : rewriter.format_rewrites_blks) {
         format_rewrite_blks.push_back(sp_iter);
@@ -472,16 +472,16 @@ PrimFunc SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules, Prim
 
 namespace transform {
 
-Pass SparseFormatRewrite(Array<FormatRewriteRule> format_rewrite_rules,
-                         bool include_format_rewrite_blks) {
+Pass SparseFormatDecompose(Array<FormatRewriteRule> composable_formats,
+                           bool include_format_rewrite_blks) {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
-    return SparseFormatRewrite(std::move(format_rewrite_rules), std::move(f),
-                               include_format_rewrite_blks);
+    return SparseFormatDecompose(std::move(composable_formats), std::move(f),
+                                 include_format_rewrite_blks);
   };
-  return CreatePrimFuncPass(pass_func, 0, "tir.SparseFormatRewrite", {});
+  return CreatePrimFuncPass(pass_func, 0, "tir.SparseFormatDecompose", {});
 }
 
-TVM_REGISTER_GLOBAL("tir.transform.SparseFormatRewrite").set_body_typed(SparseFormatRewrite);
+TVM_REGISTER_GLOBAL("tir.transform.SparseFormatDecompose").set_body_typed(SparseFormatDecompose);
 
 }  // namespace transform
 

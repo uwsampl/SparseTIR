@@ -15,13 +15,15 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Format search module for sparse tensor algebra."""
+"""Format module for sparse tensor algebra."""
 from typing import Callable, Dict, List, Union
 import tvm._ffi
 import tvm.tir
 
 from tvm.runtime import Object
 from tvm.tir import IndexMap, _ffi_api
+from tvm import IRModule
+from tvm.tir.transform import SparseFormatDecompose
 
 
 @tvm._ffi.register_object("tir.sparse.FormatRewriteRule")
@@ -136,3 +138,24 @@ def condense(indptr_nd, indices_nd, t, g, threshold=1):
         The pair of (group_indptr, tile_indices, mask).
     """
     return _ffi_api.ConDense(indptr_nd, indices_nd, t, g, threshold)  # type: ignore
+
+
+def format_decompose(
+    mod: IRModule,
+    composable_formats: List["FormatRewriteRule"],
+    include_format_rewrite_blks: bool = True,
+):
+    """Rewrite the sparse format of sparse buffers in the TIR scripts.
+
+    Parameters
+    ----------
+    mod : IRModule
+        The IRModule to lower.
+    composable_formats : List[FormatRewriteRule]
+        Composable formats is a list of rewrite rules.
+    include_format_rewrite_blks : bool
+        Whether to include format rewrite blocks in the output.
+    """
+    if not isinstance(mod, IRModule):
+        raise TypeError("Expected IRModule, but got {}".format(type(mod)))
+    return SparseFormatDecompose(composable_formats, include_format_rewrite_blks)(mod)

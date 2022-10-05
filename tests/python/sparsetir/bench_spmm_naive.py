@@ -10,7 +10,7 @@ from tvm.script import tir as T
 from tvm.sparse import FormatRewriteRule, lower_sparse_buffer, lower_sparse_iter
 import tvm.sparse
 from ogb.nodeproppred import DglNodePropPredDataset
-from sparse_tir_format_rewrite_scripts import ell, padding
+from sparse_tir_composable_format_scripts import ell, padding
 
 
 @T.prim_func
@@ -62,7 +62,7 @@ def bench_hyb(
     feat_size=128,
     cwm=2,
 ):
-    indptr, indices, _ = g.adj_sparse('csc')
+    indptr, indices, _ = g.adj_sparse("csc")
     m = g.num_dst_nodes()
     n = g.num_src_nodes()
     nnz = g.num_edges()
@@ -86,7 +86,7 @@ def bench_hyb(
     sch = tvm.tir.Schedule(mod)
     outer_blk = sch.get_block("csrmm0")
     inner_blk = sch.get_block("csrmm1")
-    i, = sch.get_loops(outer_blk)
+    (i,) = sch.get_loops(outer_blk)
     j, foo, foi, fi = sch.get_loops(inner_blk)
     sch.reorder(foo, fi, j, foi)
     sch.bind(fi, "threadIdx.x")
@@ -99,7 +99,7 @@ def bench_hyb(
     ax0, ax1 = sch.get_loops(init_blk)[-2:]
     sch.bind(ax0, "threadIdx.x")
     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
-    f = tvm.build(mod["main"], target='cuda')
+    f = tvm.build(mod["main"], target="cuda")
     # prepare nd array
     indptr_nd = tvm.nd.array(indptr.numpy().astype("int32"), device=tvm.cuda(0))
     b_nd = tvm.nd.array(
@@ -111,9 +111,9 @@ def bench_hyb(
     a_nd = tvm.nd.array(np.ones((nnz,)).astype("float16"), device=tvm.cuda(0))
     args = [a_nd, b_nd, c_nd, indptr_nd, indices_nd]
     f(*args)
-    #tvm.testing.assert_allclose(c_nd.numpy().reshape(-1, feat_size), y_golden.numpy(), rtol=1e-4)
-    #evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=100)
-    #print("tir naive time: {:.5f} ms".format(evaluator(*args).mean * 1000))
+    # tvm.testing.assert_allclose(c_nd.numpy().reshape(-1, feat_size), y_golden.numpy(), rtol=1e-4)
+    # evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=100)
+    # print("tir naive time: {:.5f} ms".format(evaluator(*args).mean * 1000))
 
 
 def get_dataset(name: str):
@@ -148,12 +148,12 @@ def get_dataset(name: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("hybrid format spmm in sparse-tir")
-    parser.add_argument("--dataset", "-d", type=str, default='arxiv', help="dataset name")
+    parser.add_argument("--dataset", "-d", type=str, default="arxiv", help="dataset name")
     args = parser.parse_args()
     name = args.dataset
     g = get_dataset(name)
 
-    #for feat_size in [32, 64, 128, 256, 512]:
+    # for feat_size in [32, 64, 128, 256, 512]:
     for feat_size in [256]:
         print("feat_size =", feat_size)
         x = th.rand((g.num_src_nodes(), feat_size))

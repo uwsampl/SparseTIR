@@ -7,10 +7,16 @@ import argparse
 import numpy as np
 import torch as th
 from tvm.script import tir as T
-from tvm.sparse import FormatRewriteRule, lower_sparse_buffer, lower_sparse_iter, column_part_hyb
+from tvm.sparse import (
+    FormatRewriteRule,
+    lower_sparse_buffer,
+    lower_sparse_iter,
+    column_part_hyb,
+    format_decompose,
+)
 import tvm.sparse
 from ogb.nodeproppred import DglNodePropPredDataset
-from sparse_tir_format_rewrite_scripts import ell, padding
+from sparse_tir_composable_format_scripts import ell, padding
 
 
 @T.prim_func
@@ -109,7 +115,7 @@ def bench_hyb(
                 )
             )
     mod = tvm.IRModule.from_expr(csrmm)
-    mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
+    mod = format_decompose(mod, rewrites)
     mod = tvm.tir.transform.RemovePreprocess()(mod)
 
     # specialize

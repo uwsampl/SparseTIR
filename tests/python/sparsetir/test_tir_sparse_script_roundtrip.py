@@ -18,7 +18,7 @@ import tvm
 import sparse_tir_lowered_iter_scripts
 import sparse_tir_lowered_buffer_scripts
 import sparse_tir_scripts
-import sparse_tir_format_rewrite_scripts
+import sparse_tir_composable_format_scripts
 
 
 func_name_list = [
@@ -171,9 +171,10 @@ def test_sparse_tir_lowered_buffer_scripts():
         rt_func = tvm.script.from_source(func.script(show_meta=True))
         tvm.ir.assert_structural_equal(func, rt_func, True)
 
-def test_sparse_tir_format_rewrite_scripts():
-    for func_name in ['bsr_rewrite_with_preprocess']:
-        func = getattr(sparse_tir_format_rewrite_scripts, func_name)
+
+def test_sparse_tir_composable_format_scripts():
+    for func_name in ["bsr_rewrite_with_preprocess"]:
+        func = getattr(sparse_tir_composable_format_scripts, func_name)
         rt_func = tvm.script.from_source(func.script(show_meta=True))
         tvm.ir.assert_structural_equal(func, rt_func, True)
 
@@ -182,5 +183,5 @@ if __name__ == "__main__":
     test_sparse_tir_scripts()
     test_sparse_tir_scripts_specialize()
     test_sparse_tir_lowered_iter_scripts()
-    test_sparse_tir_format_rewrite_scripts()
+    test_sparse_tir_composable_format_scripts()
     test_sparse_tir_lowered_buffer_scripts()

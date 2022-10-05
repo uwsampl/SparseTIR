@@ -850,15 +850,15 @@ def LowerAtomic():
     return _ffi_api.LowerAtomic()  # type: ignore
 
 
-def SparseFormatRewrite(
-    rewrite_rules: List["FormatRewriteRule"], include_format_rewrite_blks: bool = True
+def SparseFormatDecompose(
+    composable_formats: List["FormatRewriteRule"], include_format_rewrite_blks: bool = True
 ):
     """Rewrite the sparse format of sparse buffers in the TIR scripts.
 
     Parameters
     ----------
-    rewrite_rules : List[FormatRewriteRule]
-        The rewrite rules to perform.
+    composable_formats : List[FormatRewriteRule]
+        Composable formats is a list of rewrite rules.
     include_format_rewrite_blks : bool
         Whether to include format rewrite blocks in the output.
 
@@ -867,8 +867,7 @@ def SparseFormatRewrite(
     fpass : tvm.transform.Pass
         The result pass
     """
-    # TODO(zihao)
-    return _ffi_api.SparseFormatRewrite(rewrite_rules, include_format_rewrite_blks)  # type: ignore
+    return _ffi_api.SparseFormatDecompose(composable_formats, include_format_rewrite_blks)  # type: ignore
 
 
 def ExtractPreprocess():

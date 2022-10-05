@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from sparse_tir_format_rewrite_scripts import bsr_rewrite_with_preprocess
+from sparse_tir_composable_format_scripts import bsr_rewrite_with_preprocess
 from sparse_tir_lowered_iter_scripts import fused_sddmm
 import tvm
 

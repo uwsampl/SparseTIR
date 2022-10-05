@@ -10,9 +10,9 @@ import torch as th
 from tvm.script import tir as T
 from dgl.data.rdf import AIFBDataset, MUTAGDataset, BGSDataset, AMDataset
 from sparse_tir_scripts import rgcn_hetero_forward
-from tvm.sparse import lower_sparse_iter, lower_sparse_buffer, FormatRewriteRule
+from tvm.sparse import lower_sparse_iter, lower_sparse_buffer, FormatRewriteRule, format_decompose
 from typing import List, Tuple, Mapping
-from sparse_tir_format_rewrite_scripts import ell3d
+from sparse_tir_composable_format_scripts import ell3d
 
 
 def get_dataset_by_name(name: str):
@@ -107,20 +107,22 @@ def test_rgcn_composable_format(
         rewrites.append(
             FormatRewriteRule(
                 str(bucket_id),
-                ell3d.specialize({
-                    nnz_rows: buckets[-1] // bucket_size,
-                    nnz_cols: bucket_size,
-                }),
+                ell3d.specialize(
+                    {
+                        nnz_rows: buckets[-1] // bucket_size,
+                        nnz_cols: bucket_size,
+                    }
+                ),
                 ["A"],
                 ["R", "I", "J"],
                 ["R", "IO", "II", "J"],
                 {"R": ["R"], "I": ["IO", "II"], "J": ["J"]},
                 csf_to_ell3d_idx_map,
-                csf_to_ell3d_inv_idx_map
+                csf_to_ell3d_inv_idx_map,
             )
         )
     mod = tvm.IRModule.from_expr(rgcn_hetero_forward.with_attr("horizontal_fuse", True))
-    mod = tvm.tir.transform.SparseFormatRewrite(rewrites)(mod)
+    mod = format_decompose(mod, rewrites)
     mod = tvm.tir.transform.RemovePreprocess()(mod)
 
     sch = tir.Schedule(mod["main"])
@@ -129,7 +131,7 @@ def test_rgcn_composable_format(
         fo, r, io, ii, j, fi = sch.get_sp_iters(sp_iteration)
         sch.sparse_reorder(sp_iteration, [r, io, ii, j, fo, fi])
         sch.sparse_fuse(sp_iteration, [r, io])
-    mod = lower_sparse_iter(sch.mod) 
+    mod = lower_sparse_iter(sch.mod)
     mod = tvm.tir.transform.RemovePreprocess()(mod)
 
     sch = tir.Schedule(mod["main"])
@@ -147,12 +149,10 @@ def test_rgcn_composable_format(
         sch.unroll(j)
         sch.bind(foi, "threadIdx.y")
         sch.bind(io, "blockIdx.x")
-        
+
     mod = lower_sparse_buffer(sch.mod)
     # print(sch.mod["main"].script())
     print(mod["main"].script())
-    
- 
 
 
 if __name__ == "__main__":
