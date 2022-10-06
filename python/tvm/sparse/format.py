@@ -121,9 +121,9 @@ def condense(indptr_nd, indices_nd, t, g, threshold=1):
 
     Parameters
     ----------
-    indptr : int
+    indptr : NDArray
         The indptr array of CSR format.
-    indices :int
+    indices : NDArray
         The indices array of CSR format.
     t : int
         The tile size.

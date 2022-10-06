@@ -15,8 +15,8 @@ from tvm.sparse import (
     format_decompose,
 )
 import tvm.sparse
-from ogb.nodeproppred import DglNodePropPredDataset
 from sparse_tir_composable_format_scripts import ell, padding
+from utils import get_dataset
 
 
 @T.prim_func
@@ -235,36 +235,6 @@ bucketing_config = {
     "products": [1, 2, 4, 8, 16, 32],
     "reddit": [1, 2, 4, 8, 16, 32, 64, 128, 256, 512],
 }
-
-
-def get_dataset(name: str):
-    if name == "arxiv":
-        arxiv = DglNodePropPredDataset(name="ogbn-arxiv")
-        g = arxiv[0][0]
-    elif name == "proteins":
-        proteins = DglNodePropPredDataset(name="ogbn-proteins")
-        g = proteins[0][0]
-    elif name == "products":
-        products = DglNodePropPredDataset(name="ogbn-products")
-        g = products[0][0]
-    elif name == "pubmed":
-        pubmed = dgl.data.PubmedGraphDataset()
-        g = pubmed[0]
-    elif name == "citeseer":
-        citeseer = dgl.data.CiteseerGraphDataset()
-        g = citeseer[0]
-    elif name == "cora":
-        cora = dgl.data.CoraGraphDataset()
-        g = cora[0]
-    elif name == "ppi":
-        ppi = dgl.data.PPIDataset()
-        g = dgl.batch(ppi)
-    elif name == "reddit":
-        reddit = dgl.data.RedditDataset()
-        g = reddit[0]
-    else:
-        raise KeyError("Unknown dataset {}.".format(name))
-    return g.int()
 
 
 if __name__ == "__main__":

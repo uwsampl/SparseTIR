@@ -4,11 +4,15 @@ Related work: https://arxiv.org/pdf/2112.02052.pdf
 
 import dgl
 import tvm
+from tvm.sparse.format import condense
 import tvm.testing
 import tvm.tir as tir
 import argparse
+import torch as th
+import numpy as np
 from tvm.script import tir as T
 from tvm.sparse import lower_sparse_buffer, lower_sparse_iter
+from utils import get_dataset
 
 
 @T.prim_func
@@ -293,9 +297,27 @@ def tcspmm(
         C[io, ii, f] = C[io, ii, f] + A[io, jo, ii, ji] * B[ji, f]
 
 
-def bench_tc_spmm():
+def bench_tc_spmm(g: dgl.DGLHeteroGraph, x: th.Tensor, y_golden: th.Tensor):
+    indptr, indices, _ = g.adj_sparse("csc")
+    indptr_nd = tvm.nd.array(indptr.numpy().astype("int32"), device=tvm.cpu())
+    indices_nd = tvm.nd.array(indices.numpy().astype("int32"), device=tvm.cpu())
+    tile_size = 16
+    group_size = 16
+    m = g.num_dst_nodes()
+    n = g.num_src_nodes()
+    nnz = g.num_edges()
+    mb = (m + tile_size - 1) // tile_size
+    nb = (n + group_size - 1) // group_size
+    group_indptr, tile_indices, mask = condense(indptr_nd, indices_nd, tile_size, group_size)
+    del indptr_nd, indices_nd
+    nnzb = mask.shape[0]
+    feat_size = x.shape[1]
+    x = th.concat([x, th.zeros((nb * tile_size - n, feat_size), dtype=x.dtype, device=x.device)], dim=0)
+
     MB, NB, NNZB, F, B = tcspmm.params[-5:]
-    mod = tvm.IRModule.from_expr(tcspmm.specialize({MB: 128, NB: 128, NNZB: 1024, F: 64, B: 16}))
+    mod = tvm.IRModule.from_expr(tcspmm.specialize({
+        MB: mb, NB: nb, NNZB: nnzb, F: feat_size, B: tile_size
+    }))
     mod = lower_sparse_iter(mod)
     sch = tir.Schedule(mod)
     blk_outer = sch.get_block("tcspmm0")
@@ -326,7 +348,22 @@ def bench_tc_spmm():
 
     mod = lower_sparse_buffer(sch.mod)
     f = tvm.build(mod, target="cuda")
-    print(f.imported_modules[0].get_source())
+
+    # prepare input
+    dev = tvm.cuda(0)
+    a_nd = tvm.nd.array(mask.numpy().astype("float16").flatten(), device=dev)
+    b_nd = tvm.nd.array(x.cpu().numpy().flatten(), device=dev)
+    c_nd = tvm.nd.array(np.zeros(mb * tile_size * feat_size).astype("float16"), device=dev)
+    indptr_nd = tvm.nd.array(group_indptr.numpy().astype("int32"), device=dev)
+    indices_nd = tvm.nd.array(tile_indices.numpy().astype("int32").flatten(), device=dev)
+    args = [a_nd, b_nd, c_nd, indptr_nd, indices_nd]
+    f(*args)
+
+    # assert False
+    tvm.testing.assert_allclose(c_nd.numpy().reshape(-1, feat_size)[:m], y_golden.cpu().numpy(), rtol=1e-1)
+
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=100)
+    print("tc-spmm time: {:.5f}ms".format(evaluator(*args).mean * 1000))
 
 
 if __name__ == "__main__":
@@ -334,5 +371,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", "-d", type=str, default="arxiv", help="dataset name")
     args = parser.parse_args()
     name = args.dataset
-    # g = get_dataset(name)
-    bench_tc_spmm()
+    g = get_dataset(name)
+    x = th.rand(g.num_src_nodes(), 128)
+    y_golden = dgl.ops.copy_u_sum(g, x)
+    bench_tc_spmm(g, x.half(), y_golden.half())

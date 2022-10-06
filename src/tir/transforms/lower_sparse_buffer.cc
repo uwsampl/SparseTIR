@@ -297,7 +297,10 @@ class BufferTransformer : public StmtExprMutator {
               << "The strides of new matched buffer must be var.";
           Var stride_var = Downcast<Var>(strides[strides.size() - i]);
           global_var_map_.Set(stride_var, stride);
-          stride = ana_.Simplify(stride * sp_buf->axes[sp_buf->axes.size() - i]->length);
+          Axis axis = sp_buf->axes[sp_buf->axes.size() - i];
+          CHECK(!axis->IsVariable()) << "Only support match fixed region of sparse buffers.";
+          ICHECK(axis->nnz_cols.defined()) << "The nnz_cols of fixed buffers should be defined.";
+          stride = ana_.Simplify(stride * axis->nnz_cols.value());
         }
       } else {
         Array<Range> new_ranges;
