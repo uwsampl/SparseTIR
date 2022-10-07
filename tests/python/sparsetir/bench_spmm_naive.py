@@ -11,6 +11,7 @@ from tvm.sparse import FormatRewriteRule, lower_sparse_buffer, lower_sparse_iter
 import tvm.sparse
 from ogb.nodeproppred import DglNodePropPredDataset
 from sparse_tir_composable_format_scripts import ell, padding
+from utils import get_dataset
 
 
 @T.prim_func
@@ -33,12 +34,12 @@ def csrmm(
     K1 = T.dense_fixed(num_tiles)
     K2 = T.dense_fixed(cwm)
     K3 = T.dense_fixed(32)
-    A = T.match_sparse_buffer(a, (I, J), "float16")
-    B = T.match_sparse_buffer(b, (J_detach, K1, K2, K3), "float16")
-    C = T.match_sparse_buffer(c, (I, K1, K2, K3), "float16")
+    A = T.match_sparse_buffer(a, (I, J), "float32")
+    B = T.match_sparse_buffer(b, (J_detach, K1, K2, K3), "float32")
+    C = T.match_sparse_buffer(c, (I, K1, K2, K3), "float32")
     with T.iter([I, J, K1, K2, K3], "SRSSS", "csrmm") as [i, j, k1, k2, k3]:
         with T.init():
-            C[i, k1, k2, k3] = 0.0
+            C[i, k1, k2, k3] = T.float32(0)
         C[i, k1, k2, k3] = C[i, k1, k2, k3] + A[i, j] * B[j, k1, k2, k3]
 
 
@@ -103,47 +104,17 @@ def bench_hyb(
     # prepare nd array
     indptr_nd = tvm.nd.array(indptr.numpy().astype("int32"), device=tvm.cuda(0))
     b_nd = tvm.nd.array(
-        x.numpy().reshape(-1).astype("float16"),
+        x.numpy().reshape(-1).astype("float32"),
         device=tvm.cuda(0),
     )
     indices_nd = tvm.nd.array(indices.numpy().astype("int32"), device=tvm.cuda(0))
-    c_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float16"), device=tvm.cuda(0))
-    a_nd = tvm.nd.array(np.ones((nnz,)).astype("float16"), device=tvm.cuda(0))
+    c_nd = tvm.nd.array(np.zeros((n * feat_size,)).astype("float32"), device=tvm.cuda(0))
+    a_nd = tvm.nd.array(np.ones((nnz,)).astype("float32"), device=tvm.cuda(0))
     args = [a_nd, b_nd, c_nd, indptr_nd, indices_nd]
     f(*args)
-    # tvm.testing.assert_allclose(c_nd.numpy().reshape(-1, feat_size), y_golden.numpy(), rtol=1e-4)
-    # evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=100)
-    # print("tir naive time: {:.5f} ms".format(evaluator(*args).mean * 1000))
-
-
-def get_dataset(name: str):
-    if name == "arxiv":
-        arxiv = DglNodePropPredDataset(name="ogbn-arxiv")
-        g = arxiv[0][0]
-    elif name == "proteins":
-        proteins = DglNodePropPredDataset(name="ogbn-proteins")
-        g = proteins[0][0]
-    elif name == "products":
-        products = DglNodePropPredDataset(name="ogbn-products")
-        g = products[0][0]
-    elif name == "pubmed":
-        pubmed = dgl.data.PubmedGraphDataset()
-        g = pubmed[0]
-    elif name == "citeseer":
-        citeseer = dgl.data.CiteseerGraphDataset()
-        g = citeseer[0]
-    elif name == "cora":
-        cora = dgl.data.CoraGraphDataset()
-        g = cora[0]
-    elif name == "ppi":
-        ppi = dgl.data.PPIDataset()
-        g = dgl.batch(ppi)
-    elif name == "reddit":
-        reddit = dgl.data.RedditDataset()
-        g = reddit[0]
-    else:
-        raise KeyError("Unknown dataset {}.".format(name))
-    return g.int()
+    tvm.testing.assert_allclose(c_nd.numpy().reshape(-1, feat_size), y_golden.numpy(), rtol=1e-4)
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=100)
+    print("tir naive time: {:.5f} ms".format(evaluator(*args).mean * 1000))
 
 
 if __name__ == "__main__":
@@ -153,8 +124,7 @@ if __name__ == "__main__":
     name = args.dataset
     g = get_dataset(name)
 
-    # for feat_size in [32, 64, 128, 256, 512]:
-    for feat_size in [256]:
+    for feat_size in [32, 64, 128, 256, 512]:
         print("feat_size =", feat_size)
         x = th.rand((g.num_src_nodes(), feat_size))
         y_golden = dgl.ops.copy_u_sum(g, x)

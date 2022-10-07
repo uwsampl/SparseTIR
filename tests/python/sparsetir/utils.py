@@ -27,6 +27,8 @@ def get_dataset(name: str):
     elif name == "reddit":
         reddit = dgl.data.RedditDataset()
         g = reddit[0]
+    elif name == "dense":
+        g = dgl.rand_graph(1024, 1024 * 1024 // 2)
     else:
         raise KeyError("Unknown dataset {}.".format(name))
     return g.int()
