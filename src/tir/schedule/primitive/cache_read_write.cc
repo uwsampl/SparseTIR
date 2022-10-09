@@ -928,7 +928,7 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_bu
   info.annotations = block->annotations;
 
   // Step 3. Check the only writer block.
-  if (!IsHorizontalFuse(self, block_sref)) {
+  if (!IsComposable(self, block_sref)) {
     ICHECK_EQ(block_sref.get(), GetOnlyWriteBlock(self, scope_sref, write_buffer).get());
   }
 

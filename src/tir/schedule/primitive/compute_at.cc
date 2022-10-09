@@ -129,6 +129,7 @@ class NotInSameScopeError : public ScheduleError {
  * \param producer_srefs The producer blocks
  * \param consumer_srefs The consumer blocks
  * \param block2realize A cache that maps a block to its realize
+ * \param is_composable Whether the PrimFunc to schedule is a composable kernel
  * \return The last position the new block can be inserted onto, and the
  * producer-consumer-relationship is still satisfied.
  * \throws ScheduleError if there is no such insertion point found
@@ -137,11 +138,11 @@ template <bool require_all_producers_visited, bool require_all_consumers_visited
 int FindInsertionPoint(const ScheduleState& self, const Array<Stmt>& subtrees,
                        const Array<StmtSRef>& producer_srefs, const Array<StmtSRef>& consumer_srefs,
                        std::unordered_map<const BlockNode*, const BlockRealizeNode*>* block2realize,
-                       bool horizontal_fuse) {
+                       bool is_composable) {
   ProducerConsumerSplit split =
       ProducerConsumerSplit::Find(self, subtrees, producer_srefs, consumer_srefs, block2realize);
   // Step 1. Check if all the producers are visited in the subtrees, if required to
-  if (require_all_producers_visited && !horizontal_fuse) {
+  if (require_all_producers_visited && !is_composable) {
     int num_producers = producer_srefs.size();
     if (split.n_producers_visited < num_producers) {
       throw NotAllRequiredBlocksAreVisitedError<false>(
@@ -149,7 +150,7 @@ int FindInsertionPoint(const ScheduleState& self, const Array<Stmt>& subtrees,
     }
   }
   // Step 2. Check if all the consumers are visited in the subtrees, if required to
-  if (require_all_consumers_visited && !horizontal_fuse) {
+  if (require_all_consumers_visited && !is_composable) {
     int num_consumers = consumer_srefs.size();
     if (split.n_consumers_visited < num_consumers) {
       throw NotAllRequiredBlocksAreVisitedError<true>(
@@ -581,13 +582,13 @@ void ComputeAtOrReverseComputeAtImpl(ScheduleState self, const StmtSRef& block_s
   // Check condition 5): all the required block are under the given loop
   std::unordered_map<const BlockNode*, const BlockRealizeNode*> block2realize;
   block2realize.reserve(self->block_info.size());
-  bool is_horizontal_fuse = IsHorizontalFuse(self, block_sref);
+  bool is_composable = IsComposable(self, block_sref);
   int insert_position = FindInsertionPoint<!is_compute_at, is_compute_at>(
       /*self=*/self,
       /*subtrees=*/AsArray(loop->body),
       /*producer_srefs=*/producer_srefs,
       /*consumer_srefs=*/consumer_srefs, /*block2realize=*/&block2realize,
-      /*horizontal_fuse=*/is_horizontal_fuse);
+      /*is_composable=*/is_composable);
   // Step 4. Calculate the region provided by a single execution instance of `block`,
   // as well as the region required by dependent blocks under `loop`.
   // Here is the definition of `provide` and `require`:

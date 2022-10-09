@@ -256,7 +256,7 @@ int CheckCompleteBlockErrorCode(const ScheduleState& self, const StmtSRef& block
   // Cond 2. Dominant: the block is the only writer of its output,
   // dominating the reader of its output buffers
   if (!IsDominantBlock(self, scope_root_sref, block_sref)) {
-    if (!IsHorizontalFuse(self, block_sref)) {
+    if (!IsComposable(self, block_sref)) {
       return 2;
     }
   }
@@ -358,7 +358,7 @@ int CheckReductionBlockErrorCode(const ScheduleState& self, const StmtSRef& bloc
   // Cond 4. Dominant: the block is the only writer of its output, dominating the reader of its
   // output buffers.
   if (!IsDominantBlock(self, scope_root_sref, block_sref)) {
-    if (!IsHorizontalFuse(self, block_sref)) {
+    if (!IsComposable(self, block_sref)) {
       return 4;
     }
   }

@@ -424,7 +424,7 @@ class SparseFormatDecomposer : public StmtExprMutator {
 PrimFunc SparseFormatDecompose(Array<FormatRewriteRule> composable_formats, PrimFunc f,
                                bool include_format_rewrite_blks = true) {
   // Only apply this pass to TIR that is not from TE schedules
-  if (!IsFromLegacyTESchedule(f)) {
+  if (!IsFromLegacyTESchedule(f) && SparseTIRLevel(f) == 2) {
     // SparseFormatDecomposer rewriter(composable_formats);
     PrimFuncNode* fptr = f.CopyOnWrite();
     Array<PrimFunc> format_descs;
@@ -464,6 +464,10 @@ PrimFunc SparseFormatDecompose(Array<FormatRewriteRule> composable_formats, Prim
     }
     Stmt new_body = all_blks.size() == 1 ? all_blks[0] : SeqStmt(all_blks);
     fptr->body = BlockRealize({}, const_true(), Block({}, {}, {}, "root", new_body, NullOpt, {}));
+    // add composable flag.
+    Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;
+    new_attr_dict.Set("composable", Integer(1));
+    fptr->attrs = DictAttrs(new_attr_dict);
     return f;
   } else {
     return f;
