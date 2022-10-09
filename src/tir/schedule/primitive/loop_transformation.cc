@@ -794,9 +794,9 @@ class LoopLifter : public StmtExprMutator {
 void LiftLoop(ScheduleState self, const StmtSRef& loop_sref) {
   // Step 1. Check the validity.
   const StmtSRefNode* p = loop_sref->parent;
-  const StmtSRefNode* top;
+  const StmtSRefNode* top = nullptr;
   const BlockNode* parent_block = nullptr;
-  const BlockNode* root_block;
+  const BlockNode* root_block = nullptr;
   const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   for (; p != nullptr; p = p->parent) {
     if (p->stmt->IsInstance<BlockNode>()) {
@@ -809,6 +809,7 @@ void LiftLoop(ScheduleState self, const StmtSRef& loop_sref) {
     }
   }
   ICHECK(parent_block != nullptr) << "Cannot find parent block.";
+  ICHECK(root_block != nullptr) << "Root block was not defined.";
   CHECK(parent_block != root_block) << "Loop already at top level block, cannot lift further.";
   // TODO(zihao): further checks.
   // Step 2. Perform the lifting.
