@@ -1072,6 +1072,7 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
 StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_buffer_index,
                            const String& storage_scope) {
   LOG(FATAL) << "Not implemented yet.";
+  return StmtSRef();
 }
 
 /******** Instruction Registration ********/
