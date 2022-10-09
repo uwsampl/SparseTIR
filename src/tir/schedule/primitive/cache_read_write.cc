@@ -928,7 +928,7 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_bu
   info.annotations = block->annotations;
 
   // Step 3. Check the only writer block.
-  if (!IsHorizontalFuse(self)) {
+  if (!IsHorizontalFuse(self, block_sref)) {
     ICHECK_EQ(block_sref.get(), GetOnlyWriteBlock(self, scope_sref, write_buffer).get());
   }
 
@@ -1072,6 +1072,7 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
 StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_buffer_index,
                            const String& storage_scope) {
   LOG(FATAL) << "Not implemented yet.";
+  return StmtSRef();
 }
 
 /******** Instruction Registration ********/
