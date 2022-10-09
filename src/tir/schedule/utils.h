@@ -449,12 +449,11 @@ inline String BufferIndexType2Str(BufferIndexType buffer_index_type) {
 
 /******** Whether it's horizontal fuse function. ********/
 
-inline bool IsHorizontalFuse(const ScheduleState& state) {
-  IRModule mod = state->mod;
-  return mod->functions.Get(mod->GetGlobalVar("main"))
-      .value()
-      ->attrs->dict.Get("horizontal_fuse")
-      .defined();
+inline bool IsHorizontalFuse(const ScheduleState& state, const StmtSRef& sref) {
+  const StmtSRef& root_block_sref = GetSRefTreeRoot(sref);
+  const StmtNode* root_block = TVM_SREF_TO_BLOCK(root_block, root_block_sref);
+  const PrimFuncNode* func = GetRootPrimFunc(state->mod, root_block, nullptr);
+  return func->attrs->dict.Get("horizontal_fuse").defined();
 }
 
 }  // namespace tir

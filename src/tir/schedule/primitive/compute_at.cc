@@ -140,7 +140,7 @@ int FindInsertionPoint(
     std::unordered_map<const BlockNode*, const BlockRealizeNode*>* block2realize) {
   ProducerConsumerSplit split =
       ProducerConsumerSplit::Find(self, subtrees, producer_srefs, consumer_srefs, block2realize);
-  bool horizontal_fuse = IsHorizontalFuse(self); 
+  bool horizontal_fuse = IsHorizontalFuse(self, producer_srefs[0]); 
   // Step 1. Check if all the producers are visited in the subtrees, if required to
   if (require_all_producers_visited && !horizontal_fuse) {
     int num_producers = producer_srefs.size();
