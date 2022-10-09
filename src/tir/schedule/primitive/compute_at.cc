@@ -134,13 +134,12 @@ class NotInSameScopeError : public ScheduleError {
  * \throws ScheduleError if there is no such insertion point found
  */
 template <bool require_all_producers_visited, bool require_all_consumers_visited>
-int FindInsertionPoint(
-    const ScheduleState& self, const Array<Stmt>& subtrees, const Array<StmtSRef>& producer_srefs,
-    const Array<StmtSRef>& consumer_srefs,
-    std::unordered_map<const BlockNode*, const BlockRealizeNode*>* block2realize) {
+int FindInsertionPoint(const ScheduleState& self, const Array<Stmt>& subtrees,
+                       const Array<StmtSRef>& producer_srefs, const Array<StmtSRef>& consumer_srefs,
+                       std::unordered_map<const BlockNode*, const BlockRealizeNode*>* block2realize,
+                       bool horizontal_fuse) {
   ProducerConsumerSplit split =
       ProducerConsumerSplit::Find(self, subtrees, producer_srefs, consumer_srefs, block2realize);
-  bool horizontal_fuse = IsHorizontalFuse(self, producer_srefs[0]); 
   // Step 1. Check if all the producers are visited in the subtrees, if required to
   if (require_all_producers_visited && !horizontal_fuse) {
     int num_producers = producer_srefs.size();
@@ -582,11 +581,13 @@ void ComputeAtOrReverseComputeAtImpl(ScheduleState self, const StmtSRef& block_s
   // Check condition 5): all the required block are under the given loop
   std::unordered_map<const BlockNode*, const BlockRealizeNode*> block2realize;
   block2realize.reserve(self->block_info.size());
+  bool is_horizontal_fuse = IsHorizontalFuse(self, block_sref);
   int insert_position = FindInsertionPoint<!is_compute_at, is_compute_at>(
       /*self=*/self,
       /*subtrees=*/AsArray(loop->body),
       /*producer_srefs=*/producer_srefs,
-      /*consumer_srefs=*/consumer_srefs, /*block2realize=*/&block2realize);
+      /*consumer_srefs=*/consumer_srefs, /*block2realize=*/&block2realize,
+      /*horizontal_fuse=*/is_horizontal_fuse);
   // Step 4. Calculate the region provided by a single execution instance of `block`,
   // as well as the region required by dependent blocks under `loop`.
   // Here is the definition of `provide` and `require`:

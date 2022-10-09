@@ -451,9 +451,9 @@ inline String BufferIndexType2Str(BufferIndexType buffer_index_type) {
 
 inline bool IsHorizontalFuse(const ScheduleState& state, const StmtSRef& sref) {
   const StmtSRef& root_block_sref = GetSRefTreeRoot(sref);
-  const StmtNode* root_block = TVM_SREF_TO_BLOCK(root_block, root_block_sref);
-  const PrimFuncNode* func = GetRootPrimFunc(state->mod, root_block, nullptr);
-  return func->attrs->dict.Get("horizontal_fuse").defined();
+  const PrimFuncNode* func = GetRootPrimFunc(state->mod, root_block_sref->stmt, nullptr);
+  CHECK(func != nullptr) << "The given sref does not resides in the schedule state's module.";
+  return func->attrs.HasNonzeroAttr("horizontal_fuse");
 }
 
 }  // namespace tir
