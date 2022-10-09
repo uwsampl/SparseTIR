@@ -423,6 +423,7 @@ class SparseFormatDecomposer : public StmtExprMutator {
 
 PrimFunc SparseFormatDecompose(Array<FormatRewriteRule> composable_formats, PrimFunc f,
                                bool include_format_rewrite_blks = true) {
+  CHECK(composable_formats.size() >= 1) << "The given composable formats length should be greater than or equal to 1.";
   // Only apply this pass to TIR that is not from TE schedules
   if (!IsFromLegacyTESchedule(f) && SparseTIRLevel(f) == 2) {
     // SparseFormatDecomposer rewriter(composable_formats);
@@ -465,9 +466,11 @@ PrimFunc SparseFormatDecompose(Array<FormatRewriteRule> composable_formats, Prim
     Stmt new_body = all_blks.size() == 1 ? all_blks[0] : SeqStmt(all_blks);
     fptr->body = BlockRealize({}, const_true(), Block({}, {}, {}, "root", new_body, NullOpt, {}));
     // add composable flag.
-    Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;
-    new_attr_dict.Set("composable", Integer(1));
-    fptr->attrs = DictAttrs(new_attr_dict);
+    if (composable_formats.size() > 1) {
+      Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;
+      new_attr_dict.Set("composable", Integer(1));
+      fptr->attrs = DictAttrs(new_attr_dict);
+    }
     return f;
   } else {
     return f;
