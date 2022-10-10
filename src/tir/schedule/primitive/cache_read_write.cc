@@ -694,6 +694,153 @@ class CacheReadRewriter : public StmtExprMutator {
   CacheStageInfo* info_;
 };
 
+/*! \brief Mutator for ReverseCacheWrite. */
+class ReverseCacheWriteRewriter : public StmtExprMutator {
+ public:
+  /*!
+   * \brief Rewrite the AST and add a cache_write stage with the information provided.
+   * \param scope_sref The parent scope of this mutation.
+   * \param writer_block_sref The only writer block in the scope.
+   * \param info The cache stage information.
+   * \param touched_info The reverse cache touched information.
+   * \return The new AST rooting at the original parent scope.
+   */
+  static Stmt Rewrite(const StmtSRef& scope_sref, const StmtSRef& writer_block_sref,
+                      CacheStageInfo* info, ReverseCacheTouchedInfo* touched_info) {
+    ReverseCacheWriteRewriter rewriter(scope_sref, writer_block_sref, info, touched_info);
+    return rewriter(GetRef<Stmt>(scope_sref->stmt));
+  }
+
+ private:
+  explicit ReverseCacheWriteRewriter(const StmtSRef& scope_sref, const StmtSRef& writer_block_sref,
+                                     CacheStageInfo* info, ReverseCacheTouchedInfo* touched_info)
+      : scope_sref_(scope_sref), writer_block_sref_(writer_block_sref), info_(info) {
+    for (const IterVar& iter_var : touched_info->block_vars) {
+      new_indices_.push_back(iter_var->var);
+    }
+  }
+
+  Stmt VisitStmt_(const ForNode* loop) final {
+    Stmt stmt = StmtMutator::VisitStmt_(loop);
+    // Check the insertion point
+    if (loop == info_->loc_sref->stmt) {
+      // Insert cache stage into the loop if it is the right place
+      ObjectPtr<ForNode> n = make_object<ForNode>(*stmt.as<ForNode>());
+      n->body = InsertCacheStage(n->body, info_->loc_pos, info_->cache_stage);
+      stmt = Stmt(n);
+    }
+    return stmt;
+  }
+
+  Stmt VisitStmt_(const BlockNode* block) final {
+    Block old_stmt = GetRef<Block>(block);
+    // We only mutate the block which generates info->write_buffer
+    if (block != writer_block_sref_->stmt && block != scope_sref_->stmt && !under_writer_block_) {
+      return std::move(old_stmt);
+    }
+
+    // Mutate the body
+    bool under_scope = under_writer_block_ || block == writer_block_sref_->stmt;
+    std::swap(under_scope, under_writer_block_);
+    Block stmt = Downcast<Block>(StmtMutator::VisitStmt_(block));
+    std::swap(under_scope, under_writer_block_);
+
+    // Find the insertion point
+    if (block == info_->loc_sref->stmt) {
+      ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
+      n->body = InsertCacheStage(n->body, info_->loc_pos, info_->cache_stage);
+      stmt = Block(n);
+    }
+    // Put buffer allocation on the parent scope
+    if (block == scope_sref_->stmt) {
+      ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
+      n->alloc_buffers.push_back(info_->alloc);
+      stmt = Block(n);
+    } else {
+      // Since cache_write changes the block, we need to update the buffer it writes
+      Array<BufferRegion> reads, writes;
+      // New reads info.
+      for (const BufferRegion& buf_region : block->reads) {
+        if (buf_region->buffer.same_as(info_->write_buffer)) {
+          Array<Range> region;
+          for (const PrimExpr index : new_indices_) {
+            region.push_back(Range::FromMinExtent(index, Integer(1)));
+          }
+          reads.push_back(BufferRegion(info_->read_buffer, region));
+        } else {
+          reads.push_back(buf_region);
+        }
+      }
+      // New writes info, same as above.
+      for (const BufferRegion& buf_region : block->writes) {
+        if (buf_region->buffer.same_as(info_->write_buffer)) {
+          Array<Range> region;
+          for (const PrimExpr index : new_indices_) {
+            region.push_back(Range::FromMinExtent(index, Integer(1)));
+          }
+          writes.push_back(BufferRegion(info_->read_buffer, region));
+        } else {
+          writes.push_back(buf_region);
+        }
+      }
+
+      CHECK_EQ(block->match_buffers.size(), 0) << "Not supported yet.";
+      if (!writes.same_as(block->writes) || !reads.same_as(block->reads)) {
+        ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
+        n->writes = std::move(writes);
+        n->reads = std::move(reads);
+        stmt = Block(n);
+      }
+    }
+    // Remove atomic flag
+    ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
+    n->annotations.erase("atomic");
+    stmt = Block(n);
+    info_->block_reuse.Set(old_stmt, stmt);
+    return std::move(stmt);
+  }
+
+  PrimExpr VisitExpr_(const VarNode* op) final {
+    if (op == info_->write_buffer->data.get()) {
+      return info_->read_buffer->data;
+    }
+    return GetRef<PrimExpr>(op);
+  }
+
+  Stmt VisitStmt_(const BufferStoreNode* store) final {
+    BufferStore stmt = Downcast<BufferStore>(StmtMutator::VisitStmt_(store));
+    if (stmt->buffer.same_as(info_->write_buffer)) {
+      auto n = CopyOnWrite(stmt.get());
+      n->buffer = info_->read_buffer;
+      n->indices = new_indices_;
+      return Stmt(n);
+    } else {
+      return std::move(stmt);
+    }
+  }
+
+  PrimExpr VisitExpr_(const BufferLoadNode* load) final {
+    if (load->buffer.same_as(info_->write_buffer)) {
+      ObjectPtr<BufferLoadNode> n = make_object<BufferLoadNode>(*load);
+      n->buffer = info_->read_buffer;
+      n->indices = new_indices_;
+      return PrimExpr(n);
+    }
+    return ExprMutator::VisitExpr_(load);
+  }
+
+  /*! \brief The parent scope of the insertion. */
+  const StmtSRef& scope_sref_;
+  /*! \brief The parent scope of the insertion. */
+  const StmtSRef& writer_block_sref_;
+  /*! \brief The info for inserting cache stage. */
+  CacheStageInfo* info_;
+  /*! \brief The indices to use for new buffer. */
+  Array<PrimExpr> new_indices_;
+  /*! \brief Whether the current node is under the given block. */
+  bool under_writer_block_{false};
+};
+
 /*! \brief Mutator for CacheWrite */
 class CacheWriteRewriter : public StmtExprMutator {
  public:
@@ -1154,8 +1301,9 @@ StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int w
   Block cache_write_stage = MakeReverseCacheStage(/*cache_region=*/cache_region,
                                                   /*touched_info=*/&touched_info, /*info=*/&info,
                                                   /*storage_scope=*/storage_scope);
-  Stmt new_scope = CacheWriteRewriter::Rewrite(/*scope_sref=*/scope_sref,
-                                               /*writer_block_sref=*/block_sref, /*info=*/&info);
+  Stmt new_scope = ReverseCacheWriteRewriter::Rewrite(
+      /*scope_sref=*/scope_sref,
+      /*writer_block_sref=*/block_sref, /*info=*/&info, /*touched_info=*/&touched_info);
 
   // Step 8. Replacing and updating flags.
   self->Replace(scope_sref, new_scope, info.block_reuse);
