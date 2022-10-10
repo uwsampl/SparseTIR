@@ -54,6 +54,23 @@ def tcspmm(
             C[io, ii, f] + A[io, jo, ii, ji] * B[ji, f]
         )
 
+@T.prim_func
+def scatter_add(
+    a: T.handle,
+    b: T.handle,
+    idx: T.handle,
+):
+    A = T.match_buffer(a, (128, 16), "float32")
+    B = T.match_buffer(b, (1024,), "float32")
+    I = T.match_buffer(idx, (128,), "int32")
+
+    for i, j in T.grid(128, 16):
+        with T.block("scatter"):
+            vi, vj = T.axis.remap("SR", [i, j])
+            with T.init():
+                B[I[vi]] = T.float32(0)
+            B[I[vi]] = B[I[vi]] + A[vi, vj]
+
 
 def test_tc_spmm_cache_read():
     MB, NB, NNZB, F, B = tcspmm.params[-5:]
@@ -74,5 +91,14 @@ def test_tc_spmm_cache_read():
     print(sch.mod["main"].script())
 
 
+def test_rev_cache_write():
+    mod = tvm.IRModule.from_expr(scatter_add)    
+    sch = tir.Schedule(mod)
+    blk = sch.get_block("scatter")
+    sch.reverse_cache_write(blk, 0, "shared")
+    print(sch.mod["main"].script())
+
+
 if __name__ == "__main__":
     test_tc_spmm_cache_read()
+    test_rev_cache_write()
