@@ -1177,12 +1177,9 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
   for (size_t idx = 0; idx < block->iter_vars.size(); ++idx) {
     const IterVar& block_var = block->iter_vars[idx];
     if (collector.touched.count(block_var->var.get())) {
-      if (dim_order.empty()) {
-        // no input dim order
-        touched_info.block_vars.push_back(block_var);
-        touched_info.iter_values.push_back(realize->iter_values[idx]);
-        new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-        collector(touched_info.iter_values.back());
+      if (dim_order_set.empty()) {
+        // no user defined dim order.
+        dim_order.push_back(idx);
       } else {
         // user provide dim order, check whether it's valid.
         CHECK(dim_order_set.count(idx))
@@ -1191,16 +1188,14 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
       }
     }
   }
-  if (!dim_order.empty()) {
-    // use input dim order
-    for (size_t i = 0; i < dim_order.size(); ++i) {
-      int idx = dim_order[i]->value;
-      const IterVar& block_var = block->iter_vars[idx];
-      touched_info.block_vars.push_back(block_var);
-      touched_info.iter_values.push_back(realize->iter_values[idx]);
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-      collector(touched_info.iter_values.back());
-    }
+
+  for (size_t i = 0; i < dim_order.size(); ++i) {
+    int idx = dim_order[i]->value;
+    const IterVar& block_var = block->iter_vars[idx];
+    touched_info.block_vars.push_back(block_var);
+    touched_info.iter_values.push_back(realize->iter_values[idx]);
+    new_shape.push_back(block_var->dom->min + block_var->dom->extent);
+    collector(touched_info.iter_values.back());
   }
 
   for (const StmtSRef loop_sref : GetLoops(block_sref)) {
@@ -1298,12 +1293,9 @@ StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int w
   for (size_t idx = 0; idx < block->iter_vars.size(); ++idx) {
     const IterVar& block_var = block->iter_vars[idx];
     if (collector.touched.count(block_var->var.get())) {
-      if (dim_order.empty()) {
-        // no input dim order
-        touched_info.block_vars.push_back(block_var);
-        touched_info.iter_values.push_back(realize->iter_values[idx]);
-        new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-        collector(touched_info.iter_values.back());
+      if (dim_order_set.empty()) {
+        // no user defined dim order.
+        dim_order.push_back(idx);
       } else {
         // user provide dim order, check whether it's valid.
         CHECK(dim_order_set.count(idx))
@@ -1312,16 +1304,14 @@ StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int w
       }
     }
   }
-  if (!dim_order.empty()) {
-    // use input dim order
-    for (size_t i = 0; i < dim_order.size(); ++i) {
-      int idx = dim_order[i]->value;
-      const IterVar& block_var = block->iter_vars[idx];
-      touched_info.block_vars.push_back(block_var);
-      touched_info.iter_values.push_back(realize->iter_values[idx]);
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-      collector(touched_info.iter_values.back());
-    }
+
+  for (size_t i = 0; i < dim_order.size(); ++i) {
+    int idx = dim_order[i]->value;
+    const IterVar& block_var = block->iter_vars[idx];
+    touched_info.block_vars.push_back(block_var);
+    touched_info.iter_values.push_back(realize->iter_values[idx]);
+    new_shape.push_back(block_var->dom->min + block_var->dom->extent);
+    collector(touched_info.iter_values.back());
   }
 
   for (const StmtSRef loop_sref : GetLoops(block_sref)) {
