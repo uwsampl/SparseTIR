@@ -1113,7 +1113,7 @@ class VarCollector : public ExprVisitor {
 };
 
 StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int read_buffer_index,
-                          const String& storage_scope) {
+                          const String& storage_scope, Array<Integer> dim_order) {
   /*!
    * Check:
    *   - The index is in the array of block reading region
@@ -1174,9 +1174,19 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
     IterVar block_var = block->iter_vars[i];
     if (collector.touched.count(block_var->var.get())) {
       touched_info.block_vars.push_back(block_var);
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
       touched_info.iter_values.push_back(realize->iter_values[i]);
       collector(touched_info.iter_values.back());
+    }
+  }
+  // Infer shape of allocated buffer
+  if (!dim_order.empty()) {
+    for (const Integer& idx: dim_order) {
+      IterVar block_var = block->iter_vars[idx->value];
+      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
+    }
+  } else {
+    for (const IterVar& block_var: touched_info.block_vars) {
+      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
     }
   }
   for (const StmtSRef loop_sref : GetLoops(block_sref)) {
@@ -1217,7 +1227,7 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
 }
 
 StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_buffer_index,
-                           const String& storage_scope) {
+                           const String& storage_scope, Array<Integer> dim_order) {
   /*!
    * Check:
    *   - The index is in the array of block reading region
@@ -1271,9 +1281,19 @@ StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int w
     IterVar block_var = block->iter_vars[i];
     if (collector.touched.count(block_var->var.get())) {
       touched_info.block_vars.push_back(block_var);
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
       touched_info.iter_values.push_back(realize->iter_values[i]);
       collector(touched_info.iter_values.back());
+    }
+  }
+  // Infer shape of allocated buffer
+  if (!dim_order.empty()) {
+    for (const Integer& idx: dim_order) {
+      IterVar block_var = block->iter_vars[idx->value];
+      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
+    }
+  } else {
+    for (const IterVar& block_var: touched_info.block_vars) {
+      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
     }
   }
   for (const StmtSRef loop_sref : GetLoops(block_sref)) {
@@ -1283,6 +1303,18 @@ StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int w
       touched_info.loop_ranges.push_back(Range::FromMinExtent(loop->min, loop->extent));
     }
   }
+  // Infer shape of allocated buffer
+  if (!dim_order.empty()) {
+    for (const Integer& idx: dim_order) {
+      IterVar block_var = block->iter_vars[idx->value];
+      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
+    }
+  } else {
+    for (const IterVar& block_var: touched_info.block_vars) {
+      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
+    }
+  }
+ 
 
   // Create write buffer.
   ObjectPtr<BufferNode> new_buffer = make_object<BufferNode>(*write_buffer.get());
@@ -1379,20 +1411,21 @@ struct ReverseCacheReadTraits : public UnpackedInstTraits<ReverseCacheReadTraits
 
  private:
   static constexpr size_t kNumInputs = 1;
-  static constexpr size_t kNumAttrs = 2;
+  static constexpr size_t kNumAttrs = 3;
   static constexpr size_t kNumDecisions = 0;
 
   static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block, Integer read_buffer_index,
-                                         String storage_scope) {
-    return sch->ReverseCacheRead(block, read_buffer_index->value, storage_scope);
+                                         String storage_scope, Array<Integer> dim_order) {
+    return sch->ReverseCacheRead(block, read_buffer_index->value, storage_scope, dim_order);
   }
 
   static String UnpackedAsPython(Array<String> outputs, String block, Integer read_buffer_index,
-                                 String storage_scope) {
+                                 String storage_scope, Array<Integer> dim_order) {
     PythonAPICall py("reverse_cache_read");
     py.Input("block", block);
     py.Input("read_buffer_index", read_buffer_index->value);
     py.Input("storage_scope", storage_scope);
+    py.Input("dim_order", dim_order);
     py.SingleOutput(outputs);
     return py.Str();
   }
@@ -1407,20 +1440,21 @@ struct ReverseCacheWriteTraits : public UnpackedInstTraits<ReverseCacheWriteTrai
 
  private:
   static constexpr size_t kNumInputs = 1;
-  static constexpr size_t kNumAttrs = 2;
+  static constexpr size_t kNumAttrs = 3;
   static constexpr size_t kNumDecisions = 0;
 
   static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block, Integer write_buffer_index,
-                                         String storage_scope) {
-    return sch->ReverseCacheWrite(block, write_buffer_index->value, storage_scope);
+                                         String storage_scope, Array<Integer> dim_order) {
+    return sch->ReverseCacheWrite(block, write_buffer_index->value, storage_scope, dim_order);
   }
 
   static String UnpackedAsPython(Array<String> outputs, String block, Integer write_buffer_index,
-                                 String storage_scope) {
+                                 String storage_scope, Array<Integer> dim_order) {
     PythonAPICall py("reverse_cache_write");
     py.Input("block", block);
     py.Input("write_buffer_index", write_buffer_index->value);
     py.Input("storage_scope", storage_scope);
+    py.Input("dim_order", dim_order);
     py.SingleOutput(outputs);
     return py.Str();
   }
