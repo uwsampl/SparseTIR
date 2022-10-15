@@ -423,7 +423,8 @@ class SparseFormatDecomposer : public StmtExprMutator {
 
 PrimFunc SparseFormatDecompose(Array<FormatRewriteRule> composable_formats, PrimFunc f,
                                bool include_format_rewrite_blks = true) {
-  CHECK(composable_formats.size() >= 1) << "The given composable formats length should be greater than or equal to 1.";
+  CHECK(composable_formats.size() >= 1)
+      << "The given composable formats length should be greater than or equal to 1.";
   // Only apply this pass to TIR that is not from TE schedules
   if (!IsFromLegacyTESchedule(f) && SparseTIRLevel(f) == 2) {
     // SparseFormatDecomposer rewriter(composable_formats);
