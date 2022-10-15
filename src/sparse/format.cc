@@ -164,6 +164,51 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
 }
 
 /*!
+ * \brief HeteroCSR to HeteroELL format.
+ * \param indptr_arr The indptr array of CSR for each relation.
+ * \param indices_arr The indices array of CSR for each relation.
+ * \param nnz_rows_bkt The number of nonzero rows parameter bucket (for output ELL3D format).
+ * \param nnz_cols_bkt The number of nonzero cols parameter bucket (for output ELL3D format).
+ * \return {bucket_size}, each of them is a tuple (indptr_rel, indices_rows, indices_cols, mask)
+ */
+Array<Array<NDArray>> HeteroCSRToELL3D(
+  Array<NDArray> indptr_arr,
+  Array<NDArray> indices_arr,
+  Array<Integer> nnz_rows_bkt, Array<Integer> nnz_cols_bkt
+) {
+  int num_rels = indptr_arr.size();
+  int num_buckets = nnz_rows_bkt.size();
+  CHECK_EQ(num_rels, int(indices_arr.size())) << "Input indptr_array and indices_arr should have same length.";
+  CHECK_EQ(num_buckets, int(nnz_cols_bkt.size())) << "Input nnz_rows and nnz_cols should have same length.";
+  std::vector<int> nnz_rows_bkt_vec, nnz_cols_bkt_vec;
+  for (const Integer& nnz_rows: nnz_rows_bkt) {
+    nnz_rows_bkt_vec.push_back(nnz_rows->value);
+  }
+  for (const Integer& nnz_cols: nnz_cols_bkt) {
+    nnz_cols_bkt_vec.push_back(nnz_cols->value);
+  }
+
+  for (int i = 1; i < nnz_cols_bkt_vec.size(); ++i) {
+    CHECK_LT(nnz_cols_bkt_vec[i - 1], nnz_cols_bkt_vec[i]) << "The given nnz_cols_bkt should be ascending.";
+  }
+
+  for (int rel_id = 0; rel_id < num_rels; ++rel_id) {
+    int num_rows = indptr_arr[rel_id]->shape[0] - 1;
+    int nnz = indices_arr[rel_id]->shape[0]; 
+    int* indptr_data = static_cast<int*>(indptr_arr[rel_id]->data);
+    int* indices_data = static_cast<int*>(indices_arr[rel_id]->data);
+    for (int i = 0; i < num_rows; ++i) {
+      int num_cols_i = indptr_data[i + 1] - indptr_data[i];
+      
+      // for (int j = indptr_data[i]; j < indptr_data[i + 1]; ++j) {
+      //   int row = i, col = indices_data[j];
+        
+      // }
+    }
+  }
+}
+
+/*!
  * \brief Condense sparse matrix in CSR format to (t x 1) tiles, and group g tiles together.
  * if nonzero elements in a tile is less then threshold, collect them to another DCSR format.
  * \param indptr The indptr array of CSR format.
@@ -293,5 +338,6 @@ Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g, int thres
 namespace sparse {
 TVM_REGISTER_GLOBAL("tir.sparse.ColumnPartHyb").set_body_typed(ColumnPartHyb);
 TVM_REGISTER_GLOBAL("tir.sparse.ConDense").set_body_typed(ConDense);
+TVM_REGISTER_GLOBAL("tir.sparse.CSFToELL3D").set_body_typed(HeteroCSRToELL3D);
 }  // namespace sparse
 }  // namespace tvm
