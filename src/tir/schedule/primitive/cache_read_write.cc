@@ -1170,25 +1170,39 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
     collector(range->min);
   }
   BlockRealize realize = GetBlockRealize(self, block_sref);
-  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
-    IterVar block_var = block->iter_vars[i];
+  std::unordered_set<int> dim_order_set;
+  for (const Integer& idx : dim_order) {
+    dim_order_set.insert(idx->value);
+  }
+  for (size_t idx = 0; idx < block->iter_vars.size(); ++idx) {
+    const IterVar& block_var = block->iter_vars[idx];
     if (collector.touched.count(block_var->var.get())) {
+      if (dim_order.empty()) {
+        // no input dim order
+        touched_info.block_vars.push_back(block_var);
+        touched_info.iter_values.push_back(realize->iter_values[idx]);
+        new_shape.push_back(block_var->dom->min + block_var->dom->extent);
+        collector(touched_info.iter_values.back());
+      } else {
+        // user provide dim order, check whether it's valid.
+        CHECK(dim_order_set.count(idx))
+            << "Block iter_var " << block_var
+            << " used in the block, but doesn't appear in user-specified dim order array.";
+      }
+    }
+  }
+  if (!dim_order.empty()) {
+    // use input dim order
+    for (size_t i = 0; i < dim_order.size(); ++i) {
+      int idx = dim_order[i]->value;
+      const IterVar& block_var = block->iter_vars[idx];
       touched_info.block_vars.push_back(block_var);
-      touched_info.iter_values.push_back(realize->iter_values[i]);
+      touched_info.iter_values.push_back(realize->iter_values[idx]);
+      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
       collector(touched_info.iter_values.back());
     }
   }
-  // Infer shape of allocated buffer
-  if (!dim_order.empty()) {
-    for (const Integer& idx: dim_order) {
-      IterVar block_var = block->iter_vars[idx->value];
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-    }
-  } else {
-    for (const IterVar& block_var: touched_info.block_vars) {
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-    }
-  }
+
   for (const StmtSRef loop_sref : GetLoops(block_sref)) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     if (collector.touched.count(loop->loop_var.get())) {
@@ -1277,25 +1291,39 @@ StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int w
     collector(range->min);
   }
   BlockRealize realize = GetBlockRealize(self, block_sref);
-  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
-    IterVar block_var = block->iter_vars[i];
+  std::unordered_set<int> dim_order_set;
+  for (const Integer& idx : dim_order) {
+    dim_order_set.insert(idx->value);
+  }
+  for (size_t idx = 0; idx < block->iter_vars.size(); ++idx) {
+    const IterVar& block_var = block->iter_vars[idx];
     if (collector.touched.count(block_var->var.get())) {
+      if (dim_order.empty()) {
+        // no input dim order
+        touched_info.block_vars.push_back(block_var);
+        touched_info.iter_values.push_back(realize->iter_values[idx]);
+        new_shape.push_back(block_var->dom->min + block_var->dom->extent);
+        collector(touched_info.iter_values.back());
+      } else {
+        // user provide dim order, check whether it's valid.
+        CHECK(dim_order_set.count(idx))
+            << "Block iter_var " << block_var
+            << " used in the block, but doesn't appear in user-specified dim order array.";
+      }
+    }
+  }
+  if (!dim_order.empty()) {
+    // use input dim order
+    for (size_t i = 0; i < dim_order.size(); ++i) {
+      int idx = dim_order[i]->value;
+      const IterVar& block_var = block->iter_vars[idx];
       touched_info.block_vars.push_back(block_var);
-      touched_info.iter_values.push_back(realize->iter_values[i]);
+      touched_info.iter_values.push_back(realize->iter_values[idx]);
+      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
       collector(touched_info.iter_values.back());
     }
   }
-  // Infer shape of allocated buffer
-  if (!dim_order.empty()) {
-    for (const Integer& idx: dim_order) {
-      IterVar block_var = block->iter_vars[idx->value];
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-    }
-  } else {
-    for (const IterVar& block_var: touched_info.block_vars) {
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-    }
-  }
+
   for (const StmtSRef loop_sref : GetLoops(block_sref)) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     if (collector.touched.count(loop->loop_var.get())) {
@@ -1303,18 +1331,6 @@ StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int w
       touched_info.loop_ranges.push_back(Range::FromMinExtent(loop->min, loop->extent));
     }
   }
-  // Infer shape of allocated buffer
-  if (!dim_order.empty()) {
-    for (const Integer& idx: dim_order) {
-      IterVar block_var = block->iter_vars[idx->value];
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-    }
-  } else {
-    for (const IterVar& block_var: touched_info.block_vars) {
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-    }
-  }
- 
 
   // Create write buffer.
   ObjectPtr<BufferNode> new_buffer = make_object<BufferNode>(*write_buffer.get());
