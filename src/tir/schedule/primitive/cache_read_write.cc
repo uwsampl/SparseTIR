@@ -1113,7 +1113,7 @@ class VarCollector : public ExprVisitor {
 };
 
 StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int read_buffer_index,
-                          const String& storage_scope) {
+                          const String& storage_scope, Array<Integer> dim_order) {
   /*!
    * Check:
    *   - The index is in the array of block reading region
@@ -1170,15 +1170,34 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
     collector(range->min);
   }
   BlockRealize realize = GetBlockRealize(self, block_sref);
-  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
-    IterVar block_var = block->iter_vars[i];
+  std::unordered_set<int> dim_order_set;
+  for (const Integer& idx : dim_order) {
+    dim_order_set.insert(idx->value);
+  }
+  for (size_t idx = 0; idx < block->iter_vars.size(); ++idx) {
+    const IterVar& block_var = block->iter_vars[idx];
     if (collector.touched.count(block_var->var.get())) {
-      touched_info.block_vars.push_back(block_var);
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-      touched_info.iter_values.push_back(realize->iter_values[i]);
-      collector(touched_info.iter_values.back());
+      if (dim_order_set.empty()) {
+        // no user defined dim order.
+        dim_order.push_back(idx);
+      } else {
+        // user provide dim order, check whether it's valid.
+        CHECK(dim_order_set.count(idx))
+            << "Block iter_var " << block_var
+            << " used in the block, but doesn't appear in user-specified dim order array.";
+      }
     }
   }
+
+  for (size_t i = 0; i < dim_order.size(); ++i) {
+    int idx = dim_order[i]->value;
+    const IterVar& block_var = block->iter_vars[idx];
+    touched_info.block_vars.push_back(block_var);
+    touched_info.iter_values.push_back(realize->iter_values[idx]);
+    new_shape.push_back(block_var->dom->min + block_var->dom->extent);
+    collector(touched_info.iter_values.back());
+  }
+
   for (const StmtSRef loop_sref : GetLoops(block_sref)) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     if (collector.touched.count(loop->loop_var.get())) {
@@ -1217,7 +1236,7 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
 }
 
 StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_buffer_index,
-                           const String& storage_scope) {
+                           const String& storage_scope, Array<Integer> dim_order) {
   /*!
    * Check:
    *   - The index is in the array of block reading region
@@ -1267,15 +1286,34 @@ StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int w
     collector(range->min);
   }
   BlockRealize realize = GetBlockRealize(self, block_sref);
-  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
-    IterVar block_var = block->iter_vars[i];
+  std::unordered_set<int> dim_order_set;
+  for (const Integer& idx : dim_order) {
+    dim_order_set.insert(idx->value);
+  }
+  for (size_t idx = 0; idx < block->iter_vars.size(); ++idx) {
+    const IterVar& block_var = block->iter_vars[idx];
     if (collector.touched.count(block_var->var.get())) {
-      touched_info.block_vars.push_back(block_var);
-      new_shape.push_back(block_var->dom->min + block_var->dom->extent);
-      touched_info.iter_values.push_back(realize->iter_values[i]);
-      collector(touched_info.iter_values.back());
+      if (dim_order_set.empty()) {
+        // no user defined dim order.
+        dim_order.push_back(idx);
+      } else {
+        // user provide dim order, check whether it's valid.
+        CHECK(dim_order_set.count(idx))
+            << "Block iter_var " << block_var
+            << " used in the block, but doesn't appear in user-specified dim order array.";
+      }
     }
   }
+
+  for (size_t i = 0; i < dim_order.size(); ++i) {
+    int idx = dim_order[i]->value;
+    const IterVar& block_var = block->iter_vars[idx];
+    touched_info.block_vars.push_back(block_var);
+    touched_info.iter_values.push_back(realize->iter_values[idx]);
+    new_shape.push_back(block_var->dom->min + block_var->dom->extent);
+    collector(touched_info.iter_values.back());
+  }
+
   for (const StmtSRef loop_sref : GetLoops(block_sref)) {
     const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     if (collector.touched.count(loop->loop_var.get())) {
@@ -1379,20 +1417,21 @@ struct ReverseCacheReadTraits : public UnpackedInstTraits<ReverseCacheReadTraits
 
  private:
   static constexpr size_t kNumInputs = 1;
-  static constexpr size_t kNumAttrs = 2;
+  static constexpr size_t kNumAttrs = 3;
   static constexpr size_t kNumDecisions = 0;
 
   static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block, Integer read_buffer_index,
-                                         String storage_scope) {
-    return sch->ReverseCacheRead(block, read_buffer_index->value, storage_scope);
+                                         String storage_scope, Array<Integer> dim_order) {
+    return sch->ReverseCacheRead(block, read_buffer_index->value, storage_scope, dim_order);
   }
 
   static String UnpackedAsPython(Array<String> outputs, String block, Integer read_buffer_index,
-                                 String storage_scope) {
+                                 String storage_scope, Array<Integer> dim_order) {
     PythonAPICall py("reverse_cache_read");
     py.Input("block", block);
     py.Input("read_buffer_index", read_buffer_index->value);
     py.Input("storage_scope", storage_scope);
+    py.Input("dim_order", dim_order);
     py.SingleOutput(outputs);
     return py.Str();
   }
@@ -1407,20 +1446,21 @@ struct ReverseCacheWriteTraits : public UnpackedInstTraits<ReverseCacheWriteTrai
 
  private:
   static constexpr size_t kNumInputs = 1;
-  static constexpr size_t kNumAttrs = 2;
+  static constexpr size_t kNumAttrs = 3;
   static constexpr size_t kNumDecisions = 0;
 
   static BlockRV UnpackedApplyToSchedule(Schedule sch, BlockRV block, Integer write_buffer_index,
-                                         String storage_scope) {
-    return sch->ReverseCacheWrite(block, write_buffer_index->value, storage_scope);
+                                         String storage_scope, Array<Integer> dim_order) {
+    return sch->ReverseCacheWrite(block, write_buffer_index->value, storage_scope, dim_order);
   }
 
   static String UnpackedAsPython(Array<String> outputs, String block, Integer write_buffer_index,
-                                 String storage_scope) {
+                                 String storage_scope, Array<Integer> dim_order) {
     PythonAPICall py("reverse_cache_write");
     py.Input("block", block);
     py.Input("write_buffer_index", write_buffer_index->value);
     py.Input("storage_scope", storage_scope);
+    py.Input("dim_order", dim_order);
     py.SingleOutput(outputs);
     return py.Str();
   }

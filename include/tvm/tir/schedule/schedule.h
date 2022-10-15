@@ -411,22 +411,24 @@ class ScheduleNode : public runtime::Object {
    * \param block_rv The consumer block of the target buffer.
    * \param read_buffer_index The index of the buffer in block's read region.
    * \param storage_scope The target storage scope.
+   * \param dim_order The user-defined dimension order of allocated buffer.
    * \return The cache stage block.
    */
   virtual BlockRV ReverseCacheRead(const BlockRV& block_rv, int read_buffer_index,
-                                   const String& storage_scope) = 0;
+                                   const String& storage_scope, Array<Integer> dim_order) = 0;
   /*!
    * \brief Create a block that writes a buffer region into a write cache. It requires:
    * 1) There is only one block who writes the target buffer.
    * 2) The scope block have stage-pipeline property.
-   * Compared to cache write, the index mapping was performed at producer rather than consumer.
+   * Compared to cache write, the index mapping was performed at consumer rather than producer.
    * \param block_rv The producer of the buffer
    * \param write_buffer_index The index of the buffer in block's write region
    * \param storage_scope The target storage scope
+   * \param dim_order The user-defined dimension order of allocated buffer.
    * \return The cache stage block.
    */
   virtual BlockRV ReverseCacheWrite(const BlockRV& block_rv, int write_buffer_index,
-                                    const String& storage_scope) = 0;
+                                    const String& storage_scope, Array<Integer> dim_order) = 0;
 
   /******** Schedule: Compute location ********/
   /*!
