@@ -40,7 +40,7 @@ using runtime::NDArray;
  * \param indices The indices array of CSR matrix.
  * \param num_col_parts Number of column partitions.
  * \param buckets The bucket sizes array.
- * \return {row_indices, col_indices, mask}, each one of them is a [num_col_parts, num_buckets]
+ * \return {row_indices, col_indices, mask}, each one of them is a [num_col_parts, num_buckets *]
  * array.
  */
 Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray indptr,
@@ -75,7 +75,7 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
   std::vector<std::vector<std::vector<int>>> row_indices(num_col_parts);
   std::vector<std::vector<std::vector<int>>> col_indices(num_col_parts);
   std::vector<std::vector<std::vector<int>>> mask(num_col_parts);
-  // init row_indices and col_indices
+  // init row_indices, col_indices, mask
   for (int part_id = 0; part_id < num_col_parts; ++part_id) {
     for (int bucket_id = 0; bucket_id < num_bkts; ++bucket_id) {
       row_indices[part_id].push_back(std::vector<int>());
@@ -98,6 +98,7 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
       bool create_new_bucket = false;
       int remainder = col_indices[part_id][bucket_id].size() % bucket_size;
       if (remainder != 0) {
+        ICHECK(!row_indices[part_id][bucket_id].empty()) << "row indices should not be empty.";
         if (row_id != row_indices[part_id][bucket_id].back()) {
           // padding
           for (int k = remainder; k < bucket_size; ++k) {
@@ -139,6 +140,7 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
       // conversion to NDArray
       int nnz = row_indices[part_id][bucket_id].size();
       ICHECK(int(col_indices[part_id][bucket_id].size()) == nnz * bucket_size) << "Padding error.";
+      ICHECK(int(mask[part_id][bucket_id].size()) == nnz * bucket_size) << "Padding error.";
       NDArray row_indices_bucket_local = NDArray::Empty({nnz}, {kDLInt, 32, 1}, {kDLCPU, 0});
       NDArray col_indices_bucket_local =
           NDArray::Empty({nnz, bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
@@ -158,8 +160,6 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
     mask_nd.push_back(mask_part_local);
   }
 
-  // convert to NDArray
-
   return {row_indices_nd, col_indices_nd, mask_nd};
 }
 
@@ -169,43 +169,140 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
  * \param indices_arr The indices array of CSR for each relation.
  * \param nnz_rows_bkt The number of nonzero rows parameter bucket (for output ELL3D format).
  * \param nnz_cols_bkt The number of nonzero cols parameter bucket (for output ELL3D format).
- * \return {bucket_size}, each of them is a tuple (indptr_rel, indices_rows, indices_cols, mask)
+ * \return (row_indices, col_indices, mask), each one of them is a [num_buckets, num_rels, *] array.
  */
-Array<Array<NDArray>> HeteroCSRToELL3D(
-  Array<NDArray> indptr_arr,
-  Array<NDArray> indices_arr,
-  Array<Integer> nnz_rows_bkt, Array<Integer> nnz_cols_bkt
-) {
+Array<Array<Array<NDArray>>> HeteroCSRToELL3D(Array<NDArray> indptr_arr, Array<NDArray> indices_arr,
+                                              Array<Integer> nnz_rows_bkt,
+                                              Array<Integer> nnz_cols_bkt) {
   int num_rels = indptr_arr.size();
   int num_buckets = nnz_rows_bkt.size();
-  CHECK_EQ(num_rels, int(indices_arr.size())) << "Input indptr_array and indices_arr should have same length.";
-  CHECK_EQ(num_buckets, int(nnz_cols_bkt.size())) << "Input nnz_rows and nnz_cols should have same length.";
+  CHECK_EQ(num_rels, int(indices_arr.size()))
+      << "Input indptr_array and indices_arr should have same length.";
+  CHECK_EQ(num_buckets, int(nnz_cols_bkt.size()))
+      << "Input nnz_rows and nnz_cols should have same length.";
   std::vector<int> nnz_rows_bkt_vec, nnz_cols_bkt_vec;
-  for (const Integer& nnz_rows: nnz_rows_bkt) {
+  for (const Integer& nnz_rows : nnz_rows_bkt) {
     nnz_rows_bkt_vec.push_back(nnz_rows->value);
   }
-  for (const Integer& nnz_cols: nnz_cols_bkt) {
+  for (const Integer& nnz_cols : nnz_cols_bkt) {
     nnz_cols_bkt_vec.push_back(nnz_cols->value);
   }
 
-  for (int i = 1; i < nnz_cols_bkt_vec.size(); ++i) {
-    CHECK_LT(nnz_cols_bkt_vec[i - 1], nnz_cols_bkt_vec[i]) << "The given nnz_cols_bkt should be ascending.";
+  for (size_t i = 1; i < nnz_cols_bkt_vec.size(); ++i) {
+    CHECK_LT(nnz_cols_bkt_vec[i - 1], nnz_cols_bkt_vec[i])
+        << "The given nnz_cols_bkt should be ascending.";
+  }
+
+  /* (num_buckets, num_rels) */
+  std::vector<std::vector<std::vector<int>>> row_indices(num_buckets);
+  std::vector<std::vector<std::vector<int>>> col_indices(num_buckets);
+  std::vector<std::vector<std::vector<int>>> mask(num_buckets);
+  // init row_indices, col_indices, mask
+  for (int bucket_id = 0; bucket_id < num_buckets; ++bucket_id) {
+    for (int rel_id = 0; rel_id < num_rels; ++rel_id) {
+      row_indices[bucket_id].push_back(std::vector<int>());
+      col_indices[bucket_id].push_back(std::vector<int>());
+      mask[bucket_id].push_back(std::vector<int>());
+    }
   }
 
   for (int rel_id = 0; rel_id < num_rels; ++rel_id) {
     int num_rows = indptr_arr[rel_id]->shape[0] - 1;
-    int nnz = indices_arr[rel_id]->shape[0]; 
     int* indptr_data = static_cast<int*>(indptr_arr[rel_id]->data);
     int* indices_data = static_cast<int*>(indices_arr[rel_id]->data);
     for (int i = 0; i < num_rows; ++i) {
       int num_cols_i = indptr_data[i + 1] - indptr_data[i];
-      
-      // for (int j = indptr_data[i]; j < indptr_data[i + 1]; ++j) {
-      //   int row = i, col = indices_data[j];
-        
-      // }
+      int bucket_id =
+          std::upper_bound(nnz_cols_bkt_vec.begin(), nnz_cols_bkt_vec.end(), num_cols_i - 1) -
+          nnz_cols_bkt_vec.begin();
+      if (bucket_id == num_buckets) {
+        bucket_id--;
+      }
+      int col_bucket_size = nnz_cols_bkt_vec[bucket_id];
+      for (int j = indptr_data[i]; j < indptr_data[i + 1]; ++j) {
+        int row = i, col = indices_data[j];
+        int remainder = col_indices[bucket_id][rel_id].size() % col_bucket_size;
+        bool create_new_bucket = false;
+        if (remainder != 0) {
+          ICHECK(!row_indices[bucket_id][rel_id].empty()) << "row indices should not be empty.";
+          if (row != row_indices[bucket_id][rel_id].back()) {
+            // padding
+            for (int k = remainder; k < col_bucket_size; ++k) {
+              col_indices[bucket_id][rel_id].push_back(0);
+              mask[bucket_id][rel_id].push_back(0);
+            }
+            create_new_bucket = true;
+          }
+        } else {
+          create_new_bucket = true;
+        }
+        if (create_new_bucket) {
+          ICHECK(col_indices[bucket_id][rel_id].size() % col_bucket_size == 0) << "Invalid padding";
+          row_indices[bucket_id][rel_id].push_back(row);
+        }
+        col_indices[bucket_id][rel_id].push_back(col);
+        mask[bucket_id][rel_id].push_back(1);
+      }
     }
   }
+
+  // final padding and conversion to NDArray
+  Array<Array<NDArray>> row_indices_nd;
+  Array<Array<NDArray>> col_indices_nd;
+  Array<Array<NDArray>> mask_nd;
+  for (int bucket_id = 0; bucket_id < num_buckets; ++bucket_id) {
+    Array<NDArray> row_indices_bucket_local;
+    Array<NDArray> col_indices_bucket_local;
+    Array<NDArray> mask_bucket_local;
+    int row_bucket_size = nnz_rows_bkt_vec[bucket_id];
+    int col_bucket_size = nnz_cols_bkt_vec[bucket_id];
+    for (int rel_id = 0; rel_id < num_rels; ++rel_id) {
+      int remainer_row = row_indices[bucket_id][rel_id].size() % row_bucket_size;
+      // padding
+      if (remainer_row != 0) {
+        for (int k = remainer_row; k < row_bucket_size; ++k) {
+          row_indices[bucket_id][rel_id].push_back(row_indices[bucket_id][rel_id].back());
+        }
+      }
+      int remainer_col =
+          col_indices[bucket_id][rel_id].size() % (row_bucket_size * col_bucket_size);
+      if (remainer_col != 0) {
+        for (int k = remainer_col; k < row_bucket_size * col_bucket_size; ++k) {
+          col_indices[bucket_id][rel_id].push_back(0);
+          mask[bucket_id][rel_id].push_back(0);
+        }
+      }
+      // conversion to NDArray
+      int nnz_buckets = row_indices[bucket_id][rel_id].size() / row_bucket_size;
+      ICHECK(int(row_indices[bucket_id][rel_id].size()) == nnz_buckets * row_bucket_size)
+          << "Padding error.";
+      ICHECK(int(col_indices[bucket_id][rel_id].size()) ==
+             nnz_buckets * row_bucket_size * col_bucket_size)
+          << "Padding error.";
+      ICHECK(int(mask[bucket_id][rel_id].size()) == nnz_buckets * row_bucket_size * col_bucket_size)
+          << "Padding error.";
+      NDArray row_indices_rel_local =
+          NDArray::Empty({nnz_buckets, row_bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
+      NDArray col_indices_rel_local = NDArray::Empty(
+          {nnz_buckets, row_bucket_size, col_bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
+      NDArray mask_rel_local = NDArray::Empty({nnz_buckets, row_bucket_size, col_bucket_size},
+                                              {kDLInt, 32, 1}, {kDLCPU, 0});
+      row_indices_rel_local.CopyFromBytes(row_indices[bucket_id][rel_id].data(),
+                                          nnz_buckets * row_bucket_size * sizeof(int));
+      col_indices_rel_local.CopyFromBytes(
+          col_indices[bucket_id][rel_id].data(),
+          nnz_buckets * row_bucket_size * col_bucket_size * sizeof(int));
+      mask_rel_local.CopyFromBytes(mask[bucket_id][rel_id].data(),
+                                   nnz_buckets * row_bucket_size * col_bucket_size * sizeof(int));
+      row_indices_bucket_local.push_back(row_indices_rel_local);
+      col_indices_bucket_local.push_back(col_indices_rel_local);
+      mask_bucket_local.push_back(mask_rel_local);
+    }
+    row_indices_nd.push_back(row_indices_bucket_local);
+    col_indices_nd.push_back(col_indices_bucket_local);
+    mask_nd.push_back(mask_bucket_local);
+  }
+  return {row_indices_nd, col_indices_nd, mask_nd};
 }
 
 /*!
