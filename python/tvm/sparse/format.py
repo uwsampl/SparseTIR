@@ -142,6 +142,25 @@ def condense(indptr_nd, indices_nd, t, g, threshold=1):
     """
     return _ffi_api.ConDense(indptr_nd, indices_nd, t, g, threshold)  # type: ignore
 
+def csf_to_ell3d(csf_indptr_0, csf_indices_0, csf_indptr_1, csf_indices_1, nnz_rows_bkt, nnz_cols_bkt):
+    """TODO
+
+    Parameters
+    ----------
+    csf_indptr_0 : NDArray
+
+    csf_indices_0 : NDArray
+
+    csf_indptr_1 : NDArray
+
+    csf_indices_1 : NDArray
+
+    nnz_rows_bkt : List[int]
+    
+    nnz_cols_bkt : List[int]
+    """
+    return _ffi_api.CSFToELL3D(csf_indptr_0, csf_indices_0, csf_indptr_1, csf_indices_1, nnz_rows_bkt, nnz_cols_bkt)
+
 
 def format_decompose(
     mod: IRModule,

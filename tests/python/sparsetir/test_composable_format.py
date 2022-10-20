@@ -17,7 +17,9 @@
 
 import tvm
 import dgl
+import torch as th
 import numpy as np
+from dgl.data.rdf import AIFBDataset
 from tvm.sparse import FormatRewriteRule, column_part_hyb, condense, format_decompose
 from sparse_tir_scripts import csrmm
 from sparse_tir_composable_format_scripts import (
@@ -28,7 +30,7 @@ from sparse_tir_composable_format_scripts import (
     padding,
     padding_rewrite_with_preprocess,
 )
-from tvm.sparse.format import format_decompose
+from tvm.sparse.format import csf_to_ell3d, format_decompose
 
 
 def csr2bsr_inv_index_map(block_size):
@@ -264,9 +266,70 @@ def test_condense():
     )
 
 
+def prepare_hetero_graph_simplified(g: dgl.DGLHeteroGraph):
+    ntype_pointer = np.cumsum([0] + [g.number_of_nodes(ntype) for ntype in g.ntypes])
+
+    etype_pointer = [0]
+    for etype in g.canonical_etypes:
+        g_sub = g[etype]
+        etype_pointer.append(etype_pointer[-1] + g_sub.num_edges())
+
+    return {
+        "ntype_node_pointer": th.IntTensor(ntype_pointer),
+        "etype_edge_pointer": th.IntTensor(etype_pointer),
+    }
+
+
+def test_hetero_csr_to_ell3d():
+    dataset = AIFBDataset()
+    g = dataset[0]
+    type_pointers = prepare_hetero_graph_simplified(g)
+    ntype_node_pointer = type_pointers["ntype_node_pointer"]
+    etype_edge_pointer = type_pointers["etype_edge_pointer"]
+    csf_indptr_0 = [0]
+    csf_indices_0 = []
+    csf_indptr_1 = [th.tensor([0], dtype=th.int32)]
+    csf_indices_1 = []
+    for etype in g.canonical_etypes:
+        src_type, _, dst_type = etype
+        etype_id = g.get_etype_id(etype)
+        src_type_id = g.get_ntype_id(src_type)
+        dst_type_id = g.get_ntype_id(dst_type)
+        g_sub = g[etype]
+        # print(g_sub)
+        m, n = g_sub.num_dst_nodes(), g_sub.num_src_nodes()
+        indptr, indices, _ = g_sub.adj_sparse(fmt="csc")
+        # print(indptr, indices)
+        csf_indptr_0.append(csf_indptr_0[-1] + m)
+        csf_indices_0.append(ntype_node_pointer[src_type_id] + th.arange(m, dtype=th.int32))
+        csf_indptr_1.append(csf_indptr_1[-1][-1] + indptr[1:])
+        csf_indices_1.append(ntype_node_pointer[dst_type_id] + indices)
+
+    csf_indptr_0 = th.tensor(csf_indptr_0, dtype=th.int32)
+    csf_indices_0 = th.cat(csf_indices_0, dim=-1)
+    csf_indptr_1 = th.cat(csf_indptr_1, dim=-1)
+    csf_indices_1 = th.cat(csf_indices_1, dim=-1)
+
+    dev = tvm.cpu(0)
+    csf_indptr_0_nd = tvm.nd.array(csf_indptr_0.int(), device=dev)
+    csf_indices_0_nd = tvm.nd.array(csf_indices_0.int(), device=dev)
+    csf_indptr_1_nd = tvm.nd.array(csf_indptr_1.int(), device=dev)
+    csf_indices_1_nd = tvm.nd.array(csf_indices_1.int(), device=dev)
+
+    row_indices, col_indices, mask = csf_to_ell3d(
+        csf_indptr_0_nd,
+        csf_indices_0_nd,
+        csf_indptr_1_nd,
+        csf_indices_1_nd,
+        [8, 4, 2, 1],
+        [1, 2, 4, 8],
+    )
+
+
 if __name__ == "__main__":
     test_csrmm_bsr_rewrite()
     test_csrmm_ell_rewrite()
     test_csrmm_padding_rewrite()
     test_column_part_hyb()
     test_condense()
+    test_hetero_csr_to_ell3d()

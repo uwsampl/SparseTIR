@@ -374,7 +374,7 @@ def padding_rewrite_with_preprocess(
 ) -> None:
     # function attr dict
     T.func_attr(
-        {"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2, "composable": 1}
+        {"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2}
     )
     I = T.dense_fixed(m, "int32")
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")

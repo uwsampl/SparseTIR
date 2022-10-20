@@ -231,12 +231,9 @@ Array<Array<Array<NDArray>>> CSFToELL3D(NDArray csf_indptr_0, NDArray csf_indice
   int* csf_indices_1_data = static_cast<int*>(csf_indices_1->data);
 
   for (int rel_id = 0; rel_id < num_rels; ++rel_id) {
-    int num_rows = csf_indptr_0_data[rel_id + 1] - csf_indptr_0_data[rel_id];
-    int* indptr_1_data = csf_indptr_1_data + csf_indptr_0_data[rel_id + 1];
-    int* indices_0_data = csf_indices_0_data + csf_indptr_0_data[rel_id + 1];
-    for (int i = 0; i < num_rows; ++i) {
-      int row = indices_0_data[i];
-      int num_cols_i = indptr_1_data[i + 1] - indptr_1_data[i];
+    for (int i = csf_indptr_0_data[rel_id]; i < csf_indptr_0_data[rel_id + 1]; ++i) {
+      int row = csf_indices_0_data[i];
+      int num_cols_i = csf_indptr_1_data[i + 1] - csf_indptr_1_data[i];
       int bucket_id =
           std::upper_bound(nnz_cols_bkt_vec.begin(), nnz_cols_bkt_vec.end(), num_cols_i - 1) -
           nnz_cols_bkt_vec.begin();
@@ -244,9 +241,8 @@ Array<Array<Array<NDArray>>> CSFToELL3D(NDArray csf_indptr_0, NDArray csf_indice
         bucket_id--;
       }
       int col_bucket_size = nnz_cols_bkt_vec[bucket_id];
-      int* indices_1_data = csf_indices_1_data + indptr_1_data[i];
-      for (int j = indptr_1_data[i]; j < indptr_1_data[i + 1]; ++j) {
-        int col = indices_1_data[j];
+      for (int j = csf_indptr_1_data[i]; j < csf_indptr_1_data[i + 1]; ++j) {
+        int col = csf_indices_1_data[j];
         int remainder = col_indices[bucket_id][rel_id].size() % col_bucket_size;
         bool create_new_bucket = false;
         if (remainder != 0) {
@@ -313,13 +309,19 @@ Array<Array<Array<NDArray>>> CSFToELL3D(NDArray csf_indptr_0, NDArray csf_indice
           {nnz_buckets, row_bucket_size, col_bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
       NDArray mask_rel_local = NDArray::Empty({nnz_buckets, row_bucket_size, col_bucket_size},
                                               {kDLInt, 32, 1}, {kDLCPU, 0});
-      row_indices_rel_local.CopyFromBytes(row_indices[bucket_id][rel_id].data(),
-                                          nnz_buckets * row_bucket_size * sizeof(int));
-      col_indices_rel_local.CopyFromBytes(
-          col_indices[bucket_id][rel_id].data(),
-          nnz_buckets * row_bucket_size * col_bucket_size * sizeof(int));
-      mask_rel_local.CopyFromBytes(mask[bucket_id][rel_id].data(),
-                                   nnz_buckets * row_bucket_size * col_bucket_size * sizeof(int));
+      if (!row_indices[bucket_id][rel_id].empty()) {
+        row_indices_rel_local.CopyFromBytes(row_indices[bucket_id][rel_id].data(),
+                                            nnz_buckets * row_bucket_size * sizeof(int));
+      }
+      if (!col_indices[bucket_id][rel_id].empty()) {
+        col_indices_rel_local.CopyFromBytes(
+            col_indices[bucket_id][rel_id].data(),
+            nnz_buckets * row_bucket_size * col_bucket_size * sizeof(int));
+      }
+      if (!mask[bucket_id][rel_id].empty()) {
+        mask_rel_local.CopyFromBytes(mask[bucket_id][rel_id].data(),
+                                     nnz_buckets * row_bucket_size * col_bucket_size * sizeof(int));
+      }
       row_indices_bucket_local.push_back(row_indices_rel_local);
       col_indices_bucket_local.push_back(col_indices_rel_local);
       mask_bucket_local.push_back(mask_rel_local);
