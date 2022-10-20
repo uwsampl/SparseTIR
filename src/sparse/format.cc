@@ -171,13 +171,32 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
  * \param nnz_cols_bkt The number of nonzero cols parameter bucket (for output ELL3D format).
  * \return (row_indices, col_indices, mask), each one of them is a [num_buckets, num_rels, *] array.
  */
-Array<Array<Array<NDArray>>> HeteroCSRToELL3D(Array<NDArray> indptr_arr, Array<NDArray> indices_arr,
-                                              Array<Integer> nnz_rows_bkt,
-                                              Array<Integer> nnz_cols_bkt) {
-  int num_rels = indptr_arr.size();
+Array<Array<Array<NDArray>>> CSFToELL3D(NDArray csf_indptr_0, NDArray csf_indices_0,
+                                        NDArray csf_indptr_1, NDArray csf_indices_1,
+                                        Array<Integer> nnz_rows_bkt, Array<Integer> nnz_cols_bkt) {
+  CHECK_EQ(csf_indptr_0->dtype.bits, 32)
+      << "Only support int32 index data type, got " << int(csf_indptr_0->dtype.bits)
+      << " bits for csf_indptr_0.";
+  CHECK_EQ(csf_indices_0->dtype.bits, 32)
+      << "Only support int32 index data type, got " << int(csf_indices_0->dtype.bits)
+      << " bits for csf_indices_0.";
+  CHECK_EQ(csf_indptr_1->dtype.bits, 32)
+      << "Only support int32 index data type, got " << int(csf_indptr_1->dtype.bits)
+      << " bits for csf_indptr_0.";
+  CHECK_EQ(csf_indices_1->dtype.bits, 32)
+      << "Only support int32 index data type, got " << int(csf_indices_1->dtype.bits)
+      << " bits for csf_indices_0.";
+  CHECK_EQ(csf_indptr_0->device.device_type, kDLCPU)
+      << "Only support CSFToELL3D conversion on CPU.";
+  CHECK_EQ(csf_indices_0->device.device_type, kDLCPU)
+      << "Only support CSFToeLL3D conversion on CPU.";
+  CHECK_EQ(csf_indptr_1->device.device_type, kDLCPU)
+      << "Only support CSFToELL3D conversion on CPU.";
+  CHECK_EQ(csf_indices_1->device.device_type, kDLCPU)
+      << "Only support CSFToeLL3D conversion on CPU.";
+
+  int num_rels = csf_indptr_0->shape[0] - 1;
   int num_buckets = nnz_rows_bkt.size();
-  CHECK_EQ(num_rels, int(indices_arr.size()))
-      << "Input indptr_array and indices_arr should have same length.";
   CHECK_EQ(num_buckets, int(nnz_cols_bkt.size()))
       << "Input nnz_rows and nnz_cols should have same length.";
   std::vector<int> nnz_rows_bkt_vec, nnz_cols_bkt_vec;
@@ -206,12 +225,18 @@ Array<Array<Array<NDArray>>> HeteroCSRToELL3D(Array<NDArray> indptr_arr, Array<N
     }
   }
 
+  int* csf_indptr_0_data = static_cast<int*>(csf_indptr_0->data);
+  int* csf_indices_0_data = static_cast<int*>(csf_indices_0->data);
+  int* csf_indptr_1_data = static_cast<int*>(csf_indptr_1->data);
+  int* csf_indices_1_data = static_cast<int*>(csf_indices_1->data);
+
   for (int rel_id = 0; rel_id < num_rels; ++rel_id) {
-    int num_rows = indptr_arr[rel_id]->shape[0] - 1;
-    int* indptr_data = static_cast<int*>(indptr_arr[rel_id]->data);
-    int* indices_data = static_cast<int*>(indices_arr[rel_id]->data);
+    int num_rows = csf_indptr_0_data[rel_id + 1] - csf_indptr_0_data[rel_id];
+    int* indptr_1_data = csf_indptr_1_data + csf_indptr_0_data[rel_id + 1];
+    int* indices_0_data = csf_indices_0_data + csf_indptr_0_data[rel_id + 1];
     for (int i = 0; i < num_rows; ++i) {
-      int num_cols_i = indptr_data[i + 1] - indptr_data[i];
+      int row = indices_0_data[i];
+      int num_cols_i = indptr_1_data[i + 1] - indptr_1_data[i];
       int bucket_id =
           std::upper_bound(nnz_cols_bkt_vec.begin(), nnz_cols_bkt_vec.end(), num_cols_i - 1) -
           nnz_cols_bkt_vec.begin();
@@ -219,8 +244,9 @@ Array<Array<Array<NDArray>>> HeteroCSRToELL3D(Array<NDArray> indptr_arr, Array<N
         bucket_id--;
       }
       int col_bucket_size = nnz_cols_bkt_vec[bucket_id];
-      for (int j = indptr_data[i]; j < indptr_data[i + 1]; ++j) {
-        int row = i, col = indices_data[j];
+      int* indices_1_data = csf_indices_1_data + indptr_1_data[i];
+      for (int j = indptr_1_data[i]; j < indptr_1_data[i + 1]; ++j) {
+        int col = indices_1_data[j];
         int remainder = col_indices[bucket_id][rel_id].size() % col_bucket_size;
         bool create_new_bucket = false;
         if (remainder != 0) {
@@ -435,6 +461,6 @@ Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g, int thres
 namespace sparse {
 TVM_REGISTER_GLOBAL("tir.sparse.ColumnPartHyb").set_body_typed(ColumnPartHyb);
 TVM_REGISTER_GLOBAL("tir.sparse.ConDense").set_body_typed(ConDense);
-TVM_REGISTER_GLOBAL("tir.sparse.CSFToELL3D").set_body_typed(HeteroCSRToELL3D);
+TVM_REGISTER_GLOBAL("tir.sparse.CSFToELL3D").set_body_typed(CSFToELL3D);
 }  // namespace sparse
 }  // namespace tvm
