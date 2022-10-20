@@ -164,16 +164,18 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
 }
 
 /*!
- * \brief HeteroCSR to HeteroELL format.
- * \param indptr_arr The indptr array of CSR for each relation.
- * \param indices_arr The indices array of CSR for each relation.
+ * \brief 3-Dimensional CSF to composable ELL format.
+ * \param csf_indptr_0
+ * \param csf_indices_0
+ * \param csf_indptr_1
+ * \param csf_indices_1
  * \param nnz_rows_bkt The number of nonzero rows parameter bucket (for output ELL3D format).
  * \param nnz_cols_bkt The number of nonzero cols parameter bucket (for output ELL3D format).
- * \return (row_indices, col_indices, mask), each one of them is a [num_buckets, num_rels, *] array.
+ * \return (indptr, row_indices, col_indices, mask), each one of them is a [num_buckets, *] array.
  */
-Array<Array<Array<NDArray>>> CSFToELL3D(NDArray csf_indptr_0, NDArray csf_indices_0,
-                                        NDArray csf_indptr_1, NDArray csf_indices_1,
-                                        Array<Integer> nnz_rows_bkt, Array<Integer> nnz_cols_bkt) {
+Array<Array<NDArray>> CSFToELL3D(NDArray csf_indptr_0, NDArray csf_indices_0, NDArray csf_indptr_1,
+                                 NDArray csf_indices_1, Array<Integer> nnz_rows_bkt,
+                                 Array<Integer> nnz_cols_bkt) {
   CHECK_EQ(csf_indptr_0->dtype.bits, 32)
       << "Only support int32 index data type, got " << int(csf_indptr_0->dtype.bits)
       << " bits for csf_indptr_0.";
@@ -269,68 +271,70 @@ Array<Array<Array<NDArray>>> CSFToELL3D(NDArray csf_indptr_0, NDArray csf_indice
   }
 
   // final padding and conversion to NDArray
-  Array<Array<NDArray>> row_indices_nd;
-  Array<Array<NDArray>> col_indices_nd;
-  Array<Array<NDArray>> mask_nd;
+  Array<NDArray> indptr_nd;
+  Array<NDArray> row_indices_nd;
+  Array<NDArray> col_indices_nd;
+  Array<NDArray> mask_nd;
   for (int bucket_id = 0; bucket_id < num_buckets; ++bucket_id) {
-    Array<NDArray> row_indices_bucket_local;
-    Array<NDArray> col_indices_bucket_local;
-    Array<NDArray> mask_bucket_local;
     int row_bucket_size = nnz_rows_bkt_vec[bucket_id];
     int col_bucket_size = nnz_cols_bkt_vec[bucket_id];
+
+    std::vector<int> indptr_bucket_local{0};
+    std::vector<int> row_indices_bucket_local;
+    std::vector<int> col_indices_bucket_local;
+    std::vector<int> mask_bucket_local;
     for (int rel_id = 0; rel_id < num_rels; ++rel_id) {
-      int remainer_row = row_indices[bucket_id][rel_id].size() % row_bucket_size;
+      row_indices_bucket_local.insert(row_indices_bucket_local.end(),
+                                      row_indices[bucket_id][rel_id].begin(),
+                                      row_indices[bucket_id][rel_id].end());
+      col_indices_bucket_local.insert(col_indices_bucket_local.end(),
+                                      col_indices[bucket_id][rel_id].begin(),
+                                      col_indices[bucket_id][rel_id].end());
+      mask_bucket_local.insert(mask_bucket_local.end(), mask[bucket_id][rel_id].begin(),
+                               mask[bucket_id][rel_id].end());
+      int remainer_row = row_indices_bucket_local.size() % row_bucket_size;
       // padding
       if (remainer_row != 0) {
         for (int k = remainer_row; k < row_bucket_size; ++k) {
-          row_indices[bucket_id][rel_id].push_back(row_indices[bucket_id][rel_id].back());
+          row_indices_bucket_local.push_back(row_indices_bucket_local.back());
         }
       }
-      int remainer_col =
-          col_indices[bucket_id][rel_id].size() % (row_bucket_size * col_bucket_size);
+      int remainer_col = col_indices_bucket_local.size() % (row_bucket_size * col_bucket_size);
       if (remainer_col != 0) {
         for (int k = remainer_col; k < row_bucket_size * col_bucket_size; ++k) {
-          col_indices[bucket_id][rel_id].push_back(0);
-          mask[bucket_id][rel_id].push_back(0);
+          col_indices_bucket_local.push_back(0);
+          mask_bucket_local.push_back(0);
         }
       }
-      // conversion to NDArray
-      int nnz_buckets = row_indices[bucket_id][rel_id].size() / row_bucket_size;
-      ICHECK(int(row_indices[bucket_id][rel_id].size()) == nnz_buckets * row_bucket_size)
-          << "Padding error.";
-      ICHECK(int(col_indices[bucket_id][rel_id].size()) ==
-             nnz_buckets * row_bucket_size * col_bucket_size)
-          << "Padding error.";
-      ICHECK(int(mask[bucket_id][rel_id].size()) == nnz_buckets * row_bucket_size * col_bucket_size)
-          << "Padding error.";
-      NDArray row_indices_rel_local =
-          NDArray::Empty({nnz_buckets, row_bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
-      NDArray col_indices_rel_local = NDArray::Empty(
-          {nnz_buckets, row_bucket_size, col_bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
-      NDArray mask_rel_local = NDArray::Empty({nnz_buckets, row_bucket_size, col_bucket_size},
-                                              {kDLInt, 32, 1}, {kDLCPU, 0});
-      if (!row_indices[bucket_id][rel_id].empty()) {
-        row_indices_rel_local.CopyFromBytes(row_indices[bucket_id][rel_id].data(),
-                                            nnz_buckets * row_bucket_size * sizeof(int));
-      }
-      if (!col_indices[bucket_id][rel_id].empty()) {
-        col_indices_rel_local.CopyFromBytes(
-            col_indices[bucket_id][rel_id].data(),
-            nnz_buckets * row_bucket_size * col_bucket_size * sizeof(int));
-      }
-      if (!mask[bucket_id][rel_id].empty()) {
-        mask_rel_local.CopyFromBytes(mask[bucket_id][rel_id].data(),
-                                     nnz_buckets * row_bucket_size * col_bucket_size * sizeof(int));
-      }
-      row_indices_bucket_local.push_back(row_indices_rel_local);
-      col_indices_bucket_local.push_back(col_indices_rel_local);
-      mask_bucket_local.push_back(mask_rel_local);
+      indptr_bucket_local.push_back(row_indices_bucket_local.size() / row_bucket_size);
     }
-    row_indices_nd.push_back(row_indices_bucket_local);
-    col_indices_nd.push_back(col_indices_bucket_local);
-    mask_nd.push_back(mask_bucket_local);
+
+    ICHECK((int)indptr_bucket_local.size() == (num_rels + 1)) << "Padding error.";
+    NDArray indptr_bucket_local_nd = NDArray::Empty({num_rels + 1}, {kDLInt, 32, 1}, {kDLCPU, 0});
+    indptr_bucket_local_nd.CopyFromBytes(indptr_bucket_local.data(), (num_rels + 1) * sizeof(int));
+    int nnz = row_indices_bucket_local.size() / row_bucket_size;
+    ICHECK((int)row_indices_bucket_local.size() == nnz * row_bucket_size) << "Padding error.";
+    ICHECK((int)col_indices_bucket_local.size() == nnz * row_bucket_size * col_bucket_size)
+        << "Padding error.";
+    ICHECK((int)mask_bucket_local.size() == nnz * row_bucket_size * col_bucket_size) << "Padding error.";
+    NDArray row_indices_bucket_local_nd =
+        NDArray::Empty({nnz, row_bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
+    row_indices_bucket_local_nd.CopyFromBytes(row_indices_bucket_local.data(),
+                                              nnz * row_bucket_size * sizeof(int));
+    NDArray col_indices_bucket_local_nd =
+        NDArray::Empty({nnz, row_bucket_size, col_bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
+    col_indices_bucket_local_nd.CopyFromBytes(
+        col_indices_bucket_local.data(), nnz * row_bucket_size * col_bucket_size * sizeof(int));
+    NDArray mask_bucket_local_nd =
+        NDArray::Empty({nnz, row_bucket_size, col_bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
+    mask_bucket_local_nd.CopyFromBytes(mask_bucket_local.data(),
+                                       nnz * row_bucket_size * col_bucket_size * sizeof(int));
+    indptr_nd.push_back(indptr_bucket_local_nd);
+    row_indices_nd.push_back(row_indices_bucket_local_nd);
+    col_indices_nd.push_back(col_indices_bucket_local_nd);
+    mask_nd.push_back(mask_bucket_local_nd);
   }
-  return {row_indices_nd, col_indices_nd, mask_nd};
+  return {indptr_nd, row_indices_nd, col_indices_nd, mask_nd};
 }
 
 /*!

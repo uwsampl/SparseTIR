@@ -316,7 +316,7 @@ def test_hetero_csr_to_ell3d():
     csf_indptr_1_nd = tvm.nd.array(csf_indptr_1.int(), device=dev)
     csf_indices_1_nd = tvm.nd.array(csf_indices_1.int(), device=dev)
 
-    row_indices, col_indices, mask = csf_to_ell3d(
+    indptr, row_indices, col_indices, mask = csf_to_ell3d(
         csf_indptr_0_nd,
         csf_indices_0_nd,
         csf_indptr_1_nd,

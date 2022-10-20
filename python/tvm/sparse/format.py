@@ -142,24 +142,36 @@ def condense(indptr_nd, indices_nd, t, g, threshold=1):
     """
     return _ffi_api.ConDense(indptr_nd, indices_nd, t, g, threshold)  # type: ignore
 
-def csf_to_ell3d(csf_indptr_0, csf_indices_0, csf_indptr_1, csf_indices_1, nnz_rows_bkt, nnz_cols_bkt):
-    """TODO
+
+def csf_to_ell3d(
+    csf_indptr_0, csf_indices_0, csf_indptr_1, csf_indices_1, nnz_rows_bkt, nnz_cols_bkt
+):
+    """Convert CSF format to composable ELL format in 3-dimensional setting (HeteroGraphs).
 
     Parameters
     ----------
     csf_indptr_0 : NDArray
-
+        Level 0 indptr array in CSF format.
     csf_indices_0 : NDArray
-
+        Level 0 indices array in CSF format.
     csf_indptr_1 : NDArray
-
+        Level 1 indptr array in CSF format.
     csf_indices_1 : NDArray
-
-    nnz_rows_bkt : List[int]
-    
+        Level 1 indices array in CSF format.
+    num_rows_bkt : List[int]
+        Number of non-zero rows bucket.
     nnz_cols_bkt : List[int]
+        Number of non-zero columns bucket.
+
+    Returns
+    -------
+    Tuple[List[NDArray]]
+        (indptr, row_indices, col_indices, mask)
+        Each one is a list of NDArray, with length #rels.
     """
-    return _ffi_api.CSFToELL3D(csf_indptr_0, csf_indices_0, csf_indptr_1, csf_indices_1, nnz_rows_bkt, nnz_cols_bkt)
+    return _ffi_api.CSFToELL3D(
+        csf_indptr_0, csf_indices_0, csf_indptr_1, csf_indices_1, nnz_rows_bkt, nnz_cols_bkt
+    )
 
 
 def format_decompose(
