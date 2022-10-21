@@ -197,6 +197,8 @@ def test_rgcn_composable_format(
         sch.unroll(j)
         sch.bind(foi, "threadIdx.y")
         sch.bind(io, "blockIdx.x")
+        sch.unroll(ii)
+        sch.unroll(foo)
 
     mod = lower_sparse_buffer(sch.mod)
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
