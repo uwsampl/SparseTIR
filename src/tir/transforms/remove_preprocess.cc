@@ -33,6 +33,8 @@ class PreprocessRemover : public StmtExprMutator {
  public:
   explicit PreprocessRemover() {}
   Map<Var, Buffer> extra_buffer_map;
+  /* NOTE(Zihao): the extra_buffer_var reorder order information. */
+  Array<Var> extra_buffer_vars;
 
  private:
   Stmt VisitStmt_(const BlockNode* op) final {
@@ -60,6 +62,7 @@ class PreprocessRemover : public StmtExprMutator {
         } else {
           Var new_var(buf->name + "_ptr", DataType::Handle());
           extra_buffer_map.Set(new_var, buf);
+          extra_buffer_vars.push_back(new_var);
         }
       }
       n->alloc_buffers = new_alloc_buffers;
@@ -97,10 +100,16 @@ PrimFunc RemovePreprocess(PrimFunc f) {
     PreprocessRemover remover;
     fptr->body = remover(fptr->body);
     // insert extra parameters
-    for (const auto& kv : remover.extra_buffer_map) {
-      fptr->params.push_back(kv.first);
-      fptr->buffer_map.Set(kv.first, kv.second);
+    for (const Var& var : remover.extra_buffer_vars) {
+      fptr->params.push_back(var);
+      ICHECK(remover.extra_buffer_map.count(var))
+          << "Internal error, extra_buffer_map do not have key " << var;
+      fptr->buffer_map.Set(var, remover.extra_buffer_map.Get(var).value());
     }
+    // for (const auto& kv : remover.extra_buffer_map) {
+    //   fptr->params.push_back(kv.first);
+    //   fptr->buffer_map.Set(kv.first, kv.second);
+    // }
     return f;
   } else {
     return f;

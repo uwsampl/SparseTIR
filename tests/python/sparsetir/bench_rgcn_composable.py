@@ -119,10 +119,8 @@ def test_rgcn_composable_format(
         src_type_id = g.get_ntype_id(src_type)
         dst_type_id = g.get_ntype_id(dst_type)
         g_sub = g[etype]
-        # print(g_sub)
         m_sub, n_sub = g_sub.num_dst_nodes(), g_sub.num_src_nodes()
         indptr, indices, _ = g_sub.adj_sparse(fmt="csc")
-        # print(indptr, indices)
         csf_indptr_0.append(csf_indptr_0[-1] + m_sub)
         csf_indices_0.append(ntype_node_pointer[dst_type_id] + th.arange(m_sub, dtype=th.int32))
         csf_indptr_1.append(csf_indptr_1[-1][-1] + indptr[1:])
@@ -240,7 +238,7 @@ def test_rgcn_composable_format(
 
 
 if __name__ == "__main__":
-    feat_size = 16
+    feat_size = 32
     dataset = get_dataset_by_name("am")
     g = dataset[0]
     type_pointers = prepare_hetero_graph_simplified(g)
@@ -251,5 +249,5 @@ if __name__ == "__main__":
     # homograph
     ground_truth_y = get_ground_truth(g, type_pointers, feat, weight)
     test_rgcn_composable_format(
-        g, type_pointers, feat_size, feat, weight, ground_truth_y, 2, 32, [1, 2, 4, 8]
+        g, type_pointers, feat_size, feat, weight, ground_truth_y, 4, 32, [1, 2, 4, 8, 16]
     )
