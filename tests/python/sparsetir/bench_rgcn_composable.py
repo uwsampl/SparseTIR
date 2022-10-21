@@ -42,6 +42,14 @@ def prepare_hetero_graph_simplified(g: dgl.DGLHeteroGraph):
     }
 
 
+def convert_indptr_to_mid_array(indptr):
+    indptr_numpy = indptr.numpy()
+    ret = []
+    for i in range(len(indptr_numpy) - 1):
+        ret.append(np.zeros((indptr_numpy[i + 1] - indptr_numpy[i],), dtype=np.int32) + i)
+    return np.concatenate(ret, axis=-1)
+
+
 def get_ground_truth(
     g: dgl.DGLHeteroGraph,
     type_pointers: Mapping[str, th.Tensor],
@@ -132,6 +140,7 @@ def test_rgcn_composable_format(
         buckets_row,
         buckets,
     )
+    mids = list(map(convert_indptr_to_mid_array, indptr))
 
     d0, d1, d2, nnz, nnz_rows, nnz_cols = ell3d.params[-6:]
     rewrites = []
@@ -195,7 +204,27 @@ def test_rgcn_composable_format(
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
     print(mod["main"].script())
     f = tvm.build(mod["main"], target="cuda")
-    print(f.imported_modules[0].get_source())
+
+    # prepare inputs
+    dev = tvm.cuda(0)
+    W_nd = tvm.nd.array(weight.cpu().view(-1), device=dev)
+    X_nd = tvm.nd.array(feat.cpu().view(-1), device=dev)
+    Y_nd = tvm.nd.array(th.zeros(g.num_dst_nodes() * feat_size), device=dev)
+    args = [W_nd, X_nd, Y_nd]
+    for bucket_id, _ in enumerate(buckets):
+        args.append(tvm.nd.array(mask[bucket_id].numpy().reshape(-1).astype(np.float32), device=dev))
+        args.append(tvm.nd.array(row_indices[bucket_id].numpy().reshape(-1), device=dev))
+        args.append(tvm.nd.array(col_indices[bucket_id].numpy().reshape(-1), device=dev))
+    for bucket_id, _ in enumerate(buckets):
+        args.append(tvm.nd.array(mids[bucket_id], device=dev))
+    f(*args)
+
+    # print(Y_nd)
+    # print(ground_truth_y)
+
+    # evaluate time
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
+    print("sparse-tir:\t\t {}".format(evaluator(*args).mean * 1000))
 
 
 if __name__ == "__main__":
