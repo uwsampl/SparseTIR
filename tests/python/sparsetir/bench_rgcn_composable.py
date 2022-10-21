@@ -10,7 +10,13 @@ import torch as th
 from tvm.script import tir as T
 from dgl.data.rdf import AIFBDataset, MUTAGDataset, BGSDataset, AMDataset
 from sparse_tir_scripts import rgcn_hetero_forward
-from tvm.sparse import lower_sparse_iter, lower_sparse_buffer, FormatRewriteRule, format_decompose, csf_to_ell3d
+from tvm.sparse import (
+    lower_sparse_iter,
+    lower_sparse_buffer,
+    FormatRewriteRule,
+    format_decompose,
+    csf_to_ell3d,
+)
 from typing import List, Tuple, Mapping
 from sparse_tir_composable_format_scripts import ell3d
 
@@ -105,6 +111,8 @@ def test_rgcn_composable_format(
     csf_indptr_1 = [th.tensor([0], dtype=th.int32)]
     csf_indices_1 = []
     num_rels = len(g.canonical_etypes)
+    m = g.num_dst_nodes()
+    n = g.num_src_nodes()
     for etype in g.canonical_etypes:
         src_type, _, dst_type = etype
         etype_id = g.get_etype_id(etype)
@@ -112,13 +120,13 @@ def test_rgcn_composable_format(
         dst_type_id = g.get_ntype_id(dst_type)
         g_sub = g[etype]
         # print(g_sub)
-        m, n = g_sub.num_dst_nodes(), g_sub.num_src_nodes()
+        m_sub, n_sub = g_sub.num_dst_nodes(), g_sub.num_src_nodes()
         indptr, indices, _ = g_sub.adj_sparse(fmt="csc")
         # print(indptr, indices)
-        csf_indptr_0.append(csf_indptr_0[-1] + m)
-        csf_indices_0.append(ntype_node_pointer[src_type_id] + th.arange(m, dtype=th.int32))
+        csf_indptr_0.append(csf_indptr_0[-1] + m_sub)
+        csf_indices_0.append(ntype_node_pointer[dst_type_id] + th.arange(m_sub, dtype=th.int32))
         csf_indptr_1.append(csf_indptr_1[-1][-1] + indptr[1:])
-        csf_indices_1.append(ntype_node_pointer[dst_type_id] + indices)
+        csf_indices_1.append(ntype_node_pointer[src_type_id] + indices)
 
     csf_indptr_0 = th.tensor(csf_indptr_0, dtype=th.int32)
     csf_indices_0 = th.cat(csf_indices_0, dim=-1)
@@ -151,8 +159,8 @@ def test_rgcn_composable_format(
                 ell3d.specialize(
                     {
                         d0: num_rels,
-                        d1: g.num_dst_nodes(),
-                        d2: g.num_src_nodes(),
+                        d1: m,
+                        d2: n,
                         nnz: row_indices[bucket_id].shape[0],
                         nnz_rows: group_size // bucket_size,
                         nnz_cols: bucket_size,
@@ -166,12 +174,16 @@ def test_rgcn_composable_format(
                 csf_to_ell3d_inv_idx_map,
             )
         )
-    mod = tvm.IRModule.from_expr(rgcn_hetero_forward.specialize({
-        rgcn_hetero_forward.params[-6]: g.num_dst_nodes(),
-        rgcn_hetero_forward.params[-5]: g.num_src_nodes(),
-        rgcn_hetero_forward.params[-4]: num_rels,
-        rgcn_hetero_forward.params[-3]: feat_size
-    }).with_attr("horizontal_fuse", True))
+    mod = tvm.IRModule.from_expr(
+        rgcn_hetero_forward.specialize(
+            {
+                rgcn_hetero_forward.params[-6]: m,
+                rgcn_hetero_forward.params[-5]: n,
+                rgcn_hetero_forward.params[-4]: num_rels,
+                rgcn_hetero_forward.params[-3]: feat_size,
+            }
+        ).with_attr("horizontal_fuse", True)
+    )
     mod = format_decompose(mod, rewrites)
     mod = tvm.tir.transform.RemovePreprocess()(mod)
 
@@ -202,25 +214,25 @@ def test_rgcn_composable_format(
 
     mod = lower_sparse_buffer(sch.mod)
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
-    print(mod["main"].script())
     f = tvm.build(mod["main"], target="cuda")
 
     # prepare inputs
     dev = tvm.cuda(0)
     W_nd = tvm.nd.array(weight.cpu().view(-1), device=dev)
     X_nd = tvm.nd.array(feat.cpu().view(-1), device=dev)
-    Y_nd = tvm.nd.array(th.zeros(g.num_dst_nodes() * feat_size), device=dev)
+    Y_nd = tvm.nd.array(th.zeros(m * feat_size), device=dev)
     args = [W_nd, X_nd, Y_nd]
     for bucket_id, _ in enumerate(buckets):
-        args.append(tvm.nd.array(mask[bucket_id].numpy().reshape(-1).astype(np.float32), device=dev))
+        args.append(
+            tvm.nd.array(mask[bucket_id].numpy().reshape(-1).astype(np.float32), device=dev)
+        )
         args.append(tvm.nd.array(row_indices[bucket_id].numpy().reshape(-1), device=dev))
         args.append(tvm.nd.array(col_indices[bucket_id].numpy().reshape(-1), device=dev))
     for bucket_id, _ in enumerate(buckets):
         args.append(tvm.nd.array(mids[bucket_id], device=dev))
     f(*args)
 
-    # print(Y_nd)
-    # print(ground_truth_y)
+    tvm.testing.assert_allclose(Y_nd.numpy(), ground_truth_y.cpu().numpy().flatten(), rtol=1e-3)
 
     # evaluate time
     evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
@@ -228,8 +240,8 @@ def test_rgcn_composable_format(
 
 
 if __name__ == "__main__":
-    feat_size = 32
-    dataset = get_dataset_by_name("aifb")
+    feat_size = 16 
+    dataset = get_dataset_by_name("am")
     g = dataset[0]
     type_pointers = prepare_hetero_graph_simplified(g)
     n = g.num_nodes()
@@ -238,4 +250,6 @@ if __name__ == "__main__":
     weight = th.rand(r, feat_size, feat_size).to(0)
     # homograph
     ground_truth_y = get_ground_truth(g, type_pointers, feat, weight)
-    test_rgcn_composable_format(g, type_pointers, feat_size, feat, weight, ground_truth_y, 2, 32, [1, 2, 4, 8])
+    test_rgcn_composable_format(
+        g, type_pointers, feat_size, feat, weight, ground_truth_y, 2, 32, [1, 2, 4, 8]
+    )
