@@ -1,5 +1,22 @@
 import dgl
+from dgl.data.rdf import AIFBDataset, MUTAGDataset, BGSDataset, AMDataset
 from ogb.nodeproppred import DglNodePropPredDataset
+from ogb.linkproppred import DglLinkPropPredDataset
+
+
+def get_hetero_dataset(name: str):
+    if name == "aifb":
+        return AIFBDataset()
+    elif name == "mutag":
+        return MUTAGDataset()
+    elif name == "bgs":
+        return BGSDataset()
+    elif name == "am":
+        return AMDataset()
+    elif name == "biokg":
+        return DglLinkPropPredDataset(name="ogbl-biokg")
+    else:
+        raise KeyError("Unknown dataset {}.".format(name))
 
 
 def get_dataset(name: str):

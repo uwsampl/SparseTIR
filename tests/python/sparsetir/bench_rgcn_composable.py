@@ -19,19 +19,7 @@ from tvm.sparse import (
 )
 from typing import List, Tuple, Mapping
 from sparse_tir_composable_format_scripts import ell3d
-
-
-def get_dataset_by_name(name: str):
-    if name == "aifb":
-        return AIFBDataset()
-    elif name == "mutag":
-        return MUTAGDataset()
-    elif name == "bgs":
-        return BGSDataset()
-    elif name == "am":
-        return AMDataset()
-    else:
-        raise KeyError("Unknown dataset {}.".format(name))
+from utils import get_hetero_dataset
 
 
 def prepare_hetero_graph_simplified(g: dgl.DGLHeteroGraph):
@@ -234,20 +222,22 @@ def test_rgcn_composable_format(
 
     # evaluate time
     evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
-    print("sparse-tir:\t\t {}".format(evaluator(*args).mean * 1000))
+    print("sparse-tir:\t\t {:.3f} ms".format(evaluator(*args).mean * 1000))
 
 
 if __name__ == "__main__":
-    feat_size = 32
-    dataset = get_dataset_by_name("am")
-    g = dataset[0]
-    type_pointers = prepare_hetero_graph_simplified(g)
-    n = g.num_nodes()
-    r = len(g.etypes)
-    feat = th.rand(n, feat_size).to(0) / 100
-    weight = th.rand(r, feat_size, feat_size).to(0)
-    # homograph
-    ground_truth_y = get_ground_truth(g, type_pointers, feat, weight)
-    test_rgcn_composable_format(
-        g, type_pointers, feat_size, feat, weight, ground_truth_y, 4, 32, [1, 2, 4, 8, 16]
-    )
+    for feat_size in [32]:  # [4, 8, 16, 32]:
+        for name in ["aifb", "mutag", "bgs", "am", "biokg"]:
+            print("dataset {}, feat_size={}:".format(name, feat_size))
+            dataset = get_hetero_dataset(name)
+            g = dataset[0]
+            type_pointers = prepare_hetero_graph_simplified(g)
+            n = g.num_nodes()
+            r = len(g.etypes)
+            feat = th.rand(n, feat_size).to(0) / 100
+            weight = th.rand(r, feat_size, feat_size).to(0)
+            # homograph
+            ground_truth_y = get_ground_truth(g, type_pointers, feat, weight)
+            test_rgcn_composable_format(
+                g, type_pointers, feat_size, feat, weight, ground_truth_y, 4, 16, [1, 2, 4, 8, 16]
+            )
