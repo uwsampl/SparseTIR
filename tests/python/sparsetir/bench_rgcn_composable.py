@@ -240,7 +240,7 @@ def test_rgcn_composable_format(
 
 
 if __name__ == "__main__":
-    feat_size = 16 
+    feat_size = 16
     dataset = get_dataset_by_name("am")
     g = dataset[0]
     type_pointers = prepare_hetero_graph_simplified(g)
