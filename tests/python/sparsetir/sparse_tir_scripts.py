@@ -473,6 +473,7 @@ def rgcn_hetero_forward(
     indices_i: T.handle,
     indptr_j: T.handle,
     indices_j: T.handle,
+    m: T.int32,
     n: T.int32,
     num_rels: T.int32,
     feat_size: T.int32,
@@ -481,9 +482,9 @@ def rgcn_hetero_forward(
 ):
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
     R = T.dense_fixed(num_rels)
-    I = T.sparse_variable(R, (n, nnz_i), (indptr_i, indices_i), "int32")
+    I = T.sparse_variable(R, (m, nnz_i), (indptr_i, indices_i), "int32")
     J = T.sparse_variable(I, (n, nnz_j), (indptr_j, indices_j), "int32")
-    I_detach = T.dense_fixed(n)
+    I_detach = T.dense_fixed(m)
     J_detach = T.dense_fixed(n)
     F_in = T.dense_fixed(feat_size)
     F_out = T.dense_fixed(feat_size)

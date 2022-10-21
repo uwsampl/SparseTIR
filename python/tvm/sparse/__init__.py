@@ -18,5 +18,5 @@
 """Python-interface for Sparse-TIR"""
 
 from .lower import lower_sparse_iter, lower_sparse_buffer
-from .format import FormatRewriteRule, column_part_hyb, condense, format_decompose
+from .format import FormatRewriteRule, column_part_hyb, condense, format_decompose, csf_to_ell3d
 from .specialize import specialize_buffer

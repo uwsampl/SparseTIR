@@ -78,8 +78,7 @@ class ThreadTagExtentCollector : public StmtExprVisitor {
 class HorizontalFuser : public StmtExprMutator {
  public:
   explicit HorizontalFuser(Map<String, Integer> thread_tag_extent_map)
-      : blockIdx_x_accum_offset_(0),
-        thread_tag_extent_map_(std::move(thread_tag_extent_map)) {
+      : blockIdx_x_accum_offset_(0), thread_tag_extent_map_(std::move(thread_tag_extent_map)) {
     InitThreadTagVarMap();
   }
 
@@ -112,7 +111,8 @@ class HorizontalFuser : public StmtExprMutator {
     if (thread_tag == "blockIdx.x") {
       Stmt body;
       var_substitution_map_[op->loop_var.get()] = thread_var - blockIdx_x_accum_offset_;
-      body = IfThenElse((thread_var < blockIdx_x_accum_offset_ + original_extent), VisitStmt(op->body));
+      body = IfThenElse((thread_var < blockIdx_x_accum_offset_ + original_extent),
+                        VisitStmt(op->body));
       blockIdx_x_accum_offset_ += original_extent->value;
       return body;
     } else {
@@ -135,6 +135,10 @@ class HorizontalFuser : public StmtExprMutator {
       Stmt body = VisitStmt(n->body);
       if (body->IsInstance<SeqStmtNode>()) {
         SeqStmt seq = Downcast<SeqStmt>(body);
+        // NOTE(zihao): temporary hack, need to figure out why there are nested SeqStmtNode.
+        if (seq->seq.size() == 1 && seq->seq[0]->IsInstance<SeqStmtNode>()) {
+          seq = Downcast<SeqStmt>(seq->seq[0]);
+        }
         Stmt outer;
         for (int i = seq->seq.size() - 1; i >= 0; i--) {
           ICHECK(seq->seq[i]->IsInstance<IfThenElseNode>()) << "Not an IfThenElse statement.";
