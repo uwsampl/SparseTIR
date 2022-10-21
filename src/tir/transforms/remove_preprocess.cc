@@ -33,7 +33,8 @@ class PreprocessRemover : public StmtExprMutator {
  public:
   explicit PreprocessRemover() {}
   Map<Var, Buffer> extra_buffer_map;
-  /* NOTE(Zihao): the extra_buffer_var reorder order information. */
+  /* NOTE(Zihao): extra_buffer_map do not preserve order, use another array to record order
+   * information. */
   Array<Var> extra_buffer_vars;
 
  private:
@@ -106,10 +107,6 @@ PrimFunc RemovePreprocess(PrimFunc f) {
           << "Internal error, extra_buffer_map do not have key " << var;
       fptr->buffer_map.Set(var, remover.extra_buffer_map.Get(var).value());
     }
-    // for (const auto& kv : remover.extra_buffer_map) {
-    //   fptr->params.push_back(kv.first);
-    //   fptr->buffer_map.Set(kv.first, kv.second);
-    // }
     return f;
   } else {
     return f;
