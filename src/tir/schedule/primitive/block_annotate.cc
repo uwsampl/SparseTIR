@@ -243,11 +243,11 @@ class MatchToAllocMutator : StmtExprMutator {
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
-    Block old_block = Downcast<Block>(StmtExprMutator::VisitStmt_(op));
-    ObjectPtr<BlockNode> n = CopyOnWrite(op);
+    Block old_block = GetRef<Block>(op);
+    Block mutated_block = Downcast<Block>(StmtExprMutator::VisitStmt_(op));
+    ObjectPtr<BlockNode> n = CopyOnWrite(mutated_block.get());
 
-    if (old_block->name_hint == "root") {
-      LOG(INFO) << new_buffer_->IsInstance<SparseBufferNode>();
+    if (mutated_block->name_hint == "root") {
       n->alloc_buffers.push_back(new_buffer_);
     } else {
       auto f_mutate_read_write_region = [this](const BufferRegion& buffer_region) {

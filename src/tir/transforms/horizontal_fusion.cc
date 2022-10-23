@@ -135,10 +135,6 @@ class HorizontalFuser : public StmtExprMutator {
       Stmt body = VisitStmt(n->body);
       if (body->IsInstance<SeqStmtNode>()) {
         SeqStmt seq = Downcast<SeqStmt>(body);
-        // NOTE(zihao): temporary hack, need to figure out why there are nested SeqStmtNode.
-        if (seq->seq.size() == 1 && seq->seq[0]->IsInstance<SeqStmtNode>()) {
-          seq = Downcast<SeqStmt>(seq->seq[0]);
-        }
         Stmt outer;
         for (int i = seq->seq.size() - 1; i >= 0; i--) {
           ICHECK(seq->seq[i]->IsInstance<IfThenElseNode>()) << "Not an IfThenElse statement.";

@@ -55,7 +55,12 @@ class PreprocessRemover : public StmtExprMutator {
           seq.push_back(stmt);
         }
       }
-      n->body = SeqStmt(seq);
+      // NOTE(Zihao): do not use SeqStmt if sequence length is 1.
+      if (seq.size() == 1) {
+        n->body = seq[0];
+      } else {
+        n->body = SeqStmt(seq);
+      }
       Array<Buffer> new_alloc_buffers;
       for (const Buffer& buf : op->alloc_buffers) {
         if (!buffers_to_materialize.count(buf.get())) {
