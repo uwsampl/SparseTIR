@@ -615,6 +615,13 @@ void ConcreteScheduleNode::SetScope(const BlockRV& block_rv, int buffer_index,
   this->state_->DebugVerify();
 }
 
+void ConcreteScheduleNode::MatchToAlloc(const BlockRV& block_rv, int buffer_index) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::MatchToAlloc(state_, this->GetSRef(block_rv), buffer_index);
+  TVM_TIR_SCHEDULE_END("match-to-alloc", this->error_render_level_);
+  this->state_->DebugVerify();
+}
+
 /******** Schedule: Reduction ********/
 
 BlockRV ConcreteScheduleNode::DecomposeReduction(const BlockRV& block_rv, const LoopRV& loop_rv) {

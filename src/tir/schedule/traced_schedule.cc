@@ -395,6 +395,16 @@ void TracedScheduleNode::SetScope(const BlockRV& block_rv, int buffer_index,
       /*outputs=*/{}));
 }
 
+void TracedScheduleNode::MatchToAlloc(const BlockRV& block_rv, int buffer_index) {
+  ConcreteScheduleNode::MatchToAlloc(block_rv, buffer_index);
+  static const InstructionKind& kind = InstructionKind::Get("MatchToAlloc");
+  trace_->Append(/*inst=*/Instruction(
+      /*kind=*/kind,
+      /*inputs=*/{block_rv},
+      /*attrs=*/{Integer(buffer_index)},
+      /*outputs=*/{}));
+}
+
 /******** Schedule: Blockize & Tensorize ********/
 
 BlockRV TracedScheduleNode::Blockize(const LoopRV& loop_rv, bool inner_init) {

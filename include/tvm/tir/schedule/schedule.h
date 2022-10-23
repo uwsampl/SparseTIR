@@ -547,6 +547,15 @@ class ScheduleNode : public runtime::Object {
    * \param storage_scope The storage scope to be set
    */
   virtual void SetScope(const BlockRV& block_rv, int buffer_index, const String& storage_scope) = 0;
+
+  /*!
+   * \brief Change a matched buffer to allocated buffer, where the buffer is specified by a block
+   * and a write-index.
+   * \param block_rv The producer block of the buffer.
+   * \param buffer_index The index of the buffer in the block's write region
+   */
+  virtual void MatchToAlloc(const BlockRV& block_rv, int buffer_index) = 0;
+
   /******** Schedule: Blockize & Tensorize ********/
   /*!
    * \brief Convert the subtree rooted at a specific loop into a block.

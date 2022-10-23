@@ -1848,6 +1848,22 @@ class Schedule(Object):
             self, block, buffer_index, storage_scope
         )
 
+    @type_checked
+    def match_to_alloc(self, block: BlockRV, buffer_index: int) -> None:
+        """Change a matched buffer to allocated buffer, where the buffer is
+        specified by the a block and a write-index
+
+        Parameters
+        ----------
+        block : BlockRV
+            The producer block of the buffer
+        buffer_index : int
+            The index of the buffer in block's write region
+        """
+        _ffi_api.ScheduleMatchToAlloc(  # type: ignore # pylint: disable=no-member
+            self, block, buffer_index
+        )
+
     ########## Schedule: Blockize & Tensorize ##########
 
     @type_checked

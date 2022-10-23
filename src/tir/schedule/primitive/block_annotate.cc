@@ -198,6 +198,81 @@ class StorageAlignInvalidAnnotationError : public ScheduleError {
   Block block_;
 };
 
+class MatchToAllocMutator : StmtExprMutator {
+ public:
+  /*!
+   * \param root_block The root block to rewrite.
+   * \param old_buffer The old buffer.
+   * \param new_buffer The new allocated buffer.
+   * \param block_sref_reuse The block sref reuse map to be updated.
+   */
+  static Block Mutate(const Block& root_block, const Buffer& old_buffer, const Buffer& new_buffer,
+                      Map<Block, Block>* block_sref_reuse) {
+    MatchToAllocMutator mutator(old_buffer, new_buffer, block_sref_reuse);
+    Stmt new_block = mutator.VisitStmt(root_block);
+    return Downcast<Block>(new_block);
+  }
+
+ private:
+  MatchToAllocMutator(const Buffer& old_buffer, const Buffer& new_buffer,
+                      Map<Block, Block>* block_sref_reuse)
+      : old_buffer_(old_buffer), new_buffer_(new_buffer), block_sref_reuse_(block_sref_reuse) {}
+
+  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
+    if (op->buffer.same_as(old_buffer_)) {
+      Array<PrimExpr> indices;
+      for (const PrimExpr& idx : op->indices) {
+        indices.push_back(StmtExprMutator::VisitExpr(idx));
+      }
+      return BufferLoad(new_buffer_, indices);
+    } else {
+      return StmtExprMutator::VisitExpr_(op);
+    }
+  }
+
+  Stmt VisitStmt_(const BufferStoreNode* op) final {
+    if (op->buffer.same_as(old_buffer_)) {
+      Array<PrimExpr> indices;
+      for (const PrimExpr& idx : op->indices) {
+        indices.push_back(StmtExprMutator::VisitExpr(idx));
+      }
+      return BufferStore(new_buffer_, StmtExprMutator::VisitExpr(op->value), indices);
+    } else {
+      return StmtExprMutator::VisitStmt_(op);
+    }
+  }
+
+  Stmt VisitStmt_(const BlockNode* op) final {
+    Block old_block = Downcast<Block>(StmtExprMutator::VisitStmt_(op));
+    ObjectPtr<BlockNode> n = CopyOnWrite(op);
+
+    if (old_block->name_hint == "root") {
+      LOG(INFO) << new_buffer_->IsInstance<SparseBufferNode>();
+      n->alloc_buffers.push_back(new_buffer_);
+    } else {
+      auto f_mutate_read_write_region = [this](const BufferRegion& buffer_region) {
+        return buffer_region->buffer.same_as(old_buffer_)
+                   ? BufferRegion(new_buffer_, buffer_region->region)
+                   : buffer_region;
+      };
+
+      // Step 2. Mutate the read/write region.
+      Array<BufferRegion> reads = MutateArray(n->reads, f_mutate_read_write_region);
+      Array<BufferRegion> writes = MutateArray(n->writes, f_mutate_read_write_region);
+
+      n->reads = reads;
+      n->writes = writes;
+    }
+    Block new_block(n);
+    block_sref_reuse_->Set(old_block, new_block);
+    return new_block;
+  }
+
+  Buffer old_buffer_;
+  Buffer new_buffer_;
+  Map<Block, Block>* block_sref_reuse_;
+};
+
 /*!
  * \brief A helper mutator which recursively mutates the old buffer's storage scope and collects
  * the block sref reuse information for the following replacement.
@@ -387,6 +462,49 @@ void SetScope(ScheduleState self, const StmtSRef& block_sref, int buffer_index,
   self->Replace(alloc_site_sref, new_block, block_reuse_map);
 }
 
+void MatchToAlloc(ScheduleState self, const StmtSRef& block_sref, int buffer_index) {
+  const BlockNode* block = TVM_SREF_TO_BLOCK(block, block_sref);
+  Buffer buffer = GetNthAccessBuffer(self, GetRef<Block>(block), buffer_index, true);
+
+  // Check whether the buffer is a top-level matched buffer.
+  Optional<StmtSRef> defining_site_sref;
+  bool is_alloc;
+  std::tie(defining_site_sref, is_alloc) = GetBufferDefiningSite(block_sref, buffer);
+  CHECK(!defining_site_sref.defined() && !is_alloc)
+      << "The buffer to transform must be a top-level matched buffer.";
+
+  // Create new allocated buffer.
+  Buffer alloc_buffer;
+  if (buffer->IsInstance<SparseBufferNode>()) {
+    ObjectPtr<SparseBufferNode> alloc_buffer_node =
+        make_object<SparseBufferNode>(*buffer.as<SparseBufferNode>());
+    alloc_buffer_node->name = buffer->name + "_tmp";
+    alloc_buffer = SparseBuffer(alloc_buffer_node);
+  } else {
+    ObjectPtr<BufferNode> alloc_buffer_node = make_object<BufferNode>(*buffer.get());
+    alloc_buffer_node->name = buffer->name + "_tmp";
+    alloc_buffer = Buffer(alloc_buffer_node);
+  }
+
+  const StmtSRefNode* root_block_sref_node = nullptr;
+  const BlockNode* root_block_node = nullptr;
+  for (const StmtSRefNode* p = block_sref.get(); p; p = p->parent) {
+    if (p->stmt->IsInstance<BlockNode>()) {
+      const BlockNode* block = TVM_SREF_TO_BLOCK(block, GetRef<StmtSRef>(p));
+      if (block->name_hint == "root") {
+        root_block_node = block;
+        root_block_sref_node = p;
+      }
+    }
+  }
+  // Find root block and root block sref.
+  Map<Block, Block> block_reuse_map;
+  Block new_root_block = MatchToAllocMutator::Mutate(GetRef<Block>(root_block_node), buffer,
+                                                     alloc_buffer, &block_reuse_map);
+
+  self->Replace(GetRef<StmtSRef>(root_block_sref_node), new_root_block, block_reuse_map);
+}
+
 /******** InstructionKind Registration ********/
 
 struct StorageAlignTraits : public UnpackedInstTraits<StorageAlignTraits> {
@@ -446,8 +564,33 @@ struct SetScopeTraits : public UnpackedInstTraits<SetScopeTraits> {
   friend struct ::tvm::tir::UnpackedInstTraits;
 };
 
+struct MatchToAllocTraits : public UnpackedInstTraits<MatchToAllocTraits> {
+  static constexpr const char* kName = "MatchToAlloc";
+  static constexpr bool kIsPure = false;
+
+ private:
+  static constexpr size_t kNumInputs = 1;
+  static constexpr size_t kNumAttrs = 1;
+  static constexpr size_t kNumDecisions = 0;
+
+  static void UnpackedApplyToSchedule(Schedule sch, BlockRV block_rv, Integer buffer_index) {
+    return sch->MatchToAlloc(block_rv, buffer_index->value);
+  }
+
+  static String UnpackedAsPython(Array<String> outputs, String block_rv, Integer buffer_index) {
+    PythonAPICall py("match_to_alloc");
+    py.Input("block", block_rv);
+    py.Input("buffer_index", buffer_index);
+    return py.Str();
+  }
+
+  template <typename>
+  friend struct ::tvm::tir::UnpackedInstTraits;
+};
+
 TVM_REGISTER_INST_KIND_TRAITS(StorageAlignTraits);
 TVM_REGISTER_INST_KIND_TRAITS(SetScopeTraits);
+TVM_REGISTER_INST_KIND_TRAITS(MatchToAllocTraits);
 
 }  // namespace tir
 }  // namespace tvm

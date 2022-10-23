@@ -131,6 +131,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   void StorageAlign(const BlockRV& block_rv, int buffer_index, int axis, int factor,
                     int offset) override;
   void SetScope(const BlockRV& block_rv, int buffer_index, const String& storage_scope) override;
+  void MatchToAlloc(const BlockRV& block_rv, int buffer_index) override;
   /******** Schedule: Blockize & Tensorize ********/
   BlockRV Blockize(const LoopRV& loop_rv, bool inner_init) override;
   void Tensorize(const BlockRV& block_rv, const String& intrin) override;

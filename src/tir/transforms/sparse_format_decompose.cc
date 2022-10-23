@@ -216,11 +216,19 @@ class SparseFormatDecomposer : public StmtExprMutator {
     for (const SparseBuffer& buf : old_buffers) {
       name_buf_map_.Set(buf->name, buf);
     }
-    auto it = new_func->buffer_map.begin();
-    for (size_t i = 0; i < rule->buffers_to_rewrite.size(); ++i, ++it) {
+    Array<Buffer> new_buffers;
+    for (const Var& param : new_func->params) {
+      if (new_func->buffer_map.count(param)) {
+        new_buffers.push_back(new_func->buffer_map.Get(param).value());
+      }
+    }
+    CHECK(new_buffers.size() == rule->buffers_to_rewrite.size())
+        << "The number of buffers to rewrite does match in provided format description function "
+           "and buffers_to_rewrite list.";
+    for (size_t i = 0; i < rule->buffers_to_rewrite.size(); ++i) {
       String name = rule->buffers_to_rewrite[i];
       buffer_rewrite_map_.Set(name_buf_map_.Get(name).value(),
-                              Downcast<SparseBuffer>((*it).second));
+                              Downcast<SparseBuffer>(new_buffers[i]));
     }
     rewriter_.Init(axes_before_rewrite_, axes_after_rewrite_, rule->idx_map, rule->inv_idx_map);
     GenerateFormatRewriteBlock();
