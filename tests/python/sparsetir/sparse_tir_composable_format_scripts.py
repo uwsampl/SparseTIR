@@ -93,6 +93,31 @@ def ell3d(
 
 
 @T.prim_func
+def ell3d_fp16(
+    a: T.handle,
+    wx: T.handle,
+    indptr_io: T.handle,
+    indices_ii: T.handle,
+    indices_j: T.handle,
+    d0: T.int32,
+    d1: T.int32,
+    d2: T.int32,
+    nnz: T.int32,
+    nnz_rows: T.int32,
+    nnz_cols: T.int32,
+    feat_size: T.int32,
+) -> None:
+    R = T.dense_fixed(d0, idtype="int32")
+    IO = T.dense_variable(R, (d1, nnz), indptr_io, idtype="int32")
+    II = T.sparse_fixed(IO, (d2, nnz_rows), indices_ii, idtype="int32")
+    J = T.sparse_fixed(II, (d2, nnz_cols), indices_j, idtype="int32")
+    FO = T.dense_fixed(feat_size, idtype="int32")
+    A = T.match_sparse_buffer(a, (R, IO, II, J), dtype="float16")
+    WX = T.match_sparse_buffer(wx, (R, IO, II, FO), dtype="float16")
+    T.evaluate(0)
+
+
+@T.prim_func
 def bsr_rewrite_with_preprocess(
     a: T.handle,
     b: T.handle,
@@ -373,9 +398,7 @@ def padding_rewrite_with_preprocess(
     nnz_chunks_32: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr(
-        {"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2}
-    )
+    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
     I = T.dense_fixed(m, "int32")
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
     J_detach = T.dense_fixed(n, "int32")
