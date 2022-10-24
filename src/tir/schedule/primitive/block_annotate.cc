@@ -474,17 +474,9 @@ void MatchToAlloc(ScheduleState self, const StmtSRef& block_sref, int buffer_ind
       << "The buffer to transform must be a top-level matched buffer.";
 
   // Create new allocated buffer.
-  Buffer alloc_buffer;
-  if (buffer->IsInstance<SparseBufferNode>()) {
-    ObjectPtr<SparseBufferNode> alloc_buffer_node =
-        make_object<SparseBufferNode>(*buffer.as<SparseBufferNode>());
-    alloc_buffer_node->name = buffer->name + "_tmp";
-    alloc_buffer = SparseBuffer(alloc_buffer_node);
-  } else {
-    ObjectPtr<BufferNode> alloc_buffer_node = make_object<BufferNode>(*buffer.get());
-    alloc_buffer_node->name = buffer->name + "_tmp";
-    alloc_buffer = Buffer(alloc_buffer_node);
-  }
+  ObjectPtr<BufferNode> alloc_buffer_node = make_object<BufferNode>(*buffer.get());
+  alloc_buffer_node->name = buffer->name + "_tmp";
+  Buffer alloc_buffer = Buffer(alloc_buffer_node);
 
   const StmtSRefNode* root_block_sref_node = nullptr;
   const BlockNode* root_block_node = nullptr;
