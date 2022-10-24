@@ -1112,6 +1112,16 @@ class VarCollector : public ExprVisitor {
   void VisitExpr_(const VarNode* op) final { touched.insert(op); }
 };
 
+Array<StmtSRef> GetLoopsUnderScope(const StmtSRef& block_sref, const StmtSRef& top_sref) {
+  std::vector<StmtSRef> result;
+  for (StmtSRefNode* parent = block_sref->parent; parent && parent->stmt->IsInstance<ForNode>();
+       parent = parent->parent) {
+    if (parent == top_sref.get()) break;
+    result.push_back(GetRef<StmtSRef>(parent));
+  }
+  return {result.rbegin(), result.rend()};
+}
+
 StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int read_buffer_index,
                           const String& storage_scope, Array<Integer> dim_order) {
   /*!
@@ -1198,11 +1208,8 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
     collector(touched_info.iter_values.back());
   }
 
-  for (StmtSRefNode* p = block_sref->parent; p && p->stmt->IsInstance<ForNode>(); p = p->parent) {
-    const StmtSRef& sref = GetRef<StmtSRef>(p);
-    // NOTE(Zihao): do not generate duplicate loops
-    if (sref.same_as(info.loc_sref)) break;
-    const ForNode* loop = TVM_SREF_TO_FOR(loop, sref);
+  for (const StmtSRef& loop_sref : GetLoopsUnderScope(block_sref, info.loc_sref)) {
+    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     if (collector.touched.count(loop->loop_var.get())) {
       touched_info.loop_vars.push_back(loop->loop_var);
       touched_info.loop_ranges.push_back(Range::FromMinExtent(loop->min, loop->extent));
@@ -1317,11 +1324,8 @@ StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int w
     collector(touched_info.iter_values.back());
   }
 
-  for (StmtSRefNode* p = block_sref->parent; p && p->stmt->IsInstance<ForNode>(); p = p->parent) {
-    const StmtSRef& sref = GetRef<StmtSRef>(p);
-    // NOTE(Zihao): do not generate duplicate loops
-    if (sref.same_as(info.loc_sref)) break;
-    const ForNode* loop = TVM_SREF_TO_FOR(loop, sref);
+  for (const StmtSRef& loop_sref : GetLoopsUnderScope(block_sref, info.loc_sref)) {
+    const ForNode* loop = TVM_SREF_TO_FOR(loop, loop_sref);
     if (collector.touched.count(loop->loop_var.get())) {
       touched_info.loop_vars.push_back(loop->loop_var);
       touched_info.loop_ranges.push_back(Range::FromMinExtent(loop->min, loop->extent));
