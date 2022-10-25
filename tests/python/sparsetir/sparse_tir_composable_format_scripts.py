@@ -113,7 +113,7 @@ def ell3d_fp16(
     J = T.sparse_fixed(II, (d2, nnz_cols), indices_j, idtype="int32")
     FO = T.dense_fixed(feat_size, idtype="int32")
     A = T.match_sparse_buffer(a, (R, IO, II, J), dtype="float16")
-    WX = T.match_sparse_buffer(wx, (R, IO, II, FO), dtype="float16")
+    WX = T.match_sparse_buffer(wx, (R, IO, II, J, FO), dtype="float16")
     T.evaluate(0)
 
 
