@@ -564,7 +564,7 @@ class ReverseCacheReadRewriter : public StmtExprMutator {
         }
       }
 
-      CHECK_EQ(block->match_buffers.size(), 0) << "Not supported yet.";
+      // NOTE(Zihao): do not process match buffers for now.
       if (!reads.same_as(block->reads)) {
         ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
         n->reads = std::move(reads);
@@ -784,7 +784,7 @@ class ReverseCacheWriteRewriter : public StmtExprMutator {
         }
       }
 
-      CHECK_EQ(block->match_buffers.size(), 0) << "Not supported yet.";
+      // NOTE(Zihao): do not process match buffers for now.
       if (!writes.same_as(block->writes) || !reads.same_as(block->reads)) {
         ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
         n->writes = std::move(writes);

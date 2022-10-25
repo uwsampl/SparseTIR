@@ -64,8 +64,9 @@ Map<Var, Buffer> UpdateBufferMap(PrimFunc f) {
  */
 class BufferTransformer : public StmtExprMutator {
  public:
-  explicit BufferTransformer(const Array<Axis>& sp_axes, Map<Var, Buffer> buffer_map)
-      : buffer_map_(std::move(buffer_map)) {
+  explicit BufferTransformer(const Array<Axis>& sp_axes, Map<Var, Buffer> buffer_map,
+                             bool is_horizontal_fuse)
+      : buffer_map_(std::move(buffer_map)), is_horizontal_fuse_(is_horizontal_fuse) {
     for (const Axis& axis : sp_axes) {
       if (axis->indptr.defined()) {
         indptr_buf.insert(buffer_map_.Get(axis->indptr.value()).get());
@@ -249,6 +250,26 @@ class BufferTransformer : public StmtExprMutator {
     return BlockRealize(block_realize_node);
   }
 
+  Stmt VisitStmt_(const ForNode* op) final {
+    // check whether trivial unit loop
+    bool trivial_unit_loop = true;
+    if (ana_.CanProveEqual(op->min, Integer(0)) && ana_.CanProveEqual(op->extent, Integer(1))) {
+      if (op->thread_binding.defined()) {
+        String thread_tag = op->thread_binding.value()->thread_tag;
+        if (thread_tag == "blockIdx.x" && is_horizontal_fuse_) {
+          // identify non-trivial unit loop
+          trivial_unit_loop = false;
+        }
+      }
+    } else {
+      trivial_unit_loop = false;
+    }
+    if (trivial_unit_loop) {
+      ana_.Bind(op->loop_var, Integer(0));
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
   PrimExpr VisitExpr_(const VarNode* op) final {
     Var var = GetRef<Var>(op);
     if (global_var_map_.count(var)) {
@@ -330,16 +351,19 @@ class BufferTransformer : public StmtExprMutator {
   arith::Analyzer ana_;
   std::unordered_set<const BufferNode*> indptr_buf;
   Map<Var, PrimExpr> global_var_map_;
+  bool is_horizontal_fuse_;
 };
 
 PrimFunc LowerSparseBuffer(PrimFunc f) {
   // Only apply this pass to TIR that is not from TE schedules
   if (!IsFromLegacyTESchedule(f) && SparseTIRLevel(f) == 1) {
+    bool is_horizontal_fuse = f->HasNonzeroAttr("horizontal_fuse");
     PrimFuncNode* fptr = f.CopyOnWrite();
     // Step 1. Update the PrimFunc's buffer map.
     fptr->buffer_map = std::move(UpdateBufferMap(f));
     // Step 2. Lower sparse buffers.
-    fptr->body = BufferTransformer(fptr->sp_axes, fptr->buffer_map)(std::move(fptr->body));
+    fptr->body = BufferTransformer(fptr->sp_axes, fptr->buffer_map,
+                                   is_horizontal_fuse)(std::move(fptr->body));
     // Step 3. Remove sparse axes
     fptr->sp_axes.clear();
     // Step 4. Lower sparse tir level
