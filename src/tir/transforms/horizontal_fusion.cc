@@ -56,6 +56,8 @@ class ThreadTagExtentCollector : public StmtExprVisitor {
       CHECK_EQ(Downcast<Integer>(op->min)->value, 0)
           << "The min value of the loop should be 0 to perform horizontal fusion.";
       Integer extent = Downcast<Integer>(op->extent);
+      ICHECK(op->thread_binding.defined())
+          << "The thread binding of " << GetRef<For>(op) << " is undefined.";
       String thread_tag = op->thread_binding.value()->thread_tag;
       Optional<Integer> maybe_prev_extent = thread_tag_extent_map_.Get(thread_tag);
       if (maybe_prev_extent.defined()) {
@@ -105,8 +107,11 @@ class HorizontalFuser : public StmtExprMutator {
     if (op->kind != ForKind::kThreadBinding) {
       return StmtExprMutator::VisitStmt_(op);
     }
+    ICHECK(op->thread_binding.defined())
+        << "The thread binding of " << GetRef<For>(op) << " is undefined.";
     String thread_tag = op->thread_binding.value()->thread_tag;
     Integer original_extent = Downcast<Integer>(op->extent);
+    CHECK(thread_tag_var_map_.count(thread_tag)) << "Unrecognized thread tag: " << thread_tag;
     Var thread_var = thread_tag_var_map_.Get(thread_tag).value();
     if (thread_tag == "blockIdx.x") {
       Stmt body;
