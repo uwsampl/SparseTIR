@@ -586,7 +586,6 @@ transform::Sequential MixedModulePassManager(IRModule mixed_mod, Target target) 
   // mixed_pass_list.push_back(tir::transform::InferFragment());
   mixed_pass_list.push_back(tir::transform::LowerThreadAllreduce());
   // Move storage rewrite after lower thread allreduce to share allocated shared memory for allreduce.
-  disable_storage_rewrite = true;
   if (!disable_storage_rewrite) {
     mixed_pass_list.push_back(tir::transform::StorageRewrite());
   }
