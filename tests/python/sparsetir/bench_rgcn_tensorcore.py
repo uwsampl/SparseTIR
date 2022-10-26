@@ -59,9 +59,7 @@ def wmma_sync(d0: int, d1: int):
                 with T.block("update"):
                     vio, vj, vk = T.axis.remap("SSR", [io, j, k])
                     T.block_attr({"sparse": True})
-                    C_frag[vio, 0, vj] = (
-                        C_frag[vio, 0, vj] + A_frag[vio, 0, vk] * B_frag[vk, vj]
-                    )
+                    C_frag[vio, 0, vj] = C_frag[vio, 0, vj] + A_frag[vio, 0, vk] * B_frag[vk, vj]
 
     @T.prim_func
     def wmma_sync_1_16_desc(a_frag: T.handle, b_frag: T.handle, c_frag: T.handle) -> None:
@@ -80,11 +78,7 @@ def wmma_sync(d0: int, d1: int):
                 with T.block("update"):
                     vii, vj, vk = T.axis.remap("SSR", [ii, j, k])
                     T.block_attr({"sparse": True})
-                    C_frag[0, vii, vj] = (
-                        C_frag[0, vii, vj] + A_frag[0, vii, vk] * B_frag[vk, vj]
-                    )
-
-
+                    C_frag[0, vii, vj] = C_frag[0, vii, vj] + A_frag[0, vii, vk] * B_frag[vk, vj]
 
     @T.prim_func
     def wmma_sync_impl(a_frag: T.handle, b_frag: T.handle, c_frag: T.handle) -> None:
@@ -147,7 +141,7 @@ def wmma_load_a(d0: int, d1: int, scope: str):
                 with T.block("load"):
                     vio, vii, vj = T.axis.remap("SSS", [io, ii, j])
                     A_frag[vio, vii, vj] = A[vio, vii, vj]
-    
+
     @T.prim_func
     def wmma_load_a_16_1_desc(a: T.handle, a_frag: T.handle) -> None:
         A = T.match_buffer(a, (16, 1, 16), "float16", align=64, offset_factor=16, scope=scope)
@@ -160,7 +154,7 @@ def wmma_load_a(d0: int, d1: int, scope: str):
                 with T.block("load"):
                     vio, vj = T.axis.remap("SS", [io, j])
                     A_frag[vio, 0, vj] = A[vio, 0, vj]
-    
+
     @T.prim_func
     def wmma_load_a_1_16_desc(a: T.handle, a_frag: T.handle) -> None:
         A = T.match_buffer(a, (1, 16, 16), "float16", align=64, offset_factor=16, scope=scope)
@@ -173,7 +167,6 @@ def wmma_load_a(d0: int, d1: int, scope: str):
                 with T.block("load"):
                     vii, vj = T.axis.remap("SS", [ii, j])
                     A_frag[0, vii, vj] = A[0, vii, vj]
- 
 
     @T.prim_func
     def wmma_load_a_impl(a: T.handle, a_frag: T.handle) -> None:
@@ -299,7 +292,6 @@ def wmma_fill(d0: int, d1: int):
                     vii, vj = T.axis.remap("SS", [ii, j])
                     C_frag[0, vii, vj] = T.float16(0)
 
-
     @T.prim_func
     def wmma_fill_impl(c_frag: T.handle) -> None:
         C_frag = T.match_buffer(
@@ -354,7 +346,7 @@ def wmma_store(d0: int, d1: int, scope: str):
                 with T.block("store"):
                     vio, vj = T.axis.remap("SS", [io, j])
                     C[vio, 0, vj] = C_frag[vio, 0, vj]
-    
+
     @T.prim_func
     def wmma_store_desc_1_16(c_frag: T.handle, c: T.handle) -> None:
         C_frag = T.match_buffer(
@@ -366,7 +358,6 @@ def wmma_store(d0: int, d1: int, scope: str):
                 with T.block("store"):
                     vii, vj = T.axis.remap("SS", [ii, j])
                     C[0, vii, vj] = C_frag[0, vii, vj]
- 
 
     @T.prim_func
     def wmma_store_impl(c_frag: T.handle, c: T.handle) -> None:
@@ -405,7 +396,7 @@ def wmma_store(d0: int, d1: int, scope: str):
                 )
 
     if d0 == 1:
-        return wmma_store_desc_1_16, wmma_store_impl 
+        return wmma_store_desc_1_16, wmma_store_impl
     elif d1 == 1:
         return wmma_store_desc_16_1, wmma_store_impl
     else:
@@ -624,6 +615,7 @@ def test_rgcn_composable_format(
     tir.TensorIntrin.register("wmma_{}_load_b".format("global"), *wmma_load_b("global"))
 
     for bucket_id, bucket_size in enumerate(buckets):
+        sch.set_block_filter("group_{}".format(bucket_id))
         d0 = group_size // bucket_size
         d1 = bucket_size
         tir.TensorIntrin.register(
@@ -636,6 +628,8 @@ def test_rgcn_composable_format(
         tir.TensorIntrin.register("wmma_{}_{}_sync".format(d0, d1), *wmma_sync(d0, d1))
         blk_wx = sch.get_block("rgcn-hetero-forward_wx_{}0".format(bucket_id))
         blk = sch.get_block("rgcn-hetero-forward_{}0".format(bucket_id))
+        sch.annotate(blk_wx, "group_{}".format(bucket_id), 1)
+        sch.annotate(blk, "group_{}".format(bucket_id), 1)
         sch.match_to_alloc(blk_wx, 0)
         sch.set_scope(blk_wx, 0, "shared")
         sch.compute_at(blk_wx, sch.get_loops(blk)[0], True)
@@ -665,7 +659,6 @@ def test_rgcn_composable_format(
 
         # tensorize
         sch.tensorize(sch.get_loops(WX_accum)[-3], "wmma_{}_{}_{}_store".format(d0, d1, "shared"))
-        print(sch.mod["main"].script())
         sch.tensorize(sch.get_loops(X_wmma)[-3], "wmma_{}_{}_{}_load_a".format(d0, d1, "shared"))
         sch.tensorize(sch.get_loops(W_wmma)[-2], "wmma_{}_load_b".format("shared"))
         sch.tensorize(
@@ -700,11 +693,13 @@ def test_rgcn_composable_format(
         sch.unroll(ii)
         sch.bind(sch.get_loops(Y_local)[-1], "threadIdx.x")
 
+        # Unset block filter
+        sch.unset_block_filter()
+
     mod = lower_sparse_buffer(sch.mod)
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
 
     f = tvm.build(mod["main"], target="cuda")
-    print(f.imported_modules[0].get_source())
 
     # prepare inputs
     dev = tvm.cuda(0)
@@ -731,7 +726,7 @@ def test_rgcn_composable_format(
 
 if __name__ == "__main__":
     for feat_size in [32]:  # [4, 8, 16, 32]:
-        for name in ["biokg"]:  # ["aifb", "mutag", "bgs", "am", "biokg"]:
+        for name in ["am"]: #["aifb", "mutag", "bgs", "am", "biokg"]:
             print("dataset {}, feat_size={}:".format(name, feat_size))
             dataset = get_hetero_dataset(name)
             g = dataset[0]
@@ -743,5 +738,5 @@ if __name__ == "__main__":
             # homograph
             ground_truth_y = get_ground_truth(g, type_pointers, feat, weight)
             test_rgcn_composable_format(
-                g, type_pointers, feat_size, feat, weight, ground_truth_y, 4, 16, [4]
+                g, type_pointers, feat_size, feat, weight, ground_truth_y, 4, 16, [1, 2, 4, 8, 16]
             )
