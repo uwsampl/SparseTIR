@@ -296,7 +296,9 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
                /*min=*/old_loop->min,
                /*extent=*/old_loop->extent,
                /*kind=*/old_loop->kind,
-               /*body=*/body);
+               /*body=*/body,
+               /*thread_binding=*/old_loop->thread_binding,
+               /*annotations=*/old_loop->annotations);
   }
   body = Substitute(body, loop_var_map);
   // Step 6. Mutate IR
