@@ -416,7 +416,7 @@ class StateCreator : private StmtVisitor {
         BlockInfoCollector::Collect(self, func->body);
       }
     }
-    for (const BufferDomain& buf_dom: creator.buf_doms) {
+    for (const BufferDomain& buf_dom : creator.buf_doms) {
       const Buffer& buf = buf_dom->buffer;
       const Range& dom = buf_dom->dom;
       n->buf_dom_map.Set(buf, dom);
@@ -462,7 +462,7 @@ class StateCreator : private StmtVisitor {
   void VisitStmt_(const BlockRealizeNode* realize) final {
     const BlockNode* block = realize->block.get();
     PushSRef(block);
-    for (const BufferDomain& buf_dom: block->buf_doms) {
+    for (const BufferDomain& buf_dom : block->buf_doms) {
       buf_doms.push_back(buf_dom);
     }
     VisitStmt(block->body);  // `block->init` is not visited
@@ -1107,6 +1107,10 @@ TVM_DLL Array<Bool> GetCachedFlags(const ScheduleState& self, const StmtSRef& bl
           Bool(info.scope->stage_pipeline)};
 }
 
+/**************** Block filter related API ****************/
+TVM_DLL void ScheduleStateNode::SetBlockFilter(String name) { block_filter = name; }
+TVM_DLL void ScheduleStateNode::UnsetBlockFilter() { block_filter = NullOpt; }
+
 /**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(ScheduleStateNode);
@@ -1116,6 +1120,10 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleState")
     });
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetBlockScope")
     .set_body_method<ScheduleState>(&ScheduleStateNode::GetBlockScope);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSetBlockFilter")
+    .set_body_method<ScheduleState>(&ScheduleStateNode::SetBlockFilter);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnsetBlockFilter")
+    .set_body_method<ScheduleState>(&ScheduleStateNode::UnsetBlockFilter);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateReplace")
     .set_body_method<ScheduleState>(&ScheduleStateNode::Replace);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetSRef")

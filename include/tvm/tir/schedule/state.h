@@ -102,6 +102,10 @@ class ScheduleStateNode : public Object {
    * \sa ScheduleDebugMask
    */
   int debug_mask;
+  /*!
+   * \brief The filter to apply on blocks.
+   */
+  Optional<String> block_filter = NullOpt;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("mod", &mod);
@@ -150,6 +154,14 @@ class ScheduleStateNode : public Object {
    * have block vars, since the affine flag depends on the outer scope of stmt.
    */
   TVM_DLL void UpdateScopeBlockInfo(const Stmt& stmt);
+  /*!
+   * \brief Set block filter.
+   */
+  TVM_DLL void SetBlockFilter(String name);
+  /*!
+   * \brief Unset block filter.
+   */
+  TVM_DLL void UnsetBlockFilter();
   /*!
    * \brief Get the BlockScope correpsonding to the sref of scope root block
    * \param scope_root The block sref to be retrieved
