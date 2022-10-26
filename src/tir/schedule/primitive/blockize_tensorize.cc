@@ -262,7 +262,7 @@ Array<Array<arith::IterMark>> CheckSubspaceDivisible(const IRModule& mod,
       arith::SubspaceDivide(block_realize->iter_values, collector.loop_var_domain,
                             collector.inner_loop_vars, block_realize->predicate,
                             /*require_bijective=*/false, analyzer);
-  
+
   if (division.empty()) {
     // If we can't do perfect subspace division, check if it is a trivial case of subspace division.
     // In this case, we can still blockize.
@@ -315,7 +315,8 @@ class BlockizedBindingExtractor {
       } else {
         // create iter var for the outer block
         if (inner_init && iter_var->iter_type == kCommReduce) {
-          CHECK(is_one(division[i][0]->extent)) << "When inner_init is set to true, outer reduction var length must be equal to one";
+          CHECK(is_one(division[i][0]->extent))
+              << "When inner_init is set to true, outer reduction var length must be equal to one";
         }
         const IterVar outer_var(/*dom=*/Range::FromMinExtent(0, division[i][0]->extent),
                                 /*var=*/iter_var->var.copy_with_suffix("_o"),

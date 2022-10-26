@@ -241,5 +241,5 @@ if __name__ == "__main__":
             # homograph
             ground_truth_y = get_ground_truth(g, type_pointers, feat, weight)
             test_rgcn_composable_format(
-                g, type_pointers, feat_size, feat, weight, ground_truth_y, 4, 16, [1, 2, 4, 8, 16]
+                g, type_pointers, feat_size, feat, weight, ground_truth_y, 16, 32, [1, 2, 4, 8, 16]
             )
