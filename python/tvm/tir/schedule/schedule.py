@@ -198,6 +198,12 @@ class Schedule(Object):
         """Returns the internally maintained trace of scheduling program execution"""
         return _ffi_api.ScheduleGetTrace(self)  # type: ignore # pylint: disable=no-member
 
+    def set_block_filter(self, name: str) -> None:
+        _ffi_api.ScheduleSetBlockFilter(self.state, name)  # type: ignore # pylint: disable=no-member
+
+    def unset_block_filter(self) -> None:
+        _ffi_api.ScheduleUnsetBlockFilter(self.state)  # type: ignore # pylint: disable=no-member
+
     def copy(self) -> "Schedule":
         """Returns a copy of the schedule, including both the state and the symbol table,
         * guaranteeing that

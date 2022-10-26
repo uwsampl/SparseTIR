@@ -376,7 +376,8 @@ class CacheLocDetector : public StmtVisitor {
    * of the scope block of the cached block \param info The cache stage info.
    */
   static void Detect(const ScheduleState& self, const StmtSRef& block_sref,
-                     const StmtSRef& scope_sref, CacheStageInfo* info) {
+                     const StmtSRef& scope_sref, CacheStageInfo* info,
+                     Optional<String> block_filter) {
     std::vector<StmtSRef> related_blocks;
     for (const Dependency& def : self->GetBlockScope(scope_sref)->GetDepsBySrc(block_sref)) {
       if (def->kind == DepKind::kRAW) {
@@ -384,7 +385,7 @@ class CacheLocDetector : public StmtVisitor {
       }
     }
     if (!related_blocks.empty()) {
-      CacheLocDetector detector(self, block_sref, scope_sref, related_blocks);
+      CacheLocDetector detector(self, block_sref, scope_sref, related_blocks, block_filter);
       detector(GetRef<Stmt>(scope_sref->stmt));
       info->loc_sref = detector.loc_sref_;
       info->loc_pos = detector.loc_pos_;
@@ -404,11 +405,12 @@ class CacheLocDetector : public StmtVisitor {
    * related_blocks Producer blocks for cache_write, or consumer blocks for cache_read
    */
   CacheLocDetector(const ScheduleState self, const StmtSRef& block_sref, const StmtSRef& scope_sref,
-                   const std::vector<StmtSRef>& related_blocks)
+                   const std::vector<StmtSRef>& related_blocks, Optional<String> block_filter)
       : self_(self),
         block_sref_(block_sref),
         scope_sref_(scope_sref),
-        related_blocks_(related_blocks) {}
+        related_blocks_(related_blocks),
+        block_filter_(block_filter) {}
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
     bool previous_visited_block = visited_block_;
@@ -437,7 +439,24 @@ class CacheLocDetector : public StmtVisitor {
     }
   }
 
+  void VisitStmt_(const BlockRealizeNode* block_realize) final {
+    StmtVisitor::VisitStmt_(block_realize);
+    if (block_filter_.defined()) {
+      if (block_realize->block->annotations.Get(block_filter_.value()).defined()) {
+        inside_filtered_block = false;
+      }
+    }
+  }
+
   void VisitStmt_(const BlockNode* block) final {
+    if (block_filter_.defined()) {
+      if (block->annotations.Get(block_filter_.value()).defined()) {
+        inside_filtered_block = true;
+      }
+      if (!inside_filtered_block && block->name_hint != "root") {
+        return;
+      }
+    }
     // Only visit the current scope under buffer writer's parent block
     if (block == scope_sref_->stmt) {
       // The block vistied is the current parent scope
@@ -489,6 +508,10 @@ class CacheLocDetector : public StmtVisitor {
   StmtSRef loc_sref_{nullptr};
   /*! \brief The index to insert the cache_read/cache_write stage */
   int loc_pos_{-1};
+  /*! \brief The block filter to apply */
+  Optional<String> block_filter_;
+  /*! \brief A flag indicates whether inside filtered block. */
+  bool inside_filtered_block{false};
 };
 
 /*! \brief Mutator for ReverseCacheRead. */
@@ -499,18 +522,20 @@ class ReverseCacheReadRewriter : public StmtExprMutator {
    * \param scope_sref The parent scope of this mutation.
    * \param info The cache stage information.
    * \param touched_info The reverse cache touched information.
+   * \param block_filter The block filter to apply.
    * \return The new AST rooting at the original parent scope.
    */
   static Stmt Rewrite(const StmtSRef& scope_sref, CacheStageInfo* info,
-                      ReverseCacheTouchedInfo* touched_info) {
-    ReverseCacheReadRewriter rewriter(scope_sref, info, touched_info);
+                      ReverseCacheTouchedInfo* touched_info, Optional<String> block_filter) {
+    ReverseCacheReadRewriter rewriter(scope_sref, info, touched_info, block_filter);
     return rewriter(GetRef<Stmt>(scope_sref->stmt));
   }
 
  private:
   explicit ReverseCacheReadRewriter(const StmtSRef& scope_sref, CacheStageInfo* info,
-                                    ReverseCacheTouchedInfo* touched_info)
-      : scope_sref_(scope_sref), info_(info) {
+                                    ReverseCacheTouchedInfo* touched_info,
+                                    Optional<String> block_filter)
+      : scope_sref_(scope_sref), info_(info), block_filter_(block_filter) {
     for (const IterVar& iter_var : touched_info->block_vars) {
       new_indices_.push_back(iter_var->var);
     }
@@ -528,7 +553,25 @@ class ReverseCacheReadRewriter : public StmtExprMutator {
     return stmt;
   }
 
+  Stmt VisitStmt_(const BlockRealizeNode* block_realize) final {
+    Stmt stmt = StmtMutator::VisitStmt_(block_realize);
+    if (block_filter_.defined()) {
+      if (block_realize->block->annotations.Get(block_filter_.value()).defined()) {
+        inside_filtered_block = false;
+      }
+    }
+    return stmt;
+  }
+
   Stmt VisitStmt_(const BlockNode* block) final {
+    if (block_filter_.defined()) {
+      if (block->annotations.Get(block_filter_.value()).defined()) {
+        inside_filtered_block = true;
+      }
+      if (!inside_filtered_block && block->name_hint != "root") {
+        return GetRef<Block>(block);
+      }
+    }
     Block old_stmt = GetRef<Block>(block);
     if (block != scope_sref_->stmt &&
         GetBufferRegionFromBuffer(block->writes, info_->read_buffer).defined()) {
@@ -592,9 +635,16 @@ class ReverseCacheReadRewriter : public StmtExprMutator {
     return ExprMutator::VisitExpr_(load);
   }
 
+  /*! \brief The parent scope of the insertion */
   const StmtSRef& scope_sref_;
+  /*! \brief The info for inserting cache stage */
   CacheStageInfo* info_;
+  /*! \brief The indices to use for new buffer. */
   Array<PrimExpr> new_indices_;
+  /*! \brief The block filter to apply */
+  Optional<String> block_filter_;
+  /*! \brief A flag indicates whether inside filtered block. */
+  bool inside_filtered_block{false};
 };
 
 /*! \brief Mutator for CacheRead. */
@@ -604,16 +654,19 @@ class CacheReadRewriter : public StmtExprMutator {
    * \brief Rewrite the AST and add a cache_read stage with the information provided
    * \param scope_sref The parent scope of this mutation
    * \param info The cache stage information
+   * \param block_filter The block filter to apply.
    * \return The new AST rooting at the original parent scope
    */
-  static Stmt Rewrite(const StmtSRef& scope_sref, CacheStageInfo* info) {
-    CacheReadRewriter rewriter(scope_sref, info);
+  static Stmt Rewrite(const StmtSRef& scope_sref, CacheStageInfo* info,
+                      Optional<String> block_filter) {
+    CacheReadRewriter rewriter(scope_sref, info, block_filter);
     return rewriter(GetRef<Stmt>(scope_sref->stmt));
   }
 
  private:
-  explicit CacheReadRewriter(const StmtSRef& scope_sref, CacheStageInfo* info)
-      : scope_sref_(scope_sref), info_(info) {}
+  explicit CacheReadRewriter(const StmtSRef& scope_sref, CacheStageInfo* info,
+                             Optional<String> block_filter)
+      : scope_sref_(scope_sref), info_(info), block_filter_(block_filter) {}
 
   Stmt VisitStmt_(const ForNode* loop) final {
     Stmt stmt = StmtMutator::VisitStmt_(loop);
@@ -627,7 +680,26 @@ class CacheReadRewriter : public StmtExprMutator {
     return stmt;
   }
 
+  Stmt VisitStmt_(const BlockRealizeNode* block_realize) final {
+    Stmt stmt = StmtMutator::VisitStmt_(block_realize);
+    if (block_filter_.defined()) {
+      if (block_realize->block->annotations.Get(block_filter_.value()).defined()) {
+        inside_filtered_block = false;
+      }
+    }
+    return stmt;
+  }
+
   Stmt VisitStmt_(const BlockNode* block) final {
+    if (block_filter_.defined()) {
+      if (block->annotations.Get(block_filter_.value()).defined()) {
+        inside_filtered_block = true;
+      }
+      if (!inside_filtered_block && block->name_hint != "root") {
+        return GetRef<Block>(block);
+      }
+    }
+
     Block old_stmt = GetRef<Block>(block);
     // We don't mutate the block which generates info->read_buffer
     if (block != scope_sref_->stmt &&
@@ -692,6 +764,10 @@ class CacheReadRewriter : public StmtExprMutator {
   const StmtSRef& scope_sref_;
   /*! \brief The info for inserting cache stage */
   CacheStageInfo* info_;
+  /*! \brief The block filter to apply */
+  Optional<String> block_filter_;
+  /*! \brief A flag indicates whether inside filtered block. */
+  bool inside_filtered_block{false};
 };
 
 /*! \brief Mutator for ReverseCacheWrite. */
@@ -703,18 +779,25 @@ class ReverseCacheWriteRewriter : public StmtExprMutator {
    * \param writer_block_sref The only writer block in the scope.
    * \param info The cache stage information.
    * \param touched_info The reverse cache touched information.
+   * \param block_filter The block filter to apply.
    * \return The new AST rooting at the original parent scope.
    */
   static Stmt Rewrite(const StmtSRef& scope_sref, const StmtSRef& writer_block_sref,
-                      CacheStageInfo* info, ReverseCacheTouchedInfo* touched_info) {
-    ReverseCacheWriteRewriter rewriter(scope_sref, writer_block_sref, info, touched_info);
+                      CacheStageInfo* info, ReverseCacheTouchedInfo* touched_info,
+                      Optional<String> block_filter) {
+    ReverseCacheWriteRewriter rewriter(scope_sref, writer_block_sref, info, touched_info,
+                                       block_filter);
     return rewriter(GetRef<Stmt>(scope_sref->stmt));
   }
 
  private:
   explicit ReverseCacheWriteRewriter(const StmtSRef& scope_sref, const StmtSRef& writer_block_sref,
-                                     CacheStageInfo* info, ReverseCacheTouchedInfo* touched_info)
-      : scope_sref_(scope_sref), writer_block_sref_(writer_block_sref), info_(info) {
+                                     CacheStageInfo* info, ReverseCacheTouchedInfo* touched_info,
+                                     Optional<String> block_filter)
+      : scope_sref_(scope_sref),
+        writer_block_sref_(writer_block_sref),
+        info_(info),
+        block_filter_(block_filter) {
     for (const IterVar& iter_var : touched_info->block_vars) {
       new_indices_.push_back(iter_var->var);
     }
@@ -732,7 +815,26 @@ class ReverseCacheWriteRewriter : public StmtExprMutator {
     return stmt;
   }
 
+  Stmt VisitStmt_(const BlockRealizeNode* block_realize) final {
+    Stmt stmt = StmtMutator::VisitStmt_(block_realize);
+    if (block_filter_.defined()) {
+      if (block_realize->block->annotations.Get(block_filter_.value()).defined()) {
+        inside_filtered_block = false;
+      }
+    }
+    return stmt;
+  }
+
   Stmt VisitStmt_(const BlockNode* block) final {
+    if (block_filter_.defined()) {
+      if (block->annotations.Get(block_filter_.value()).defined()) {
+        inside_filtered_block = true;
+      }
+      if (!inside_filtered_block && block->name_hint != "root") {
+        return GetRef<Block>(block);
+      }
+    }
+
     Block old_stmt = GetRef<Block>(block);
     // We only mutate the block which generates info->write_buffer
     if (block != writer_block_sref_->stmt && block != scope_sref_->stmt && !under_writer_block_) {
@@ -839,6 +941,10 @@ class ReverseCacheWriteRewriter : public StmtExprMutator {
   Array<PrimExpr> new_indices_;
   /*! \brief Whether the current node is under the given block. */
   bool under_writer_block_{false};
+  /*! \brief The block filter to apply. */
+  Optional<String> block_filter_;
+  /*! \brief A flag indicates whether inside filtered block. */
+  bool inside_filtered_block{false};
 };
 
 /*! \brief Mutator for CacheWrite */
@@ -849,18 +955,22 @@ class CacheWriteRewriter : public StmtExprMutator {
    * \param scope_sref The parent scope of this mutation.
    * \param writer_block_sref The only writer block in the scope.
    * \param info The cache stage information.
+   * \param block_filter The block filter to apply.
    * \return The new AST rooting at the original parent scope.
    */
   static Stmt Rewrite(const StmtSRef& scope_sref, const StmtSRef& writer_block_sref,
-                      CacheStageInfo* info) {
-    CacheWriteRewriter rewriter(scope_sref, writer_block_sref, info);
+                      CacheStageInfo* info, Optional<String> block_filter) {
+    CacheWriteRewriter rewriter(scope_sref, writer_block_sref, info, block_filter);
     return rewriter(GetRef<Stmt>(scope_sref->stmt));
   }
 
  private:
   explicit CacheWriteRewriter(const StmtSRef& scope_sref, const StmtSRef& writer_block_sref,
-                              CacheStageInfo* info)
-      : scope_sref_(scope_sref), writer_block_sref_(writer_block_sref), info_(info) {}
+                              CacheStageInfo* info, Optional<String> block_filter)
+      : scope_sref_(scope_sref),
+        writer_block_sref_(writer_block_sref),
+        info_(info),
+        block_filter_(block_filter) {}
 
   Stmt VisitStmt_(const ForNode* loop) final {
     Stmt stmt = StmtMutator::VisitStmt_(loop);
@@ -874,7 +984,26 @@ class CacheWriteRewriter : public StmtExprMutator {
     return stmt;
   }
 
+  Stmt VisitStmt_(const BlockRealizeNode* block_realize) final {
+    Stmt stmt = StmtMutator::VisitStmt_(block_realize);
+    if (block_filter_.defined()) {
+      if (block_realize->block->annotations.Get(block_filter_.value()).defined()) {
+        inside_filtered_block = false;
+      }
+    }
+    return stmt;
+  }
+
   Stmt VisitStmt_(const BlockNode* block) final {
+    if (block_filter_.defined()) {
+      if (block->annotations.Get(block_filter_.value()).defined()) {
+        inside_filtered_block = true;
+      }
+      if (!inside_filtered_block && block->name_hint != "root") {
+        return GetRef<Block>(block);
+      }
+    }
+
     Block old_stmt = GetRef<Block>(block);
     // We only mutate the block which generates info->write_buffer
     if (block != writer_block_sref_->stmt && block != scope_sref_->stmt && !under_writer_block_) {
@@ -967,6 +1096,10 @@ class CacheWriteRewriter : public StmtExprMutator {
   CacheStageInfo* info_;
   /*! \brief Whether the current node is under the given block. */
   bool under_writer_block_{false};
+  /*! \brief The block filter to apply. */
+  Optional<String> block_filter_;
+  /*! \brief A flag indicates whether inside filtered block. */
+  bool inside_filtered_block{false};
 };
 
 /******** Implementation ********/
@@ -1014,7 +1147,7 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int read_buff
     StmtSRef parent_sref = GetRef<StmtSRef>(write_block_sref->parent);
 
     // Detect insert position
-    CacheLocDetector::Detect(self, write_block_sref, scope_sref, &info);
+    CacheLocDetector::Detect(self, write_block_sref, scope_sref, &info, self->block_filter);
     cache_region = RelaxBufferRegion(self, region, write_block_sref, parent_sref, info.loc_sref);
   } else {
     // Case 2. The buffer is the input block for the scope.
@@ -1031,7 +1164,8 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& block_sref, int read_buff
   // Step 4. Making new cache stage block and rewrite readers.
   Block cache_read_stage = MakeCacheStage(/*cache_region=*/cache_region, /*info=*/&info,
                                           /*storage_scope=*/storage_scope);
-  Stmt new_scope = CacheReadRewriter::Rewrite(/*scope_sref=*/scope_sref, /*info=*/&info);
+  Stmt new_scope = CacheReadRewriter::Rewrite(/*scope_sref=*/scope_sref, /*info=*/&info,
+                                              /*block_filter=*/self->block_filter);
 
   // Step 5. Replacing and updating flags.
   self->Replace(scope_sref, new_scope, info.block_reuse);
@@ -1083,7 +1217,7 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_bu
   BufferRegion region = GetBufferRegionFromBuffer(block->writes, write_buffer).value();
   StmtSRef parent_sref = GetRef<StmtSRef>(block_sref->parent);
   // Detect insert position
-  CacheLocDetector::Detect(self, block_sref, scope_sref, &info);
+  CacheLocDetector::Detect(self, block_sref, scope_sref, &info, self->block_filter);
   BufferRegion cache_region =
       RelaxBufferRegion(self, region, block_sref, parent_sref, info.loc_sref);
 
@@ -1091,7 +1225,8 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_bu
   Block cache_write_stage = MakeCacheStage(/*cache_region=*/cache_region, /*info=*/&info,
                                            /*storage_scope=*/storage_scope);
   Stmt new_scope = CacheWriteRewriter::Rewrite(/*scope_sref=*/scope_sref,
-                                               /*writer_block_sref=*/block_sref, /*info=*/&info);
+                                               /*writer_block_sref=*/block_sref, /*info=*/&info,
+                                               /*block_filter=*/self->block_filter);
 
   // Step 6. Replacing and updating flags.
   self->Replace(scope_sref, new_scope, info.block_reuse);
@@ -1162,7 +1297,7 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
     // Find the producing region
     StmtSRef parent_sref = GetRef<StmtSRef>(write_block_sref->parent);
     // Detect insert position
-    CacheLocDetector::Detect(self, write_block_sref, scope_sref, &info);
+    CacheLocDetector::Detect(self, write_block_sref, scope_sref, &info, self->block_filter);
   } else {
     // Case 2. The buffer is the input block for the scope.
     info.loc_sref = scope_sref;
@@ -1233,7 +1368,8 @@ StmtSRef ReverseCacheRead(ScheduleState self, const StmtSRef& block_sref, int re
                                                  /*touched_info=*/&touched_info, /*info=*/&info,
                                                  /*storage_scope=*/storage_scope);
   Stmt new_scope = ReverseCacheReadRewriter::Rewrite(/*scope_sref=*/scope_sref, /*info=*/&info,
-                                                     /*touched_info=*/&touched_info);
+                                                     /*touched_info=*/&touched_info,
+                                                     /*block_filter=*/self->block_filter);
 
   // Step 7. Replacing and updating flags.
   self->Replace(scope_sref, new_scope, info.block_reuse);
@@ -1282,7 +1418,7 @@ StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int w
   ICHECK(maybe_region.defined()) << write_buffer << " should appear in the block's write region";
   StmtSRef parent_sref = GetRef<StmtSRef>(block_sref->parent);
   // Detect insert position
-  CacheLocDetector::Detect(self, block_sref, scope_sref, &info);
+  CacheLocDetector::Detect(self, block_sref, scope_sref, &info, self->block_filter);
   BufferRegion cache_region = maybe_region.value();
 
   // Step 5. Create CacheTouchedInfo
@@ -1351,7 +1487,8 @@ StmtSRef ReverseCacheWrite(ScheduleState self, const StmtSRef& block_sref, int w
                                                   /*storage_scope=*/storage_scope);
   Stmt new_scope = ReverseCacheWriteRewriter::Rewrite(
       /*scope_sref=*/scope_sref,
-      /*writer_block_sref=*/block_sref, /*info=*/&info, /*touched_info=*/&touched_info);
+      /*writer_block_sref=*/block_sref, /*info=*/&info, /*touched_info=*/&touched_info,
+      /*block_filter=*/self->block_filter);
 
   // Step 8. Replacing and updating flags.
   self->Replace(scope_sref, new_scope, info.block_reuse);
