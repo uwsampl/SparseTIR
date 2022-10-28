@@ -571,7 +571,9 @@ def bench_tc_spmm(g: dgl.DGLHeteroGraph, x: th.Tensor, y_golden: th.Tensor, mma_
     nnz = g.num_edges()
     mb = (m + tile_size - 1) // tile_size
     nb = (n + group_size - 1) // group_size
-    group_indptr, tile_indices, mask, _, _, _ = condense(indptr_nd, indices_nd, tile_size, group_size)
+    group_indptr, tile_indices, mask, _, _, _ = condense(
+        indptr_nd, indices_nd, tile_size, group_size
+    )
     print("Condense density: {:.2f}%".format(100 * mask.numpy().sum() / np.prod(mask.shape)))
     del indptr_nd, indices_nd
     nnzb = mask.shape[0]
@@ -591,27 +593,28 @@ def bench_tc_spmm(g: dgl.DGLHeteroGraph, x: th.Tensor, y_golden: th.Tensor, mma_
     (i,) = sch.get_loops(blk_outer)
     sch.bind(i, "blockIdx.x")
     jo, ii, ji, f = sch.get_loops(blk_inner)
-    foo, foi, fi = sch.split(f, [None, min(4, feat_size // mma_n), mma_n])
+    foo, foi, fi = sch.split(f, [None, min(1, feat_size // mma_n), mma_n])
     sch.bind(foo, "blockIdx.y")
     sch.unroll(foi)
     sch.reorder(foo, jo, foi, ii, ji, fi)
-    blk_inner_outer, blk_inner_inner = sch.blockize(ii), blk_inner
-    A_wmma = sch.cache_read(blk_inner_inner, 1, "wmma.matrix_a")
-    B_shared = sch.reverse_cache_read(blk_inner_inner, 2, "shared")
-    B_wmma = sch.reverse_cache_read(blk_inner_inner, 2, "wmma.matrix_b")
-    C_wmma = sch.cache_write(blk_inner_outer, 0, "wmma.accumulator")
+    A_wmma = sch.cache_read(blk_inner, 0, "wmma.matrix_a")
+    sch.compute_at(A_wmma, jo)
+    B_shared = sch.reverse_cache_read(blk_inner, 1, "shared")
+    sch.compute_at(B_shared, foi)
+    C_wmma = sch.cache_write(blk_inner, 0, "wmma.accumulator")
     sch.reverse_compute_at(C_wmma, foo)
+    B_wmma = sch.reverse_cache_read(blk_inner, 1, "wmma.matrix_b")
     ax0, ax1 = sch.get_loops(C_wmma)[-2:]
     ax1, ax2 = sch.split(ax1, [None, mma_n])
     sch.reorder(ax1, ax0, ax2)
     sch.unroll(ax1)
-    init_blk = sch.decompose_reduction(blk_inner_outer, jo)
-    sch.hide_buffer_access(blk_inner_inner, "read", [3])
+    init_blk = sch.decompose_reduction(blk_inner, jo)
+    sch.hide_buffer_access(blk_inner, "read", [3])
     sch.tensorize(sch.get_loops(A_wmma)[-2], "wmma_{}_load_a".format(mma_shape_str))
     sch.tensorize(sch.get_loops(C_wmma)[-2], "wmma_{}_store".format(mma_shape_str))
     sch.tensorize(sch.get_loops(B_wmma)[-2], "wmma_{}_load_b".format(mma_shape_str))
-    sch.tensorize(sch.get_loops(blk_inner_inner)[-3], "wmma_{}_sync".format(mma_shape_str))
-    ax0, ax1 = sch.get_loops(B_shared)
+    sch.tensorize(sch.get_loops(blk_inner)[-3], "wmma_{}_sync".format(mma_shape_str))
+    ax0, ax1 = sch.get_loops(B_shared)[-2:]
     ax = sch.fuse(ax0, ax1)
     warp_size = 32
     vector_length = 8
