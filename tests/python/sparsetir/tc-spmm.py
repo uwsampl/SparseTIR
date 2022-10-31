@@ -593,7 +593,7 @@ def bench_tc_spmm(g: dgl.DGLHeteroGraph, x: th.Tensor, y_golden: th.Tensor, mma_
     (i,) = sch.get_loops(blk_outer)
     sch.bind(i, "blockIdx.x")
     jo, ii, ji, f = sch.get_loops(blk_inner)
-    foo, foi, fi = sch.split(f, [None, min(1, feat_size // mma_n), mma_n])
+    foo, foi, fi = sch.split(f, [None, min(4, feat_size // mma_n), mma_n])
     sch.bind(foo, "blockIdx.y")
     sch.unroll(foi)
     sch.reorder(foo, jo, foi, ii, ji, fi)
