@@ -511,10 +511,11 @@ def test_rgcn_composable_format(
     feat: th.Tensor,
     weight: th.Tensor,
     ground_truth: th.Tensor,
-    split_factor_f: int,
-    group_size: 32,
+    ty: 4,
+    num_workloads_per_thread: 1,
     buckets: List[int] = [1, 2, 4, 8],
 ):
+    group_size = ty * num_workloads_per_thread * 16
     # preprocess data
     ntype_node_pointer = type_pointers["ntype_node_pointer"]
     etype_edge_pointer = type_pointers["etype_edge_pointer"]
@@ -616,7 +617,7 @@ def test_rgcn_composable_format(
 
     for bucket_id, bucket_size in enumerate(buckets):
         sch.set_block_filter("group_{}".format(bucket_id))
-        d0 = group_size // bucket_size
+        d0 = 16 // bucket_size
         d1 = bucket_size
         tir.TensorIntrin.register(
             "wmma_{}_{}_{}_store".format(d0, d1, "shared"), *wmma_store(d0, d1, "shared")
@@ -635,46 +636,49 @@ def test_rgcn_composable_format(
         sch.compute_at(blk_wx, sch.get_loops(blk)[0], True)
         W_shared = sch.reverse_cache_read(blk_wx, 2, "shared", [0, 1, 5, 4])
         sch.compute_at(W_shared, sch.get_loops(blk)[0], True)
-        ax0, ax1, ax2, ax3 = sch.get_loops(blk_wx)[-4:]
-        ax2_o, ax2_i = sch.split(ax2, [None, 16])
-        ax3_o, ax3_i = sch.split(ax3, [None, 16])
-        sch.reorder(ax2_o, ax3_o, ax0, ax1, ax2_i, ax3_i)
+        j, k, fo, fi = sch.get_loops(blk_wx)[-4:]
+        j_unroll, j_ty, j_inner = sch.split(j, [num_workloads_per_thread, ty, None])
+        foo, foi = sch.split(fo, [None, 16])
+        fio, fii = sch.split(fi, [None, 16])
+        sch.reorder(j_unroll, j_ty, foo, fio, j_inner, k, foi, fii)
+        sch.unroll(foo)
+        sch.unroll(fio)
         X_shared = sch.reverse_cache_read(blk_wx, 0, "shared")
-        sch.compute_at(X_shared, ax3_o, True)
+        sch.compute_at(X_shared, foo, True)
         WX_accum = sch.reverse_cache_write(blk_wx, 0, "wmma.accumulator")
+        sch.reverse_compute_at(WX_accum, fio, True)
         W_wmma = sch.reverse_cache_read(blk_wx, 2, "wmma.matrix_b", [0, 1, 5, 4])
-        # W_wmma = sch.cache_read(blk_wx, 2, "wmma.matrix_b")
-        sch.compute_at(W_wmma, ax3_o, True)
+        sch.compute_at(W_wmma, fio, True)
         X_wmma = sch.reverse_cache_read(blk_wx, 0, "wmma.matrix_a")
         sch.bind(sch.get_loops(blk)[0], "blockIdx.x")
-        sch.decompose_reduction(blk_wx, ax3_o)
-
-        # unroll
-        ax2 = sch.get_loops(WX_accum)[-4]
-        sch.unroll(ax2)
-        ax5 = sch.get_loops(blk_wx)[-5]
-        ax4 = sch.get_loops(blk_wx)[-6]
-        sch.unroll(ax5)
-        sch.unroll(ax4)
+        sch.bind(j_ty, "threadIdx.y")
+        sch.unroll(j_unroll)
+        init_blk = sch.decompose_reduction(blk_wx, fio)
+        sch.reverse_compute_at(blk, j_ty, True)
+        Y_local = sch.reverse_cache_write(blk, 0, "local")
+        sch.annotate(Y_local, "atomic", True)
+        sch.reverse_compute_at(Y_local, sch.get_loops(blk)[-3], True)
 
         # tensorize
         sch.tensorize(sch.get_loops(WX_accum)[-3], "wmma_{}_{}_{}_store".format(d0, d1, "shared"))
         sch.tensorize(sch.get_loops(X_wmma)[-3], "wmma_{}_{}_{}_load_a".format(d0, d1, "shared"))
         sch.tensorize(sch.get_loops(W_wmma)[-2], "wmma_{}_load_b".format("shared"))
         sch.tensorize(
-            sch.get_loops(sch.get_block("rgcn-hetero-forward_wx_{}0_init".format(bucket_id)))[-3],
+            sch.get_loops(init_blk)[-3],
             "wmma_{}_{}_init".format(d0, d1),
         )
         sch.hide_buffer_access(blk_wx, "read", [2, 4])
         sch.tensorize(sch.get_loops(blk_wx)[-4], "wmma_{}_{}_sync".format(d0, d1))
 
         # schedule W_shared
-        ax2, ax3 = sch.get_loops(W_shared)[-2:]
-        fused_ax = sch.fuse(ax2, ax3)
-        ax0, ax1, ax2 = sch.split(fused_ax, [None, 32, 8])
-        sch.vectorize(ax2)
-        sch.bind(ax1, "threadIdx.x")
-        sch.unroll(ax0)
+        fi, fo = sch.get_loops(W_shared)[-2:]
+        fused_ax = sch.fuse(fi, fo)
+        assert ty <= 4
+        j, k, fi, fo = sch.split(fused_ax, [None, ty, 32, 8])
+        sch.vectorize(fo)
+        sch.bind(fi, "threadIdx.x")
+        sch.bind(k, "threadIdx.y")
+        sch.unroll(j)
 
         # schedule X_shared
         ax0, ax1, ax2 = sch.get_loops(X_shared)[-3:]
@@ -682,20 +686,18 @@ def test_rgcn_composable_format(
         ax0, ax1, ax2 = sch.split(fused_ax, [None, 32, 8])
         sch.vectorize(ax2)
         sch.bind(ax1, "threadIdx.x")
-
+        sch.unroll(ax0)
+        
         # schedule for the write block
-        ii, j, fo = sch.get_loops(blk)[-3:]
-        sch.annotate(blk, "atomic", True)
-        Y_local = sch.reverse_cache_write(blk, 0, "local")
-        sch.reverse_compute_at(Y_local, ii, True)
+        j_i, k, fo = sch.get_loops(blk)[-3:]
+        sch.unroll(j_i)
+        sch.unroll(k)
         sch.bind(fo, "threadIdx.x")
-        sch.unroll(j)
-        sch.unroll(ii)
         sch.bind(sch.get_loops(Y_local)[-1], "threadIdx.x")
 
         # Unset block filter
         sch.unset_block_filter()
-
+    
     mod = lower_sparse_buffer(sch.mod)
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
 
@@ -725,8 +727,8 @@ def test_rgcn_composable_format(
 
 
 if __name__ == "__main__":
-    for feat_size in [32]:  # [4, 8, 16, 32]:
-        for name in ["am"]: #["aifb", "mutag", "bgs", "am", "biokg"]:
+    for feat_size in [32]:
+        for name in ["aifb"]: #["aifb", "mutag", "bgs", "am", "biokg"]:
             print("dataset {}, feat_size={}:".format(name, feat_size))
             dataset = get_hetero_dataset(name)
             g = dataset[0]
@@ -738,5 +740,5 @@ if __name__ == "__main__":
             # homograph
             ground_truth_y = get_ground_truth(g, type_pointers, feat, weight)
             test_rgcn_composable_format(
-                g, type_pointers, feat_size, feat, weight, ground_truth_y, 4, 16, [1, 2, 4, 8, 16]
+                g, type_pointers, feat_size, feat, weight, ground_truth_y, 4, 4, [1, 2, 4, 8, 16]
             )
