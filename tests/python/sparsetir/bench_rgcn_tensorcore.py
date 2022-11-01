@@ -504,6 +504,24 @@ def csf_to_ell3d_idx_map(r, i, j, fo):
     return r, 0, i, j, fo
 
 
+# register wmma instructions
+buckets = [1, 2, 4, 8, 16]
+tir.TensorIntrin.register("wmma_{}_load_b".format("shared"), *wmma_load_b("shared"))
+tir.TensorIntrin.register("wmma_{}_load_b".format("global"), *wmma_load_b("global"))
+
+for bucket_size in buckets:
+    d0 = 16 // bucket_size
+    d1 = bucket_size
+    tir.TensorIntrin.register(
+        "wmma_{}_{}_{}_store".format(d0, d1, "shared"), *wmma_store(d0, d1, "shared")
+    )
+    tir.TensorIntrin.register(
+        "wmma_{}_{}_{}_load_a".format(d0, d1, "shared"), *wmma_load_a(d0, d1, "shared")
+    )
+    tir.TensorIntrin.register("wmma_{}_{}_init".format(d0, d1), *wmma_fill(d0, d1))
+    tir.TensorIntrin.register("wmma_{}_{}_sync".format(d0, d1), *wmma_sync(d0, d1))
+
+
 def test_rgcn_composable_format(
     g: dgl.DGLHeteroGraph,
     type_pointers: Mapping[str, th.Tensor],
@@ -513,8 +531,8 @@ def test_rgcn_composable_format(
     ground_truth: th.Tensor,
     ty: 4,
     num_workloads_per_thread: 1,
-    buckets: List[int] = [1, 2, 4, 8],
 ):
+    global buckets
     group_size = ty * num_workloads_per_thread * 16
     # preprocess data
     ntype_node_pointer = type_pointers["ntype_node_pointer"]
@@ -611,22 +629,10 @@ def test_rgcn_composable_format(
     mod = tvm.tir.transform.RemovePreprocess()(mod)
 
     sch = tir.Schedule(mod["main"])
-    # register load_b
-    tir.TensorIntrin.register("wmma_{}_load_b".format("shared"), *wmma_load_b("shared"))
-    tir.TensorIntrin.register("wmma_{}_load_b".format("global"), *wmma_load_b("global"))
-
     for bucket_id, bucket_size in enumerate(buckets):
         sch.set_block_filter("group_{}".format(bucket_id))
         d0 = 16 // bucket_size
         d1 = bucket_size
-        tir.TensorIntrin.register(
-            "wmma_{}_{}_{}_store".format(d0, d1, "shared"), *wmma_store(d0, d1, "shared")
-        )
-        tir.TensorIntrin.register(
-            "wmma_{}_{}_{}_load_a".format(d0, d1, "shared"), *wmma_load_a(d0, d1, "shared")
-        )
-        tir.TensorIntrin.register("wmma_{}_{}_init".format(d0, d1), *wmma_fill(d0, d1))
-        tir.TensorIntrin.register("wmma_{}_{}_sync".format(d0, d1), *wmma_sync(d0, d1))
         blk_wx = sch.get_block("rgcn-hetero-forward_wx_{}0".format(bucket_id))
         blk = sch.get_block("rgcn-hetero-forward_{}0".format(bucket_id))
         sch.annotate(blk_wx, "group_{}".format(bucket_id), 1)
@@ -687,7 +693,7 @@ def test_rgcn_composable_format(
         sch.vectorize(ax2)
         sch.bind(ax1, "threadIdx.x")
         sch.unroll(ax0)
-        
+
         # schedule for the write block
         j_i, k, fo = sch.get_loops(blk)[-3:]
         sch.unroll(j_i)
@@ -697,7 +703,7 @@ def test_rgcn_composable_format(
 
         # Unset block filter
         sch.unset_block_filter()
-    
+
     mod = lower_sparse_buffer(sch.mod)
     mod = tvm.tir.transform.RemoveUnusedArgs()(mod)
 
@@ -728,7 +734,7 @@ def test_rgcn_composable_format(
 
 if __name__ == "__main__":
     for feat_size in [32]:
-        for name in ["aifb"]: #["aifb", "mutag", "bgs", "am", "biokg"]:
+        for name in ["aifb", "mutag", "bgs", "am", "biokg"]:
             print("dataset {}, feat_size={}:".format(name, feat_size))
             dataset = get_hetero_dataset(name)
             g = dataset[0]
@@ -740,5 +746,5 @@ if __name__ == "__main__":
             # homograph
             ground_truth_y = get_ground_truth(g, type_pointers, feat, weight)
             test_rgcn_composable_format(
-                g, type_pointers, feat_size, feat, weight, ground_truth_y, 4, 4, [1, 2, 4, 8, 16]
+                g, type_pointers, feat_size, feat, weight, ground_truth_y, 4, 4
             )
