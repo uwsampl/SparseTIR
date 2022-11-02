@@ -145,12 +145,14 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
       NDArray col_indices_bucket_local =
           NDArray::Empty({nnz, bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
       NDArray mask_bucket_local = NDArray::Empty({nnz, bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
-      row_indices_bucket_local.CopyFromBytes(row_indices[part_id][bucket_id].data(),
-                                             nnz * sizeof(int));
-      col_indices_bucket_local.CopyFromBytes(col_indices[part_id][bucket_id].data(),
-                                             nnz * bucket_size * sizeof(int));
-      mask_bucket_local.CopyFromBytes(mask[part_id][bucket_id].data(),
-                                      nnz * bucket_size * sizeof(int));
+      if (nnz > 0) {
+        row_indices_bucket_local.CopyFromBytes(row_indices[part_id][bucket_id].data(),
+                                              nnz * sizeof(int));
+        col_indices_bucket_local.CopyFromBytes(col_indices[part_id][bucket_id].data(),
+                                              nnz * bucket_size * sizeof(int));
+        mask_bucket_local.CopyFromBytes(mask[part_id][bucket_id].data(),
+                                        nnz * bucket_size * sizeof(int));
+      }
       row_indices_part_local.push_back(row_indices_bucket_local);
       col_indices_part_local.push_back(col_indices_bucket_local);
       mask_part_local.push_back(mask_bucket_local);
