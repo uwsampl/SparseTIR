@@ -529,9 +529,11 @@ def test_rgcn_composable_format(
     feat: th.Tensor,
     weight: th.Tensor,
     ground_truth: th.Tensor,
-    ty: 4,
-    num_workloads_per_thread: 1,
+    ty: int,
+    num_workloads_per_thread: int,
+    fo_factor=2,
 ):
+    fi_factor = feat_size // 16
     global buckets
     group_size = ty * num_workloads_per_thread * 16
     # preprocess data
@@ -639,18 +641,21 @@ def test_rgcn_composable_format(
         sch.annotate(blk, "group_{}".format(bucket_id), 1)
         sch.match_to_alloc(blk_wx, 0)
         sch.set_scope(blk_wx, 0, "shared")
-        sch.compute_at(blk_wx, sch.get_loops(blk)[0], True)
+        i, j, k, fo, fi = sch.get_loops(blk_wx)[-5:]
+        fooo, fooi, foi = sch.split(fo, [None, fo_factor, 16])
+        fio, fii = sch.split(fi, [fi_factor, 16])
+        sch.reorder(i, fooo, fooi, fio, j, k, foi, fii)
+        sch.annotate(fooo, "pragma_unroll_explicit", 0)
+        sch.unroll(fooo)
+        sch.reverse_compute_at(blk, fooo, True)
         W_shared = sch.reverse_cache_read(blk_wx, 2, "shared", [0, 1, 5, 4])
-        sch.compute_at(W_shared, sch.get_loops(blk)[0], True)
-        j, k, fo, fi = sch.get_loops(blk_wx)[-4:]
+        sch.compute_at(W_shared, fooo, True)
         j_unroll, j_ty, j_inner = sch.split(j, [num_workloads_per_thread, ty, None])
-        foo, foi = sch.split(fo, [None, 16])
-        fio, fii = sch.split(fi, [None, 16])
-        sch.reorder(j_unroll, j_ty, foo, fio, j_inner, k, foi, fii)
-        sch.unroll(foo)
+        sch.reorder(j_unroll, j_ty, fooi, fio, j_inner, k, foi, fii)
+        sch.unroll(fooi)
         sch.unroll(fio)
         X_shared = sch.reverse_cache_read(blk_wx, 0, "shared")
-        sch.compute_at(X_shared, foo, True)
+        sch.compute_at(X_shared, fio, True)
         WX_accum = sch.reverse_cache_write(blk_wx, 0, "wmma.accumulator")
         sch.reverse_compute_at(WX_accum, fio, True)
         W_wmma = sch.reverse_cache_read(blk_wx, 2, "wmma.matrix_b", [0, 1, 5, 4])
@@ -679,7 +684,6 @@ def test_rgcn_composable_format(
         # schedule W_shared
         fi, fo = sch.get_loops(W_shared)[-2:]
         fused_ax = sch.fuse(fi, fo)
-        assert ty <= 4
         j, k, fi, fo = sch.split(fused_ax, [None, ty, 32, 8])
         sch.vectorize(fo)
         sch.bind(fi, "threadIdx.x")
@@ -697,9 +701,13 @@ def test_rgcn_composable_format(
         # schedule for the write block
         j_i, k, fo = sch.get_loops(blk)[-3:]
         sch.unroll(j_i)
+        ax0, ax1 = sch.split(fo, [None, 32])
+        sch.unroll(ax0)
+        sch.bind(ax1, "threadIdx.x")
         sch.unroll(k)
-        sch.bind(fo, "threadIdx.x")
-        sch.bind(sch.get_loops(Y_local)[-1], "threadIdx.x")
+        ax0, ax1 = sch.split(sch.get_loops(Y_local)[-1], [None, 32])
+        sch.unroll(ax0)
+        sch.bind(ax1, "threadIdx.x")
 
         # Unset block filter
         sch.unset_block_filter()
@@ -732,8 +740,11 @@ def test_rgcn_composable_format(
     print("sparse-tir:\t\t {:.3f} ms".format(evaluator(*args).mean * 1000))
 
 
+def get_num_workloads_per_thread(feat_size: int) -> int:
+    return max(1, 128 // feat_size)
+
 if __name__ == "__main__":
-    for feat_size in [32]:
+    for feat_size in [128]:
         for name in ["aifb", "mutag", "bgs", "am", "biokg"]:
             print("dataset {}, feat_size={}:".format(name, feat_size))
             dataset = get_hetero_dataset(name)
@@ -746,5 +757,12 @@ if __name__ == "__main__":
             # homograph
             ground_truth_y = get_ground_truth(g, type_pointers, feat, weight)
             test_rgcn_composable_format(
-                g, type_pointers, feat_size, feat, weight, ground_truth_y, 4, 4
+                g,
+                type_pointers,
+                feat_size,
+                feat,
+                weight,
+                ground_truth_y,
+                4,
+                get_num_workloads_per_thread(feat_size),
             )
