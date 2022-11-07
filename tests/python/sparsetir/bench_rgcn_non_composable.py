@@ -29,8 +29,6 @@ def prepare_hetero_graph_simplified(g: dgl.DGLHeteroGraph):
     }
 
 
-blks = ["blockIdx.x", "blockIdx.y", "blockIdx.z"]
-
 def test_lower_rgcn_hetero(
     g: dgl.DGLHeteroGraph,
     feat_size: int,

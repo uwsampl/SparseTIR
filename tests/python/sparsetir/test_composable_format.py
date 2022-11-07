@@ -253,7 +253,7 @@ def test_condense():
     indptr_nd = tvm.nd.array(indptr, device=tvm.cpu())
     indices_nd = tvm.nd.array(indices, device=tvm.cpu())
     # built-in c++ function
-    indptr_ret, indices_ret, mask, _, _, _ = condense(indptr_nd, indices_nd, t, 1)
+    indptr_ret, indices_ret, mask = condense(indptr_nd, indices_nd, t, 1)
     # Python version of function
     indptr_py, indices_py = condense_py(indptr, indices, t)
     assert np.array_equal(

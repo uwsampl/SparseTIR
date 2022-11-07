@@ -116,9 +116,8 @@ def column_part_hyb(num_rows, num_cols, indptr_nd, indices_nd, num_col_parts, bu
     )
 
 
-def condense(indptr_nd, indices_nd, t, g, threshold=1):
+def condense(indptr_nd, indices_nd, t, g):
     """Condense sparse matrix in CSR format to (t x 1) tiles, and group g tiles together.
-    if nonzero elements in a tile is less then threshold, collect them to another DCSR format.
 
 
     Parameters
@@ -131,16 +130,13 @@ def condense(indptr_nd, indices_nd, t, g, threshold=1):
         The tile size.
     g : int
         The group size.
-    threshold : int
-        The threshold for determining whether a tile should be collected in tile format
-        or DCSR format.
 
     Returns
     -------
     Tuple[NDArray]
-        The pair of (group_indptr, tile_indices, mask, dcsr_row_indices, dcsr_indptr, dcsr_col_indices).
+        The pair of (group_indptr, tile_indices, mask).
     """
-    return _ffi_api.ConDense(indptr_nd, indices_nd, t, g, threshold)  # type: ignore
+    return _ffi_api.ConDense(indptr_nd, indices_nd, t, g)  # type: ignore
 
 
 def csf_to_ell3d(

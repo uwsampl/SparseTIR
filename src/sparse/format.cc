@@ -341,16 +341,13 @@ Array<Array<NDArray>> CSFToELL3D(NDArray csf_indptr_0, NDArray csf_indices_0, ND
 
 /*!
  * \brief Condense sparse matrix in CSR format to (t x 1) tiles, and group g tiles together.
- * if nonzero elements in a tile is less then threshold, collect them to another DCSR format.
  * \param indptr The indptr array of CSR format.
  * \param indices The indices array of CSR format.
  * \param t The tile size.
  * \param g The group size.
- * \param threshold The threshold for determining whether a tile should be collected in tile format
- * or DCSR format.
- * \return {group_indptr, tile_indices, mask, dcsr_row_indices, dcsr_indptr, dcsr_col_indices}
+ * \return {group_indptr, tile_indices, mask}
  */
-Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g, int threshold) {
+Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g) {
   // Check inputs
   CHECK_EQ(indptr->dtype.bits, 32) << "Only support int32 index data type, got "
                                    << int(indptr->dtype.bits) << " bits for indptr.";
@@ -371,7 +368,6 @@ Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g, int thres
   std::vector<int> mask;
   group_indptr.push_back(0);
   std::multimap<int, int> col_row_map;
-  std::multimap<int, int> dcsr_row_col_map;
   // Condense matrix
   for (int row_tile_id = 0; row_tile_id < num_tiles; ++row_tile_id) {
     int tile_begin_row = row_tile_id * t;
@@ -392,30 +388,25 @@ Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g, int thres
       for (auto equal_iter = eq_range.first; equal_iter != eq_range.second; ++equal_iter) {
         nnz_inside_tile++;
       }
-      if (nnz_inside_tile >= threshold) {
-        // add tile to blockized format.
-        tile_counter++;
-        // new group
-        if (tile_counter == 1) {
-          nnz_groups++;
-          tile_indices.resize(nnz_groups * g, 0);
-          mask.resize(nnz_groups * t * g, 0);
-        }
-        // update tile_indices and mask
-        tile_indices[(nnz_groups - 1) * g + (tile_counter - 1)] = col;
-        for (auto equal_itr = eq_range.first; equal_itr != eq_range.second; ++equal_itr) {
-          int row_local = equal_itr->second - tile_begin_row;
-          mask[(nnz_groups - 1) * t * g + row_local * g + (tile_counter - 1)] = 1;
-        }
-        // reset tile_counter
-        if (tile_counter == g) {
-          tile_counter = 0;
-        }
-      } else {
-        // add tile to dscr format.
-        int row = eq_range.first->second;
-        dcsr_row_col_map.insert({row, col});
+      // add tile to blockized format.
+      tile_counter++;
+      // new group
+      if (tile_counter == 1) {
+        nnz_groups++;
+        tile_indices.resize(nnz_groups * g, 0);
+        mask.resize(nnz_groups * t * g, 0);
       }
+      // update tile_indices and mask
+      tile_indices[(nnz_groups - 1) * g + (tile_counter - 1)] = col;
+      for (auto equal_itr = eq_range.first; equal_itr != eq_range.second; ++equal_itr) {
+        int row_local = equal_itr->second - tile_begin_row;
+        mask[(nnz_groups - 1) * t * g + row_local * g + (tile_counter - 1)] = 1;
+      }
+      // reset tile_counter
+      if (tile_counter == g) {
+        tile_counter = 0;
+      }
+
       unique_col_itr = eq_range.second;
     }
     // update group indptr
@@ -424,46 +415,14 @@ Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g, int thres
     col_row_map.clear();
   }
 
-  // Remaining DCSR format.
-  std::vector<int> dcsr_row_indices;
-  std::vector<int> dcsr_col_indices;
-  std::vector<int> dcsr_indptr{0};
-  int offset = 0;
-  for (auto unique_row_itr = dcsr_row_col_map.begin(); unique_row_itr != dcsr_row_col_map.end();) {
-    int row = unique_row_itr->first;
-    dcsr_row_indices.push_back(row);
-    auto eq_range = dcsr_row_col_map.equal_range(unique_row_itr->first);
-    for (auto equal_itr = eq_range.first; equal_itr != eq_range.second; ++equal_itr) {
-      offset++;
-      int col = equal_itr->second;
-      dcsr_col_indices.push_back(col);
-    }
-    dcsr_indptr.push_back(offset);
-    unique_row_itr = eq_range.second;
-  }
-  int dcsr_num_rows = dcsr_row_indices.size();
-  int dcsr_nnz = dcsr_col_indices.size();
-  ICHECK((int)dcsr_indptr.size() == dcsr_num_rows + 1) << "dcsr indptr size should be num_rows + 1";
-
   // Convert to NDArray
   NDArray group_indptr_nd = NDArray::Empty({num_tiles + 1}, {kDLInt, 32, 1}, {kDLCPU, 0});
   NDArray tile_indices_nd = NDArray::Empty({nnz_groups, g}, {kDLInt, 32, 1}, {kDLCPU, 0});
   NDArray mask_nd = NDArray::Empty({nnz_groups, t, g}, {kDLInt, 32, 1}, {kDLCPU, 0});
-  NDArray dcsr_row_indices_nd = NDArray::Empty({dcsr_num_rows}, {kDLInt, 32, 1}, {kDLCPU, 0});
-  NDArray dcsr_indptr_nd = NDArray::Empty({dcsr_num_rows + 1}, {kDLInt, 32, 1}, {kDLCPU, 0});
-  NDArray dcsr_col_indices_nd = NDArray::Empty({dcsr_nnz}, {kDLInt, 32, 1}, {kDLCPU, 0});
   group_indptr_nd.CopyFromBytes(group_indptr.data(), (num_tiles + 1) * sizeof(int));
   tile_indices_nd.CopyFromBytes(tile_indices.data(), (nnz_groups * g) * sizeof(int));
   mask_nd.CopyFromBytes(mask.data(), (nnz_groups * t * g) * sizeof(int));
-  if (dcsr_num_rows > 0) {
-    dcsr_row_indices_nd.CopyFromBytes(dcsr_row_indices.data(), dcsr_num_rows * sizeof(int));
-  }
-  dcsr_indptr_nd.CopyFromBytes(dcsr_indptr.data(), (dcsr_num_rows + 1) * sizeof(int));
-  if (dcsr_nnz > 0) {
-    dcsr_col_indices_nd.CopyFromBytes(dcsr_col_indices.data(), dcsr_nnz * sizeof(int));
-  }
-  return {group_indptr_nd,     tile_indices_nd, mask_nd,
-          dcsr_row_indices_nd, dcsr_indptr_nd,  dcsr_col_indices_nd};
+  return {group_indptr_nd,     tile_indices_nd, mask_nd};
 }
 
 namespace sparse {
