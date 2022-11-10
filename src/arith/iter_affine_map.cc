@@ -689,6 +689,9 @@ class IterMapRewriter : public ExprMutator {
   bool CanProveDivisible(const PrimExpr& lhs, const PrimExpr& rhs) {
     const auto* clhs = lhs.as<IntImmNode>();
     const auto* crhs = rhs.as<IntImmNode>();
+    if (crhs && crhs->value == 0) {
+      return false;
+    }
     if (clhs && crhs) return clhs->value % crhs->value == 0;
     return analyzer_->CanProveEqual(lhs, rhs) || analyzer_->CanProve(floormod(lhs, rhs) == 0);
   }

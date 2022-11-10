@@ -44,8 +44,10 @@ class PreprocessRemover : public StmtExprMutator {
       for (const Buffer& buf : op->alloc_buffers) {
         root_alloc_buffers.insert(buf.get());
       }
-      CHECK(op->body->IsInstance<SeqStmtNode>()) << "The body to perform extract preprocessing "
-                                                    "must contain mutiple block/sparse iterations";
+      if (!op->body->IsInstance<SeqStmtNode>()) {
+        // no preprocessing block.
+        return GetRef<Block>(op);
+      }
       SeqStmt body = Downcast<SeqStmt>(op->body);
       Array<Stmt> seq;
       for (const Stmt& stmt : body->seq) {
