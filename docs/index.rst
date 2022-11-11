@@ -32,12 +32,6 @@ SparseTIR is a tensor-level compiler for sparse/irregular operators in Deep Lear
 
    overview.rst
 
-.. toctree::
-   :maxdepth: 1
-   :caption: Migration Plan
-
-   migration.rst
-
 API doc
 ==================
 
