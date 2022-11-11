@@ -1,4 +1,4 @@
-BlockSparse Operators
-=====================
+Block Sparse Operators
+======================
 
 Under construction.
