@@ -6,14 +6,14 @@
 Welcome to SparseTIR's documentation!
 =====================================
 
-SparseTIR is a compiler infrastructure for programming and optimizing sparse workloads in Deep Learning, built on top of Apache TVM's TensorIR.
+SparseTIR is a tensor-level compiler for sparse/irregular operators in Deep Learning. The design goal of SparseTIR is to provide a general programming abstraction that can cover both sparse and irregular (e.g. Ragged Tensors) sparse workloads in Deep Learning including Graph Neural Networks, Sparse Transformers, Sparse Convolutions, Network Pruning, etc. while generating high-performance code on heterogeneous hardware.
 
 .. toctree::
    :maxdepth: 1
    :caption: Getting Started
 
    install.rst
-   tutorials/quickstart.rst
+   tutorials/blitz.rst
 
 .. toctree::
    :maxdepth: 1
@@ -21,8 +21,9 @@ SparseTIR is a compiler infrastructure for programming and optimizing sparse wor
 
    tutorials/spmm.rst
    tutorials/sddmm.rst
-   tutorials/rgcn.rst
+   tutorials/spmm-tc.rst
    tutorials/blocksparse.rst
+   tutorials/rgcn.rst
    tutorials/sparseconv.rst
 
 .. toctree::
