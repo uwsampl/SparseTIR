@@ -2,9 +2,9 @@ name: Documentation
 on:
   push:
     branches:
-    - sparse
+    - main 
     paths:
-    - docs
+    - 'docs/**'
 jobs:
   build:
     runs-on: ubuntu-latest
