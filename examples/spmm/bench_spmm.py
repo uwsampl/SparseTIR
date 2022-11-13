@@ -15,8 +15,7 @@ from tvm.sparse import (
     format_decompose,
 )
 import tvm.sparse
-from sparse_tir_composable_format_scripts import ell, padding
-from utils import get_dataset
+from utils import get_dataset, ell
 
 
 @T.prim_func

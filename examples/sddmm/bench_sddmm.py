@@ -1,4 +1,3 @@
-from statistics import mean
 import dgl
 import tvm
 import argparse
@@ -8,33 +7,44 @@ import scipy.sparse as sp
 import numpy as np
 import torch as th
 from tvm.script import tir as T
-import tvm.sparse
+from tvm.sparse import lower_sparse_iter, lower_sparse_buffer
 from ogb.nodeproppred import DglNodePropPredDataset
-from sparse_tir_lowered_iter_scripts import fused_sddmm
 from torch.profiler import profile, ProfilerActivity, schedule
 
 
-class TorchOpTimer(object):
-    def __enter__(self):
-        th.cuda.synchronize()
-        self.start_event = th.cuda.Event(enable_timing=True)
-        self.end_event = th.cuda.Event(enable_timing=True)
-        self.start_event.record()
-        return self
+def sddmm(m: int, n: int, feat_size: int, nnz: int):
+    @T.prim_func
+    def func(
+        a: T.handle,
+        b: T.handle,
+        c: T.handle,
+        indptr: T.handle,
+        indices: T.handle,
+    ) -> None:
+        T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
+        I = T.dense_fixed(m)
+        J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
+        J_detach = T.dense_fixed(n)
+        K = T.dense_fixed(feat_size)
+        A = T.match_sparse_buffer(a, (I, K), "float32")
+        B = T.match_sparse_buffer(b, (J_detach, K), "float32")
+        C = T.match_sparse_buffer(c, (I, J), "float32")
 
-    def __exit__(self, type, value, traceback):
-        self.end_event.record()
-        th.cuda.synchronize()  # Wait for the events to be recorded!
-        self.time = self.start_event.elapsed_time(self.end_event) / 1e3
+        with T.iter([I, J, K], "SSR", "sddmm") as [i, j, k]:
+            with T.init():
+                C[i, j] = 0.0
+            C[i, j] = C[i, j] + A[i, k] * B[j, k]
+
+    return func
 
 
 def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
+    global sddmm
     indptr, indices, _ = g.adj_sparse("csr")
     m = g.num_src_nodes()
     n = g.num_dst_nodes()
     nnz = g.number_of_edges()
 
-    M, N, F, NNZ = fused_sddmm.params[-4:]
     a = th.rand(m, feat_size).to(th.float32)
     b = th.rand(n, feat_size).to(th.float32)
     c = th.zeros(nnz).to(th.float32)
@@ -44,28 +54,24 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     b_gpu = b.to(0)
     g = g.to(0)
 
-    with profile(activities=[ProfilerActivity.CUDA], schedule=schedule(wait=0, warmup=10, active=100)) as prof:
+    with profile(
+        activities=[ProfilerActivity.CUDA], schedule=schedule(wait=0, warmup=10, active=100)
+    ) as prof:
         with th.no_grad():
             for epoch in range(100):
                 c_golden = dgl.ops.u_dot_v(g, a_gpu, b_gpu)
                 prof.step()
-    print(prof.key_averages())
-    return
 
-    # accum_time = 0.0
-    # runs = 0
-    # cold_start_time = 3
-
-    # for i in range(10):
-    #     with TorchOpTimer() as timer:
-    #         c_golden = dgl.ops.u_dot_v(g, a_gpu, b_gpu)
-    #     if i >= cold_start_time:
-    #         accum_time += timer.time
-    #         runs += 1
-    # print("dgl:\t\t", accum_time / runs * 1000)
+    dur = sum([e.cuda_time for e in prof.events()]) / 1000 / 90
+    print("dgl time:\t{:.5f} ms".format(dur))
 
     # tvm
-    mod = tvm.IRModule.from_expr(fused_sddmm.specialize({M: m, N: n, F: feat_size, NNZ: nnz}))
+    mod = tvm.IRModule.from_expr(sddmm(m, n, feat_size, nnz))
+    sch = tir.Schedule(mod)
+    sp_iteration = sch.get_sparse_iteration("sddmm")
+    i, j, k = sch.get_sp_iters(sp_iteration)
+    sch.sparse_fuse(sp_iteration, [i, j])
+    mod = lower_sparse_iter(sch.mod)
 
     # split preprocess and compute
     mod_preprocess = tvm.tir.transform.ExtractPreprocess()(mod)
@@ -78,7 +84,7 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
     io, ii = sch.split(i, [None, 32])
     sch.bind(ii, "threadIdx.x")
     sch.bind(io, "blockIdx.x")
-    mod = tvm.sparse.lower_sparse_buffer(sch.mod)
+    mod = lower_sparse_buffer(sch.mod)
     preproc = tvm.build(mod["main"], target="cuda")
 
     # compute mid
@@ -141,21 +147,21 @@ def bench_sddmm(g: dgl.DGLGraph, feat_size: int):
                     sch.unroll(ax2)
                     sch.unroll(ax1)
                     mod = tvm.sparse.lower_sparse_buffer(sch.mod)
-                    sddmm = tvm.build(mod["main"], target="cuda")
+                    f = tvm.build(mod["main"], target="cuda")
 
                     # check result
                     args = [a_nd, b_nd, c_nd, indptr_nd, indices_nd, mid_nd]
-                    sddmm(*args)
+                    f(*args)
                     tvm.testing.assert_allclose(c_nd.numpy(), c_golden.view(-1).cpu(), rtol=1e-5)
 
                     # evaluate time
-                    evaluator = sddmm.time_evaluator(sddmm.entry_name, tvm.cuda(0), number=10)
+                    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
                     mean_time = evaluator(*args).mean * 1000
 
                     if mean_time < best:
                         best = mean_time
                         best_config = (tx, ty, vec_size, group_size)
-    print("sparse tir:\t{}".format(best))
+    print("sparse tir:\t{:.5f} ms".format(best))
     print("best config:\t{}".format(best_config))
 
 
@@ -183,7 +189,7 @@ def get_dataset(name: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("sddmm in sparse-tir")
-    parser.add_argument("--dataset", "-d", type=str, default='pubmed', help="dataset name")
+    parser.add_argument("--dataset", "-d", type=str, default="pubmed", help="dataset name")
     args = parser.parse_args()
     name = args.dataset
     g = get_dataset(name)

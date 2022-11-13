@@ -1,5 +1,7 @@
-"""FusedMM
-Related work: https://arxiv.org/pdf/2011.06391.pdf
+"""Graph Flash Attention (working in progress)
+Related work:
+- FusedMM: https://arxiv.org/pdf/2011.06391.pdf
+- FlashAttention: https://arxiv.org/pdf/2205.14135.pdf
 """
 
 import tvm
@@ -42,8 +44,18 @@ def fusedmm(
     O = T.match_sparse_buffer(o, [I, F], "float32")
 
     score = T.alloc_sparse_buffer([I, J], "float32")
-    temp = T.alloc_sparse_buffer([I,], "float32")
-    temp1 = T.alloc_sparse_buffer([I,], "float32")
+    temp = T.alloc_sparse_buffer(
+        [
+            I,
+        ],
+        "float32",
+    )
+    temp1 = T.alloc_sparse_buffer(
+        [
+            I,
+        ],
+        "float32",
+    )
     softmax = T.alloc_sparse_buffer([I, J], "float32")
     # Q^T * K
     with T.iter([I, J, F], "SSR", "sddmm") as [i, j, f]:
@@ -55,7 +67,7 @@ def fusedmm(
     with T.iter([I], "S", "softmax") as [i]:
         with T.iter([J], "R", "computer_max") as [j]:
             with T.init():
-                temp[i] = -T.float32(100000)
+                temp[i] = T.min_value("float32")
             temp[i] = T.max(temp[i], score[i, j])
         with T.iter([J], "R", "sum_of_exp") as [j]:
             with T.init():
@@ -63,7 +75,7 @@ def fusedmm(
             temp1[i] += T.exp(score[i, j] - temp[i], dtype="float32")
         with T.iter([J], "S", "normalize") as [j]:
             softmax[i, j] = T.exp(score[i, j], dtype="float32") / temp1[i]
-        
+
     # softmax * V
     with T.iter([I, J, F], "SRS", "spmm") as [i, j, f]:
         with T.init():

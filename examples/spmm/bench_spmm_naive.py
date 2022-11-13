@@ -10,8 +10,7 @@ from tvm.script import tir as T
 from tvm.sparse import FormatRewriteRule, lower_sparse_buffer, lower_sparse_iter
 import tvm.sparse
 from ogb.nodeproppred import DglNodePropPredDataset
-from sparse_tir_composable_format_scripts import ell, padding
-from utils import get_dataset
+from utils import get_dataset, ell
 
 
 @T.prim_func
