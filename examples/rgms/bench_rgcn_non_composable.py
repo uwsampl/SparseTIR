@@ -9,24 +9,9 @@ import dgl.function as fn
 import torch as th
 from tvm.script import tir as T
 from dgl.data.rdf import AIFBDataset, MUTAGDataset, BGSDataset, AMDataset
-from sparse_tir_scripts import rgcn_hetero_forward
 from tvm.sparse import lower_sparse_iter, lower_sparse_buffer
 from typing import List, Tuple
-from utils import get_hetero_dataset
-
-
-def prepare_hetero_graph_simplified(g: dgl.DGLHeteroGraph):
-    ntype_pointer = np.cumsum([0] + [g.number_of_nodes(ntype) for ntype in g.ntypes])
-
-    etype_pointer = [0]
-    for etype in g.canonical_etypes:
-        g_sub = g[etype]
-        etype_pointer.append(etype_pointer[-1] + g_sub.num_edges())
-
-    return {
-        "ntype_node_pointer": th.IntTensor(ntype_pointer),
-        "etype_edge_pointer": th.IntTensor(etype_pointer),
-    }
+from utils import get_hetero_dataset, rgcn_hetero_forward, get_type_pointers
 
 
 def test_lower_rgcn_hetero(
@@ -113,10 +98,10 @@ def test_lower_rgcn_hetero(
 
 if __name__ == "__main__":
     for feat_size in [32]:  # [4, 8, 16, 32, 64]:
-        for name in ['aifb', 'mutag', 'bgs', 'am', 'biokg']:
+        for name in ["aifb", "mutag", "bgs", "am", "biokg"]:
             dataset = get_hetero_dataset(name)
             g = dataset[0]
-            type_pointers = prepare_hetero_graph_simplified(g)
+            type_pointers = get_type_pointers(g)
             n = g.num_nodes()
             r = len(g.etypes)
             feat = th.rand(n, feat_size).to(0) / 100
@@ -127,7 +112,8 @@ if __name__ == "__main__":
             for split_factor_f in [1, 2, 4, 8, 16, 32]:
                 print(
                     "dataset {}, split_factor_f {}:".format(
-                        name, split_factor_f,
+                        name,
+                        split_factor_f,
                     )
                 )
                 test_lower_rgcn_hetero(

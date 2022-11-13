@@ -14,21 +14,7 @@ from tvm.sparse import (
     csf_to_ell3d,
 )
 from typing import List, Tuple, Mapping
-from utils import get_hetero_dataset
-
-
-def get_type_pointers(g: dgl.DGLHeteroGraph):
-    ntype_pointer = np.cumsum([0] + [g.number_of_nodes(ntype) for ntype in g.ntypes])
-
-    etype_pointer = [0]
-    for etype in g.canonical_etypes:
-        g_sub = g[etype]
-        etype_pointer.append(etype_pointer[-1] + g_sub.num_edges())
-
-    return {
-        "ntype_node_pointer": th.IntTensor(ntype_pointer),
-        "etype_edge_pointer": th.IntTensor(etype_pointer),
-    }
+from utils import get_hetero_dataset, get_type_pointers
 
 
 def simplify(script: tvm.tir.PrimFunc) -> tvm.tir.PrimFunc:

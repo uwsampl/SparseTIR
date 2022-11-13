@@ -9,7 +9,6 @@ import dgl.function as fn
 import torch as th
 from tvm.script import tir as T
 from dgl.data.rdf import AIFBDataset, MUTAGDataset, BGSDataset, AMDataset
-from sparse_tir_scripts import rgcn_hetero_forward
 from tvm.sparse import (
     lower_sparse_iter,
     lower_sparse_buffer,
@@ -18,22 +17,7 @@ from tvm.sparse import (
     csf_to_ell3d,
 )
 from typing import List, Tuple, Mapping
-from sparse_tir_composable_format_scripts import ell3d
-from utils import get_hetero_dataset
-
-
-def prepare_hetero_graph_simplified(g: dgl.DGLHeteroGraph):
-    ntype_pointer = np.cumsum([0] + [g.number_of_nodes(ntype) for ntype in g.ntypes])
-
-    etype_pointer = [0]
-    for etype in g.canonical_etypes:
-        g_sub = g[etype]
-        etype_pointer.append(etype_pointer[-1] + g_sub.num_edges())
-
-    return {
-        "ntype_node_pointer": th.IntTensor(ntype_pointer),
-        "etype_edge_pointer": th.IntTensor(etype_pointer),
-    }
+from utils import get_hetero_dataset, rgcn_hetero_forward, ell3d, get_type_pointers
 
 
 def convert_indptr_to_mid_array(indptr):
@@ -233,7 +217,7 @@ if __name__ == "__main__":
             print("dataset {}, feat_size={}:".format(name, feat_size))
             dataset = get_hetero_dataset(name)
             g = dataset[0]
-            type_pointers = prepare_hetero_graph_simplified(g)
+            type_pointers = get_type_pointers(g)
             n = g.num_nodes()
             r = len(g.etypes)
             feat = th.rand(n, feat_size).to(0) / 100
