@@ -429,20 +429,21 @@ def fused_reduction_4d_3d(
 
 
 @T.prim_func
-def rgcn_forward(
+def rgcn_homo_forward(
     etype: T.handle,
     w: T.handle,
     x: T.handle,
     y: T.handle,
     indptr: T.handle,
     indices: T.handle,
+    m: T.int32,
     n: T.int32,
     r: T.int32,
     feat_size: T.int32,
     nnz: T.int32,
 ):
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
-    I = T.dense_fixed(n)
+    I = T.dense_fixed(m)
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
     J_detach = T.dense_fixed(n)
     R = T.dense_fixed(r)
@@ -452,7 +453,7 @@ def rgcn_forward(
     W = T.match_sparse_buffer(w, (R, F_out, F_in), "float32")
     X = T.match_sparse_buffer(x, (J_detach, F_in), "float32")
     Y = T.match_sparse_buffer(y, (I, F_out), "float32")
-    with T.iter([I, F_out, J, F_in], "SSRR", "rgcn-forward") as [
+    with T.iter([I, F_out, J, F_in], "SSRR", "rgcn-homo-forward") as [
         i,
         fo,
         j,
@@ -499,42 +500,6 @@ def rgcn_hetero_forward(
 
 
 @T.prim_func
-def rgcn_hetero_forward_2(
-    w: T.handle,
-    x: T.handle,
-    y: T.handle,
-    etypes: T.handle,
-    indptr_i: T.handle,
-    indices_i: T.handle,
-    indptr_j: T.handle,
-    indices_j: T.handle,
-    n: T.int32,
-    num_rels: T.int32,
-    group: T.int32,
-    feat_size: T.int32,
-    nnz_i: T.int32,
-    nnz_j: T.int32,
-):
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
-    R = T.dense_fixed(num_rels)
-    G = T.dense_fixed(group)
-    I = T.sparse_variable(G, (n, nnz_i), (indptr_i, indices_i), "int32")
-    J = T.sparse_variable(I, (n, nnz_j), (indptr_j, indices_j), "int32")
-    I_detach = T.dense_fixed(n)
-    J_detach = T.dense_fixed(n)
-    F_in = T.dense_fixed(feat_size)
-    F_out = T.dense_fixed(feat_size)
-    W = T.match_sparse_buffer(w, (R, F_out, F_in), "float32")
-    X = T.match_sparse_buffer(x, (J_detach, F_in), "float32")
-    Y = T.match_sparse_buffer(y, (I_detach, F_out), "float32")
-    E = T.match_sparse_buffer(etypes, (G,), "int32")
-    with T.iter([F_out, G, I, J, F_in], "SSSRR", "rgcn-hetero-forward") as [fo, g, i, j, fi]:
-        with T.init():
-            Y[i, fo] = 0.
-        Y[i, fo] = Y[i, fo] + W[E[g], fo, fi] * X[j, fi]
-
-
-@T.prim_func
 def sparse_softmax(
     a: T.handle,
     b: T.handle,
@@ -553,7 +518,7 @@ def sparse_softmax(
     with T.iter([I], "S", "sparse_softmax") as [i]:
         with T.iter([J], "R", "computer_max") as [j]:
             with T.init():
-                TMP[i] = T.float32(-100000)
+                TMP[i] = T.min_value("float32")
             TMP[i] = T.max(TMP[i], A[i, j])
         with T.iter([J], "R", "exp_and_sum") as [j]:
             with T.init():

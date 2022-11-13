@@ -39,7 +39,7 @@ func_name_list = [
     "square_sum_two_K",
     "fused_reduction_4d_2d",
     "fused_reduction_4d_3d",
-    "rgcn_forward",
+    "rgcn_homo_forward",
     "rgcn_hetero_forward",
     "sparse_softmax",
     "csr2bsr",
