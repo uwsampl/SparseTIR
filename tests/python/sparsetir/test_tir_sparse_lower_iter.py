@@ -31,7 +31,7 @@ func_name_list = [
     "ellmm",
     "csr_element_wise",
     "hyper_gnn",
-    # "bmm",
+    "bmm",
     "sddmm",
     "fused_sddmm",
     "square_sum",

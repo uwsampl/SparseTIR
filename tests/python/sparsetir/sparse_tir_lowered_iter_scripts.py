@@ -391,6 +391,80 @@ def hyper_gnn(
 
 
 @T.prim_func
+def bmm(
+    x: T.handle,
+    y: T.handle,
+    z: T.handle,
+    indptr_i: T.handle,
+    indptr_j: T.handle,
+    indptr_k: T.handle,
+    indptr_ij: T.handle,
+    indptr_ik: T.handle,
+    indptr_jk: T.handle,
+    batch_size: T.int32,
+    nnz_i: T.int32,
+    nnz_j: T.int32,
+    nnz_k: T.int32,
+    nnz_ij: T.int32,
+    nnz_jk: T.int32,
+    nnz_ik: T.int32,
+) -> None:
+    # function attr dict
+    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    B = T.dense_fixed(batch_size, idtype="int32")
+    I = T.dense_variable(B, (32768, nnz_i), indptr_i, idtype="int32")
+    J = T.dense_variable(B, (32768, nnz_j), indptr_j, idtype="int32")
+    K = T.dense_variable(B, (32768, nnz_k), indptr_k, idtype="int32")
+    IJ = T.dense_variable(B, (32768, nnz_ij), indptr_ij, idtype="int32")
+    JK = T.dense_variable(B, (32768, nnz_jk), indptr_jk, idtype="int32")
+    IK = T.dense_variable(B, (32768, nnz_ik), indptr_ik, idtype="int32")
+    X = T.match_sparse_buffer(x, [B, I, IJ], dtype="float32")
+    Y = T.match_sparse_buffer(y, [B, J, JK], dtype="float32")
+    Z = T.match_sparse_buffer(z, [B, I, IK], dtype="float32")
+    I_indptr = T.match_sparse_buffer(indptr_i, [B], dtype="int32", extra_storage=1)
+    J_indptr = T.match_sparse_buffer(indptr_j, [B], dtype="int32", extra_storage=1)
+    K_indptr = T.match_sparse_buffer(indptr_k, [B], dtype="int32", extra_storage=1)
+    IJ_indptr = T.match_sparse_buffer(indptr_ij, [B], dtype="int32", extra_storage=1)
+    IK_indptr = T.match_sparse_buffer(indptr_ik, [B], dtype="int32", extra_storage=1)
+    JK_indptr = T.match_sparse_buffer(indptr_jk, [B], dtype="int32", extra_storage=1)
+    # body
+    # with T.block("root")
+    T.assume_buffer_domain(I_indptr, [0, nnz_i])
+    T.assume_buffer_domain(J_indptr, [0, nnz_j])
+    T.assume_buffer_domain(K_indptr, [0, nnz_k])
+    T.assume_buffer_domain(IJ_indptr, [0, nnz_ij])
+    T.assume_buffer_domain(JK_indptr, [0, nnz_jk])
+    T.assume_buffer_domain(IK_indptr, [0, nnz_ik])
+    for b in T.serial(batch_size):
+        with T.block("bmm0"):
+            vb = T.axis.spatial(batch_size, b)
+            T.reads(
+                I_indptr[vb : vb + 2],
+                J_indptr[vb : vb + 2],
+                K_indptr[vb : vb + 2],
+                X[vb, 0:32768, 0:32768],
+                Y[vb, 0:32768, 0:32768],
+            )
+            T.writes(Z[vb, 0:32768, 0:32768])
+            T.block_attr({"sparse": True})
+            for i, j, k in T.grid(
+                I_indptr[vb + 1] - I_indptr[vb],
+                J_indptr[vb + 1] - J_indptr[vb],
+                K_indptr[vb + 1] - K_indptr[vb],
+            ):
+                with T.block("bmm1"):
+                    vi = T.axis.spatial(32768, i)
+                    vj = T.axis.reduce(32768, j)
+                    vk = T.axis.spatial(32768, k)
+                    T.reads(X[vb, vi, vj], Y[vb, vj, vk])
+                    T.writes(Z[vb, vi, vk])
+                    T.block_attr({"sparse": True})
+                    with T.init():
+                        Z[vb, vi, vk] = T.float32(0)
+                    Z[vb, vi, vk] = Z[vb, vi, vk] + X[vb, vi, vj] * Y[vb, vj, vk]
+
+
+@T.prim_func
 def sddmm(
     a: T.handle,
     b: T.handle,

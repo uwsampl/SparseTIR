@@ -228,40 +228,40 @@ def hyper_gnn(
         Y[i, f] = Y[i, f] + X[i_t, f]
 
 
-# @T.prim_func
-# def bmm(
-#     x: T.handle,
-#     y: T.handle,
-#     z: T.handle,
-#     indptr_i: T.handle,
-#     indptr_j: T.handle,
-#     indptr_k: T.handle,
-#     offset_ij: T.handle,
-#     offset_jk: T.handle,
-#     offset_ik: T.handle,
-#     batch_size: T.int32,
-#     nnz_i: T.int32,
-#     nnz_j: T.int32,
-#     nnz_k: T.int32,
-#     nnz_ij: T.int32,
-#     nnz_jk: T.int32,
-#     nnz_ik: T.int32,
-# ) -> None:
-#     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
-#     B = T.dense_fixed(batch_size)
-#     I = T.dense_variable(B, (32768, nnz_i), indptr_i, "int32")
-#     J = T.dense_variable(B, (32768, nnz_j), indptr_j, "int32")
-#     K = T.dense_variable(B, (32768, nnz_k), indptr_k, "int32")
-#     (IJ,) = T.flatten([I, J], nnz_ij, (offset_ij,))
-#     (JK,) = T.flatten([J, K], nnz_jk, (offset_jk,))
-#     (IK,) = T.flatten([I, K], nnz_ik, (offset_ik,))
-#     X = T.match_sparse_buffer(x, (B, IJ, J), "float32")
-#     Y = T.match_sparse_buffer(y, (B, JK, K), "float32")
-#     Z = T.match_sparse_buffer(z, (B, IK, K), "float32")
-#     with T.iter([B, I, J, K], "SSRS", "bmm") as [vb, vi, vj, vk]:
-#         with T.init():
-#             Z[vb, vi, vk] = 0.0
-#         Z[vb, vi, vk] = Z[vb, vi, vk] + X[vb, vi, vj] * Y[vb, vj, vk]
+@T.prim_func
+def bmm(
+    x: T.handle,
+    y: T.handle,
+    z: T.handle,
+    indptr_i: T.handle,
+    indptr_j: T.handle,
+    indptr_k: T.handle,
+    indptr_ij: T.handle,
+    indptr_ik: T.handle,
+    indptr_jk: T.handle,
+    batch_size: T.int32,
+    nnz_i: T.int32,
+    nnz_j: T.int32,
+    nnz_k: T.int32,
+    nnz_ij: T.int32,
+    nnz_jk: T.int32,
+    nnz_ik: T.int32,
+) -> None:
+    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
+    B = T.dense_fixed(batch_size)
+    I = T.dense_variable(B, (32768, nnz_i), indptr_i, "int32")
+    J = T.dense_variable(B, (32768, nnz_j), indptr_j, "int32")
+    K = T.dense_variable(B, (32768, nnz_k), indptr_k, "int32")
+    IJ = T.dense_variable(B, (32768, nnz_ij), indptr_ij, "int32")
+    JK = T.dense_variable(B, (32768, nnz_jk), indptr_jk, "int32")
+    IK = T.dense_variable(B, (32768, nnz_ik), indptr_ik, "int32")
+    X = T.match_sparse_buffer(x, (B, I, IJ), "float32")
+    Y = T.match_sparse_buffer(y, (B, J, JK), "float32")
+    Z = T.match_sparse_buffer(z, (B, I, IK), "float32")
+    with T.iter([B, I, J, K], "SSRS", "bmm") as [b, i, j, k]:
+        with T.init():
+            Z[b, i, k] = 0.0
+        Z[b, i, k] = Z[b, i, k] + X[b, i, j] * Y[b, j, k]
 
 
 @T.prim_func
