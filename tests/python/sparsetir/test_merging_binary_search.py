@@ -34,44 +34,53 @@ def func(indptr: T.handle, indices: T.handle, m: T.int32, n: T.int32, nnz: T.int
 def lowered(indptr: T.handle, indices: T.handle, m: T.int32, n: T.int32, nnz: T.int32) -> None:
     # function attr dict
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
-    I = T.dense_fixed(m, "int32")
-    J = T.sparse_variable(I, (n, nnz), (indptr, indices), "int32")
-    J_dense = T.dense_variable(I, (n, nnz), indptr, "int32")
+    I = T.dense_fixed(m, idtype="int32")
+    J = T.sparse_variable(I, (n, nnz), (indptr, indices), idtype="int32", sorted=True)
+    J_dense = T.dense_variable(I, (n, nnz), indptr, idtype="int32")
     J_indptr = T.match_sparse_buffer(indptr, [I], dtype="int32", extra_storage=1)
     J_indices = T.match_sparse_buffer(indices, [I, J_dense], dtype="int32")
     # body
     # with T.block("root")
     A = T.alloc_sparse_buffer([I, J], dtype="float32", extra_storage=0)
-    low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
-    high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
-    mid_0 = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
-    for v_vj in T.serial(nnz):
-        with T.block("binary_search_0"):
-            ax1 = T.axis.spatial(nnz, v_vj)
+    mid_0 = T.alloc_sparse_buffer([I, J], dtype="int32", extra_storage=0)
+    T.assume_buffer_domain(J_indptr, [0, nnz])
+    T.assume_buffer_domain(J_indices, [0, n])
+    T.assume_buffer_domain(mid_0, [0, m])
+    for vj in T.serial(nnz):
+        with T.block("binary_search_block_0_0"):
+            vvi = T.axis.spatial(1, 0)
+            vvj = T.axis.spatial(nnz, vj)
             T.reads(J_indptr[0 : m + 1])
-            T.writes(mid_0[0])
-            T.block_attr({"sparse": True})
+            T.writes(mid_0[vvi, vvj])
+            T.block_attr({"preprocess": True, "sparse": True})
+            low = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
+            high = T.alloc_buffer([1], dtype="int32", strides=[1], scope="local")
             low[0] = 0
             high[0] = m + 1
+            mid_0[vvi, vvj] = low[0] + (high[0] - low[0]) // 2
             while low[0] < high[0]:
-                mid_0[0] = low[0] + (high[0] - low[0]) // 2
-                if J_indptr[mid_0[0]] > ax1:
-                    high[0] = mid_0[0]
+                if J_indptr[mid_0[vvi, vvj]] > vvj:
+                    high[0] = mid_0[vvi, vvj]
                 else:
-                    low[0] = mid_0[0] + 1
-            mid_0[0] = mid_0[0] - 1
+                    low[0] = mid_0[vvi, vvj] + 1
+                mid_0[vvi, vvj] = low[0] + (high[0] - low[0]) // 2
+            mid_0[vvi, vvj] = mid_0[vvi, vvj] - 1
+    for vj in T.serial(nnz):
         with T.block("test0"):
-            vi = T.axis.spatial(1, 0)
-            vj = T.axis.spatial(nnz, v_vj)
-            T.reads(mid_0[0], J_indices[vi, vj])
-            T.writes(A[vi, vj])
+            vvi = T.axis.spatial(1, 0)
+            vvj = T.axis.spatial(nnz, vj)
+            T.reads(mid_0[vvi, vvj], J_indices[vvi, vvj])
+            T.writes(A[vvi, vvj])
             T.block_attr({"sparse": True})
-            A[vi, vj] = (mid_0[0] + J_indices[vi, vj]) * (mid_0[0] - J_indices[vi, vj])
+            A[vvi, vvj] = (mid_0[vvi, vvj] + J_indices[vvi, vvj]) * (
+                mid_0[vvi, vvj] - J_indices[vvi, vvj]
+            )
 
 
 def test_merging_binary_search():
     mod = tvm.IRModule.from_expr(func)
     mod = lower_sparse_iter(mod)
+    print(mod["main"].script())
     tvm.ir.assert_structural_equal(mod["main"], lowered)
 
 

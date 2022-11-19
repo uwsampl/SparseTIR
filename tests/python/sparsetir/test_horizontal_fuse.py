@@ -28,7 +28,7 @@ def original(
     C1: T.Buffer[(128,), "float32"],
     C2: T.Buffer[(64,), "float32"],
 ) -> None:
-    T.func_attr({"horizontal_fuse": "sequential"})
+    T.func_attr({"horizontal_fuse": 1})
     for i, j in T.grid(128, 128):
         with T.block("first"):
             vi, vj = T.axis.remap("SR", [i, j])
@@ -42,22 +42,6 @@ def original(
                 C2[vi] = T.float32(0)
             C2[vi] = C2[vi] + B[vi, vj]
                
-# from tvm.script import tir as T
-@T.prim_func
-def local_alloc(A: T.Buffer[(200,), "float32"], B: T.Buffer[(200,), "float32"]) -> None:
-    # var definition
-    blockIdx_x = T.env_thread("blockIdx.x")
-    # body
-    T.launch_thread(blockIdx_x, 200)
-    # if blockIdx_x < 100:
-    C_local = T.allocate([1], "float32", "local")
-    C_local[0] = T.float32(0)
-    A[blockIdx_x] = C_local[0]
-    # else:
-    C_local_1 = T.allocate([1], "float32", "local")
-    C_local_1[0] = T.float32(0)
-    B[blockIdx_x] = C_local_1[0]
-
 
 def test_end_to_end():
     sch = tvm.tir.Schedule(original)
@@ -101,12 +85,5 @@ def test_end_to_end():
     # tvm.testing.assert_allclose(z2.numpy(), z2_golden, rtol=1e-5, atol=1e-5)
 
 
-def test_local_alloc():
-    mod = tvm.IRModule.from_expr(local_alloc)
-    mod = tir.transform.StorageRewrite()(mod)
-    print(mod["main"].script())
-
-
 if __name__ == "__main__":
     test_end_to_end()
-    # test_local_alloc()

@@ -29,14 +29,15 @@ func_name_list = [
     "bsrmm",
     "ellmm",
     "csr_element_wise",
-    # "bmm",
+    "bmm",
     "sddmm",
     "fused_sddmm",
     "square_sum",
     "square_sum_two_K",
     "fused_reduction_4d_2d",
     "fused_reduction_4d_3d",
-    "rgcn_forward",
+    "rgcn_homo_forward",
+    "rgcn_hetero_forward",
     "sparse_softmax",
     "csr2bsr",
 ]
@@ -122,9 +123,13 @@ def specialize_fused_reduction_4d_3d(f):
     return f.specialize({N: 16, NNZ_J: 128, NNZ_K: 256, NNZ_L: 1024})
 
 
-def specialize_rgcn_forward(f):
-    N, R, FEAT_SIZE, NNZ = f.params[-4:]
-    return f.specialize({N: 128, R: 16, FEAT_SIZE: 128, NNZ: 1024})
+def specialize_rgcn_homo_forward(f):
+    M, N, R, FEAT_SIZE, NNZ = f.params[-5:]
+    return f.specialize({M: 128, N: 128, R: 16, FEAT_SIZE: 128, NNZ: 1024})
+
+def specialize_rgcn_hetero_forward(f):
+    M, N, R, FEAT_SIZE, NNZ_I, NNZ_J = f.params[-6:]
+    return f.specialize({M: 128, N: 128, R: 16, FEAT_SIZE: 128, NNZ_I: 32, NNZ_J: 1024})
 
 
 def specialize_sparse_softmax(f):
