@@ -1,0 +1,39 @@
+name: Unittest
+on:
+  push:
+    branches:
+    - main
+jobs:
+  cleaner:
+    runs-on: self-hosted
+    steps:
+      - name: Clean up previous runs
+        run: rm -rf "${{ github.workspace }}"
+
+  build-docker-image:
+    runs-on: self-hosted
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+    
+    - name: Generate Docker image tag
+      id: generate-tag
+      run: |
+        export TAG=sparsetir:$(date +%s)
+        echo "Docker image tag: $TAG"
+        echo "::set-output name=tag::$TAG"
+    
+    - name: Build Docker image
+      run: |
+        DOCKER_BUILDKIT=1 docker build \
+          . \
+          --file docker/Dockerfile.ci_gpu \
+          --tag ${{ steps.generate-tag.outputs.tag }}
+
+  run-tests:
+    runs-on: self-hosted
+    needs: build-docker-image
+    steps:
+    - name: Run tests
+      run: docker run ${{ needs.build-docker-image.outputs.tag }} bash tests/scripts/task_python_sparsetir_unittest.sh
