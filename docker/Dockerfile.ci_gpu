@@ -17,21 +17,23 @@
 
 # CI docker GPU env
 # tag: v0.60
-FROM nvidia/cuda:11.0.3-cudnn8-devel-ubuntu18.04
+FROM nvidia/cuda:11.6.0-cudnn8-devel-ubuntu20.04 as base
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Per https://forums.developer.nvidia.com/t/notice-cuda-linux-repository-key-rotation/212772
 # we need to add a new GPG key before running apt update.
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub
 
 # Base scripts
-RUN rm /etc/apt/sources.list.d/nvidia-ml.list && apt-get clean
+RUN apt-get clean
 RUN apt-get update --fix-missing
 
 COPY install/ubuntu_install_core.sh /install/ubuntu_install_core.sh
 RUN bash /install/ubuntu_install_core.sh
 
-COPY install/ubuntu1804_install_python.sh /install/ubuntu1804_install_python.sh
-RUN bash /install/ubuntu1804_install_python.sh
+COPY install/ubuntu2004_install_python.sh /install/ubuntu2004_install_python.sh
+RUN bash /install/ubuntu2004_install_python.sh
 
 # Globally disable pip cache
 RUN pip config set global.no-cache-dir false
@@ -39,11 +41,11 @@ RUN pip config set global.no-cache-dir false
 COPY install/ubuntu_install_cmake_source.sh /install/ubuntu_install_cmake_source.sh
 RUN bash /install/ubuntu_install_cmake_source.sh
 
-COPY install/ubuntu1804_install_llvm.sh /install/ubuntu1804_install_llvm.sh
-RUN bash /install/ubuntu1804_install_llvm.sh
+COPY install/ubuntu2004_install_llvm.sh /install/ubuntu2004_install_llvm.sh
+RUN bash /install/ubuntu2004_install_llvm.sh
 
-COPY install/ubuntu_install_opencl.sh /install/ubuntu_install_opencl.sh
-RUN bash /install/ubuntu_install_opencl.sh
+# COPY install/ubuntu_install_opencl.sh /install/ubuntu_install_opencl.sh
+# RUN bash /install/ubuntu_install_opencl.sh
 
 COPY install/ubuntu_install_python_package.sh /install/ubuntu_install_python_package.sh
 RUN bash /install/ubuntu_install_python_package.sh
@@ -52,83 +54,87 @@ COPY install/ubuntu_install_sphinx.sh /install/ubuntu_install_sphinx.sh
 RUN bash /install/ubuntu_install_sphinx.sh
 
 # Enable doxygen for c++ doc build
-RUN apt-get update && apt-get install -y doxygen libprotobuf-dev protobuf-compiler
+# RUN apt-get update && apt-get install -y doxygen libprotobuf-dev protobuf-compiler
 
-COPY install/ubuntu_install_java.sh /install/ubuntu_install_java.sh
-RUN bash /install/ubuntu_install_java.sh
+# COPY install/ubuntu_install_java.sh /install/ubuntu_install_java.sh
+# RUN bash /install/ubuntu_install_java.sh
 
-COPY install/ubuntu_install_nodejs.sh /install/ubuntu_install_nodejs.sh
-RUN bash /install/ubuntu_install_nodejs.sh
+# COPY install/ubuntu_install_nodejs.sh /install/ubuntu_install_nodejs.sh
+# RUN bash /install/ubuntu_install_nodejs.sh
 
-COPY install/ubuntu_install_rocm.sh /install/ubuntu_install_rocm.sh
-RUN bash /install/ubuntu_install_rocm.sh
+# COPY install/ubuntu_install_rocm.sh /install/ubuntu_install_rocm.sh
+# RUN bash /install/ubuntu_install_rocm.sh
 
 # DL Frameworks
-COPY install/ubuntu_install_mxnet.sh /install/ubuntu_install_mxnet.sh
-RUN bash /install/ubuntu_install_mxnet.sh
+# COPY install/ubuntu_install_mxnet.sh /install/ubuntu_install_mxnet.sh
+# RUN bash /install/ubuntu_install_mxnet.sh
 
-COPY install/ubuntu_install_gluoncv.sh /install/ubuntu_install_gluoncv.sh
-RUN bash /install/ubuntu_install_gluoncv.sh
+# COPY install/ubuntu_install_gluoncv.sh /install/ubuntu_install_gluoncv.sh
+# RUN bash /install/ubuntu_install_gluoncv.sh
 
-COPY install/ubuntu_install_coreml.sh /install/ubuntu_install_coreml.sh
-RUN bash /install/ubuntu_install_coreml.sh
+# COPY install/ubuntu_install_coreml.sh /install/ubuntu_install_coreml.sh
+# RUN bash /install/ubuntu_install_coreml.sh
 
-COPY install/ubuntu_install_tensorflow.sh /install/ubuntu_install_tensorflow.sh
-RUN bash /install/ubuntu_install_tensorflow.sh
+# COPY install/ubuntu_install_tensorflow.sh /install/ubuntu_install_tensorflow.sh
+# RUN bash /install/ubuntu_install_tensorflow.sh
 
-COPY install/ubuntu_install_darknet.sh /install/ubuntu_install_darknet.sh
-RUN bash /install/ubuntu_install_darknet.sh
+# COPY install/ubuntu_install_darknet.sh /install/ubuntu_install_darknet.sh
+# RUN bash /install/ubuntu_install_darknet.sh
 
-COPY install/ubuntu_install_onnx.sh /install/ubuntu_install_onnx.sh
-RUN bash /install/ubuntu_install_onnx.sh
+# COPY install/ubuntu_install_onnx.sh /install/ubuntu_install_onnx.sh
+# RUN bash /install/ubuntu_install_onnx.sh
 
-COPY install/ubuntu_install_tflite.sh /install/ubuntu_install_tflite.sh
-RUN bash /install/ubuntu_install_tflite.sh
+# COPY install/ubuntu_install_tflite.sh /install/ubuntu_install_tflite.sh
+# RUN bash /install/ubuntu_install_tflite.sh
 
 COPY install/ubuntu_install_dgl.sh /install/ubuntu_install_dgl.sh
 RUN bash /install/ubuntu_install_dgl.sh
 
-ENV NVIDIA_DRIVER_CAPABILITIES compute,graphics,utility
-COPY install/ubuntu_install_vulkan.sh /install/ubuntu_install_vulkan.sh
-RUN bash /install/ubuntu_install_vulkan.sh
+COPY install/ubuntu_install_torch.sh /install/ubuntu_install_torch.sh
+RUN bash /install/ubuntu_install_torch.sh
 
-COPY install/ubuntu_install_paddle.sh /install/ubuntu_install_paddle.sh
-RUN bash /install/ubuntu_install_paddle.sh
+
+# ENV NVIDIA_DRIVER_CAPABILITIES compute,graphics,utility
+# COPY install/ubuntu_install_vulkan.sh /install/ubuntu_install_vulkan.sh
+# RUN bash /install/ubuntu_install_vulkan.sh
+
+# COPY install/ubuntu_install_paddle.sh /install/ubuntu_install_paddle.sh
+# RUN bash /install/ubuntu_install_paddle.sh
 
 # OneFlow deps
-COPY install/ubuntu_install_oneflow.sh /install/ubuntu_install_oneflow.sh
-RUN bash /install/ubuntu_install_oneflow.sh
+# COPY install/ubuntu_install_oneflow.sh /install/ubuntu_install_oneflow.sh
+# RUN bash /install/ubuntu_install_oneflow.sh
 
 # Rust env (build early; takes a while)
-COPY install/ubuntu_install_rust.sh /install/ubuntu_install_rust.sh
-RUN bash /install/ubuntu_install_rust.sh
-ENV RUSTUP_HOME /opt/rust
-ENV CARGO_HOME /opt/rust
-ENV PATH $PATH:$CARGO_HOME/bin
+# COPY install/ubuntu_install_rust.sh /install/ubuntu_install_rust.sh
+# RUN bash /install/ubuntu_install_rust.sh
+# ENV RUSTUP_HOME /opt/rust
+# ENV CARGO_HOME /opt/rust
+# ENV PATH $PATH:$CARGO_HOME/bin
 
 # wasmtime
-COPY install/ubuntu_install_wasmtime.sh /install/ubuntu_install_wasmtime.sh
-RUN bash /install/ubuntu_install_wasmtime.sh
+# COPY install/ubuntu_install_wasmtime.sh /install/ubuntu_install_wasmtime.sh
+# RUN bash /install/ubuntu_install_wasmtime.sh
 
 # AutoTVM deps
-COPY install/ubuntu_install_redis.sh /install/ubuntu_install_redis.sh
-RUN bash /install/ubuntu_install_redis.sh
+# COPY install/ubuntu_install_redis.sh /install/ubuntu_install_redis.sh
+# RUN bash /install/ubuntu_install_redis.sh
 
 # NNPACK deps
-COPY install/ubuntu_install_nnpack.sh /install/ubuntu_install_nnpack.sh
-RUN bash /install/ubuntu_install_nnpack.sh
+# COPY install/ubuntu_install_nnpack.sh /install/ubuntu_install_nnpack.sh
+# RUN bash /install/ubuntu_install_nnpack.sh
 
 # BYODT deps
-COPY install/ubuntu_install_universal.sh /install/ubuntu_install_universal.sh
-RUN bash /install/ubuntu_install_universal.sh
+# COPY install/ubuntu_install_universal.sh /install/ubuntu_install_universal.sh
+# RUN bash /install/ubuntu_install_universal.sh
 
 # PAPI profiling deps
-COPY install/ubuntu_install_papi.sh /install/ubuntu_install_papi.sh
-RUN bash /install/ubuntu_install_papi.sh "cuda rocm"
+# COPY install/ubuntu_install_papi.sh /install/ubuntu_install_papi.sh
+# RUN bash /install/ubuntu_install_papi.sh "cuda rocm"
 
 # sccache
-COPY install/ubuntu_install_sccache.sh /install/ubuntu_install_sccache.sh
-RUN bash /install/ubuntu_install_sccache.sh
+# COPY install/ubuntu_install_sccache.sh /install/ubuntu_install_sccache.sh
+# RUN bash /install/ubuntu_install_sccache.sh
 
 # Environment variables
 ENV PATH=/usr/local/nvidia/bin:${PATH}

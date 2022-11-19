@@ -20,4 +20,4 @@ set -e
 set -u
 set -o pipefail
 
-pip3 install dgl==v0.7.2 -f https://data.dgl.ai/wheels/repo.html
+pip3 install dgl-cu116==v0.9.1 -f https://data.dgl.ai/wheels/repo.html

@@ -20,26 +20,15 @@ set -e
 set -u
 set -o pipefail
 
+echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal main >> /etc/apt/sources.list.d/llvm.list
+echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal main >> /etc/apt/sources.list.d/llvm.list
 
-cleanup() {
-  rm -rf base-requirements.txt
-}
+# 14
+echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
+echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
 
-trap cleanup 0
+wget -q -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
 
-# Install python and pip. Don't modify this to add Python package dependencies,
-# instead modify install_python_package.sh
-apt-get update
-apt-get install -y software-properties-common
-apt-get install -y python3.9 python3.9-dev python3-pip
-update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
-
-# Pin pip and setuptools versions
-# Hashes generated via:
-#   $ pip download <package>==<version>
-#   $ pip hash --algorithm sha256 <package>.whl
-cat <<EOF > base-requirements.txt
-pip==22.0.4 --hash=sha256:c6aca0f2f081363f689f041d90dab2a07a9a07fb840284db2218117a52da800b
-setuptools==58.4.0 --hash=sha256:e8b1d3127a0441fb99a130bcc3c2bf256c2d3ead3aba8fd400e5cbbaf788e036
-EOF
-pip3 install -r base-requirements.txt
+apt-get update && apt-get install -y \
+     llvm-14 \
+     clang-14 libclang-14-dev
