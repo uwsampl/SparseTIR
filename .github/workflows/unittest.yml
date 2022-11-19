@@ -26,9 +26,10 @@ jobs:
     
     - name: Build Docker image
       run: |
+        cd docker
         DOCKER_BUILDKIT=1 docker build \
           . \
-          --file docker/Dockerfile.ci_gpu \
+          --file Dockerfile.ci_gpu \
           --tag ${{ steps.generate-tag.outputs.tag }}
 
   run-tests:
