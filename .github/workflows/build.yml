@@ -49,7 +49,7 @@ jobs:
       id: build-doc
       run: |
         docker run ${{ needs.build-docker-image.outputs.tag }} sphinx-build -b html docs/ public/
-        docker cp ${{ needs.build-docker-image.outputs.tag }}:public/ public/
+        docker cp ${{ needs.build-docker-image.outputs.tag }}:/root/sparsetir/public/ public/
   
   deploy-doc:
     runs-on: self-hosted

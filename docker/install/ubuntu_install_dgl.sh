@@ -21,3 +21,4 @@ set -u
 set -o pipefail
 
 pip3 install dgl-cu116==v0.9.1 -f https://data.dgl.ai/wheels/repo.html
+pip3 install rdflib==6.2.0
