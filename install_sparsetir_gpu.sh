@@ -17,14 +17,12 @@
 # under the License.
 
 
-echo set\(USE_LLVM ON\) >> config.cmake
+echo set\(USE_LLVM \"llvm-config --ignore-libllvm --link-static\"\) >> config.cmake
+echo set\(HIDE_PRIVATE_SYMBOLS ON\) >> config.cmake
 echo set\(USE_CUDA ON\) >> config.cmake
+echo set\(USE_CUBLAS ON\) >> config.cmake
 echo set\(USE_CUDNN ON\) >> config.cmake
-echo set\(USE_BLAS openblas\) >> config.cmake
 mkdir -p build
 cd build
 cmake ..
 make -j$(nproc)
-
-# cd ../python
-# python3 setup.py install
