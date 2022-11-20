@@ -41,7 +41,7 @@ RUN pip config set global.no-cache-dir false
 
 COPY docker/install/ubuntu2004_install_llvm.sh /install/ubuntu2004_install_llvm.sh
 RUN bash /install/ubuntu2004_install_llvm.sh
-RUN echo 'alias llvm-config=llvm-config-14' >> ~/.bashrc
+ENV llvm-config=llvm-config-14
 
 COPY docker/install/ubuntu_install_python_package.sh /install/ubuntu_install_python_package.sh
 RUN bash /install/ubuntu_install_python_package.sh
