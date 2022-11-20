@@ -54,6 +54,3 @@ jobs:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: public
   
-  stop-container:
-    runs-on: self-hosted
-
