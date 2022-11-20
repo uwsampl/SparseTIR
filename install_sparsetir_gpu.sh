@@ -17,7 +17,7 @@
 # under the License.
 
 
-echo set\(USE_LLVM \"llvm-config --ignore-libllvm --link-static\"\) >> config.cmake
+echo set\(USE_LLVM \"llvm-config-14 --ignore-libllvm --link-static\"\) >> config.cmake
 echo set\(HIDE_PRIVATE_SYMBOLS ON\) >> config.cmake
 echo set\(USE_CUDA ON\) >> config.cmake
 echo set\(USE_CUBLAS ON\) >> config.cmake
