@@ -39,7 +39,7 @@ jobs:
     steps:
     - name: Run tests
       id: run-tests
-      run: docker run --gpus all ${{ needs.outputs.tag }} bash tests/scripts/task_python_sparsetir_unittest.sh
+      run: docker run --gpus all ${{ needs.build-docker-image.outputs.tag }} bash tests/scripts/task_python_sparsetir_unittest.sh
 
   build-doc:
     runs-on: self-hosted
@@ -48,8 +48,8 @@ jobs:
     - name: Build Documentation
       id: build-doc
       run: |
-        docker run ${{ needs.outputs.tag }} sphinx-build -b html docs/ public/
-        docker cp ${{ needs.outputs.tag }}:public/ public/
+        docker run ${{ needs.build-docker-image.outputs.tag }} sphinx-build -b html docs/ public/
+        docker cp ${{ needs.build-docker-image.outputs.tag }}:public/ public/
   
   deploy-doc:
     runs-on: self-hosted
