@@ -1,0 +1,6 @@
+﻿tvm.sparse.lower\_sparse\_iter
+==============================
+
+.. currentmodule:: tvm.sparse
+
+.. autofunction:: lower_sparse_iter

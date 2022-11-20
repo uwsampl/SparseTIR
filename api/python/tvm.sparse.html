@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" >
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
-
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>tvm.sparse &mdash; SparseTIR 0.1 documentation</title>
       <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
@@ -14,12 +13,11 @@
         <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
         <script src="../../_static/jquery.js"></script>
         <script src="../../_static/underscore.js"></script>
-        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
         <script src="../../_static/doctools.js"></script>
-        <script src="../../_static/sphinx_highlight.js"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="tvm.sparse.lower_sparse_iter" href="../../generated/tvm.sparse.lower_sparse_iter.html" />
     <link rel="prev" title="Frequently Asked Questions" href="../../faq.html" /> 
 </head>
 
@@ -54,7 +52,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">System Overview</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../motivation.html">Why creating another compiler abstraction for Sparse Tensor Algebra</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../motivation.html">Why designing another compiler abstraction for Sparse Deep Learning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../overview.html">System Overview</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Misc</span></p>
@@ -64,9 +62,23 @@
 <p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">tvm.sparse</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#program-transformations">Program transformations</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#composable-format-description">Composable Format Description</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#format-conversion-routines">Format Conversion Routines</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#program-transformations">Program transformations</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../generated/tvm.sparse.lower_sparse_iter.html">tvm.sparse.lower_sparse_iter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../generated/tvm.sparse.lower_sparse_buffer.html">tvm.sparse.lower_sparse_buffer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../generated/tvm.sparse.format_decompose.html">tvm.sparse.format_decompose</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../generated/tvm.sparse.specialize_buffer.html">tvm.sparse.specialize_buffer</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#composable-format-description">Composable Format Description</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../generated/tvm.sparse.FormatRewriteRule.html">tvm.sparse.FormatRewriteRule</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#format-conversion-routines">Format Conversion Routines</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../generated/tvm.sparse.condense.html">tvm.sparse.condense</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../generated/tvm.sparse.column_part_hyb.html">tvm.sparse.column_part_hyb</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../generated/tvm.sparse.csf_to_ell3d.html">tvm.sparse.csf_to_ell3d</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -95,24 +107,74 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="tvm-sparse">
-<h1>tvm.sparse<a class="headerlink" href="#tvm-sparse" title="Permalink to this heading"></a></h1>
-<section id="program-transformations">
-<h2>Program transformations<a class="headerlink" href="#program-transformations" title="Permalink to this heading"></a></h2>
-</section>
-<section id="composable-format-description">
-<h2>Composable Format Description<a class="headerlink" href="#composable-format-description" title="Permalink to this heading"></a></h2>
-</section>
-<section id="format-conversion-routines">
-<h2>Format Conversion Routines<a class="headerlink" href="#format-conversion-routines" title="Permalink to this heading"></a></h2>
-</section>
-</section>
+  <div class="section" id="module-tvm.sparse">
+<span id="tvm-sparse"></span><h1>tvm.sparse<a class="headerlink" href="#module-tvm.sparse" title="Permalink to this headline"></a></h1>
+<p>Python-interface for Sparse-TIR</p>
+<div class="section" id="program-transformations">
+<h2>Program transformations<a class="headerlink" href="#program-transformations" title="Permalink to this headline"></a></h2>
+<table class="longtable docutils align-default">
+<colgroup>
+<col style="width: 10%" />
+<col style="width: 90%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="../../generated/tvm.sparse.lower_sparse_iter.html#tvm.sparse.lower_sparse_iter" title="tvm.sparse.lower_sparse_iter"><code class="xref py py-obj docutils literal notranslate"><span class="pre">lower_sparse_iter</span></code></a>(mod)</p></td>
+<td><p>Lower sparse iterators in Sparse TIR.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="../../generated/tvm.sparse.lower_sparse_buffer.html#tvm.sparse.lower_sparse_buffer" title="tvm.sparse.lower_sparse_buffer"><code class="xref py py-obj docutils literal notranslate"><span class="pre">lower_sparse_buffer</span></code></a>(mod)</p></td>
+<td><p>Lower sparse buffers in Sparse TIR.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="../../generated/tvm.sparse.format_decompose.html#tvm.sparse.format_decompose" title="tvm.sparse.format_decompose"><code class="xref py py-obj docutils literal notranslate"><span class="pre">format_decompose</span></code></a>(mod, composable_formats[, ...])</p></td>
+<td><p>Rewrite the sparse format of sparse buffers in the TIR scripts.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="../../generated/tvm.sparse.specialize_buffer.html#tvm.sparse.specialize_buffer" title="tvm.sparse.specialize_buffer"><code class="xref py py-obj docutils literal notranslate"><span class="pre">specialize_buffer</span></code></a>(mod, buf_name, idx_map)</p></td>
+<td><p>Specialize a buffer in an IRModule with given buffer name and index map function.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="composable-format-description">
+<h2>Composable Format Description<a class="headerlink" href="#composable-format-description" title="Permalink to this headline"></a></h2>
+<table class="longtable docutils align-default">
+<colgroup>
+<col style="width: 10%" />
+<col style="width: 90%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="../../generated/tvm.sparse.FormatRewriteRule.html#tvm.sparse.FormatRewriteRule" title="tvm.sparse.FormatRewriteRule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FormatRewriteRule</span></code></a>(name, new_format_desc, ...)</p></td>
+<td><p>Format rewriting rule.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="format-conversion-routines">
+<h2>Format Conversion Routines<a class="headerlink" href="#format-conversion-routines" title="Permalink to this headline"></a></h2>
+<table class="longtable docutils align-default">
+<colgroup>
+<col style="width: 10%" />
+<col style="width: 90%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="../../generated/tvm.sparse.condense.html#tvm.sparse.condense" title="tvm.sparse.condense"><code class="xref py py-obj docutils literal notranslate"><span class="pre">condense</span></code></a>(indptr_nd, indices_nd, t, g)</p></td>
+<td><p>Condense sparse matrix in CSR format to (t x 1) tiles, and group g tiles together.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="../../generated/tvm.sparse.column_part_hyb.html#tvm.sparse.column_part_hyb" title="tvm.sparse.column_part_hyb"><code class="xref py py-obj docutils literal notranslate"><span class="pre">column_part_hyb</span></code></a>(num_rows, num_cols, ...)</p></td>
+<td><p>Partition input CSR matrix by columns and collect rows into buckets according to non zero elements per row.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="../../generated/tvm.sparse.csf_to_ell3d.html#tvm.sparse.csf_to_ell3d" title="tvm.sparse.csf_to_ell3d"><code class="xref py py-obj docutils literal notranslate"><span class="pre">csf_to_ell3d</span></code></a>(csf_indptr_0, csf_indices_0, ...)</p></td>
+<td><p>Convert CSF format to composable ELL format in 3-dimensional setting (HeteroGraphs).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
 
 
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="../../faq.html" class="btn btn-neutral float-left" title="Frequently Asked Questions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../../generated/tvm.sparse.lower_sparse_iter.html" class="btn btn-neutral float-right" title="tvm.sparse.lower_sparse_iter" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

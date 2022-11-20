@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tvm.sparse.format_decompose &mdash; SparseTIR 0.1 documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/doctools.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="tvm.sparse.specialize_buffer" href="tvm.sparse.specialize_buffer.html" />
+    <link rel="prev" title="tvm.sparse.lower_sparse_buffer" href="tvm.sparse.lower_sparse_buffer.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../index.html" class="icon icon-home"> SparseTIR
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../install.html">Install SparseTIR</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/blitz.html">The Blitz Course to SparseTIR</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/spmm.html">Sparse Dense Matrix Multiplication (SpMM)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/sddmm.html">Sampled Dense Dense Matrix Multiplication (SDDMM)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/spmm-tc.html">Optimizing Unstructured SpMM with Tensor Cores</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/blocksparse.html">Block Sparse Operators</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/rgcn.html">Relational Graph Convolution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/sparseconv.html">3D Sparse Convolution</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">System Overview</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../motivation.html">Why designing another compiler abstraction for Sparse Deep Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../overview.html">System Overview</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Misc</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../faq.html">Frequently Asked Questions</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../api/python/tvm.sparse.html">tvm.sparse</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../api/python/tvm.sparse.html#program-transformations">Program transformations</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="tvm.sparse.lower_sparse_iter.html">tvm.sparse.lower_sparse_iter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="tvm.sparse.lower_sparse_buffer.html">tvm.sparse.lower_sparse_buffer</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">tvm.sparse.format_decompose</a></li>
+<li class="toctree-l3"><a class="reference internal" href="tvm.sparse.specialize_buffer.html">tvm.sparse.specialize_buffer</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api/python/tvm.sparse.html#composable-format-description">Composable Format Description</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../api/python/tvm.sparse.html#format-conversion-routines">Format Conversion Routines</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SparseTIR</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="../api/python/tvm.sparse.html">tvm.sparse</a></li>
+      <li class="breadcrumb-item active">tvm.sparse.format_decompose</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/generated/tvm.sparse.format_decompose.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="section" id="tvm-sparse-format-decompose">
+<h1>tvm.sparse.format_decompose<a class="headerlink" href="#tvm-sparse-format-decompose" title="Permalink to this headline"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="tvm.sparse.format_decompose">
+<span class="sig-prename descclassname"><span class="pre">tvm.sparse.</span></span><span class="sig-name descname"><span class="pre">format_decompose</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mod</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">tvm.ir.module.IRModule</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">composable_formats</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="tvm.sparse.FormatRewriteRule.html#tvm.sparse.FormatRewriteRule" title="tvm.sparse.format.FormatRewriteRule"><span class="pre">tvm.sparse.format.FormatRewriteRule</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_format_rewrite_blks</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">bool</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/tvm/sparse/format.html#format_decompose"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tvm.sparse.format_decompose" title="Permalink to this definition"></a></dt>
+<dd><p>Rewrite the sparse format of sparse buffers in the TIR scripts.</p>
+<dl class="simple">
+<dt>mod<span class="classifier">IRModule</span></dt><dd><p>The IRModule to lower.</p>
+</dd>
+<dt>composable_formats<span class="classifier">List[FormatRewriteRule]</span></dt><dd><p>Composable formats is a list of rewrite rules.</p>
+</dd>
+<dt>include_format_rewrite_blks<span class="classifier">bool</span></dt><dd><p>Whether to include format rewrite blocks in the output.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="tvm.sparse.lower_sparse_buffer.html" class="btn btn-neutral float-left" title="tvm.sparse.lower_sparse_buffer" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="tvm.sparse.specialize_buffer.html" class="btn btn-neutral float-right" title="tvm.sparse.specialize_buffer" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, SparseTIR team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

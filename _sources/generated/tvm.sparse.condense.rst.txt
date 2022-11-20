@@ -1,0 +1,6 @@
+﻿tvm.sparse.condense
+===================
+
+.. currentmodule:: tvm.sparse
+
+.. autofunction:: condense

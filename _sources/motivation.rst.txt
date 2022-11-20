@@ -1,4 +1,4 @@
-Why creating another compiler abstraction for Sparse Tensor Algebra
+Why designing another compiler abstraction for Sparse Deep Learning
 ===================================================================
 
 Under construction

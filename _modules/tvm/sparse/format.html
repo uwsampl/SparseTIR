@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tvm.sparse.format &mdash; SparseTIR 0.1 documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/underscore.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../../../index.html" class="icon icon-home"> SparseTIR
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../install.html">Install SparseTIR</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/blitz.html">The Blitz Course to SparseTIR</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/spmm.html">Sparse Dense Matrix Multiplication (SpMM)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/sddmm.html">Sampled Dense Dense Matrix Multiplication (SDDMM)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/spmm-tc.html">Optimizing Unstructured SpMM with Tensor Cores</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/blocksparse.html">Block Sparse Operators</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/rgcn.html">Relational Graph Convolution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/sparseconv.html">3D Sparse Convolution</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">System Overview</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../motivation.html">Why designing another compiler abstraction for Sparse Deep Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../overview.html">System Overview</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Misc</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../faq.html">Frequently Asked Questions</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/python/tvm.sparse.html">tvm.sparse</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">SparseTIR</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">tvm.sparse.format</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for tvm.sparse.format</h1><div class="highlight"><pre>
+<span></span><span class="c1"># Licensed to the Apache Software Foundation (ASF) under one</span>
+<span class="c1"># or more contributor license agreements.  See the NOTICE file</span>
+<span class="c1"># distributed with this work for additional information</span>
+<span class="c1"># regarding copyright ownership.  The ASF licenses this file</span>
+<span class="c1"># to you under the Apache License, Version 2.0 (the</span>
+<span class="c1"># &quot;License&quot;); you may not use this file except in compliance</span>
+<span class="c1"># with the License.  You may obtain a copy of the License at</span>
+<span class="c1">#</span>
+<span class="c1">#   http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="c1">#</span>
+<span class="c1"># Unless required by applicable law or agreed to in writing,</span>
+<span class="c1"># software distributed under the License is distributed on an</span>
+<span class="c1"># &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY</span>
+<span class="c1"># KIND, either express or implied.  See the License for the</span>
+<span class="c1"># specific language governing permissions and limitations</span>
+<span class="c1"># under the License.</span>
+
+<span class="sd">&quot;&quot;&quot;Format module for sparse tensor algebra.&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="k">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">import</span> <span class="nn">tvm._ffi</span>
+<span class="kn">import</span> <span class="nn">tvm.tir</span>
+
+<span class="kn">from</span> <span class="nn">tvm.runtime</span> <span class="k">import</span> <span class="n">Object</span>
+<span class="kn">from</span> <span class="nn">tvm.tir</span> <span class="k">import</span> <span class="n">IndexMap</span><span class="p">,</span> <span class="n">_ffi_api</span>
+<span class="kn">from</span> <span class="nn">tvm</span> <span class="k">import</span> <span class="n">IRModule</span>
+<span class="kn">from</span> <span class="nn">tvm.tir.transform</span> <span class="k">import</span> <span class="n">SparseFormatDecompose</span>
+
+
+<div class="viewcode-block" id="FormatRewriteRule"><a class="viewcode-back" href="../../../generated/tvm.sparse.FormatRewriteRule.html#tvm.sparse.FormatRewriteRule">[docs]</a><span class="nd">@tvm</span><span class="o">.</span><span class="n">_ffi</span><span class="o">.</span><span class="n">register_object</span><span class="p">(</span><span class="s2">&quot;tir.sparse.FormatRewriteRule&quot;</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">FormatRewriteRule</span><span class="p">(</span><span class="n">Object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Format rewriting rule.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    name : str</span>
+<span class="sd">        Name of the format rewriting rule.</span>
+
+<span class="sd">    format_desc : PrimFunc</span>
+<span class="sd">        A TIR script describing the new format.</span>
+
+<span class="sd">    buffers_to_rewrite: List[str]</span>
+<span class="sd">        The list of sparse buffers we need to rewrite.</span>
+
+<span class="sd">    axes_before_rewrite : List[str]</span>
+<span class="sd">        The list of axes before the rewrite.</span>
+
+<span class="sd">    axes_after_rewrite : List[str]</span>
+<span class="sd">        The list of axes after the rewrite.</span>
+
+<span class="sd">    axis_map : Dict[str, List[str]]</span>
+<span class="sd">        The axis mapping from the old format to the new format.</span>
+
+<span class="sd">    idx_map_func : Union[Callable, IndexMap]</span>
+<span class="sd">        A function describing the index mapping from the old format to indices in new format.</span>
+
+<span class="sd">    inv_idx_map_func : Union[Callable, IndexMap]</span>
+<span class="sd">        A function describing the coordinate mapping from indices in new format.</span>
+<span class="sd">        to indices in old format.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="FormatRewriteRule.__init__"><a class="viewcode-back" href="../../../generated/tvm.sparse.FormatRewriteRule.html#tvm.sparse.FormatRewriteRule.__init__">[docs]</a>    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">new_format_desc</span><span class="p">:</span> <span class="n">tvm</span><span class="o">.</span><span class="n">tir</span><span class="o">.</span><span class="n">PrimFunc</span><span class="p">,</span>
+        <span class="n">buffers_to_rewrite</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+        <span class="n">axes_before_rewrite</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+        <span class="n">axes_after_rewrite</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+        <span class="n">axis_map</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
+        <span class="n">idx_map</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Callable</span><span class="p">,</span> <span class="n">IndexMap</span><span class="p">],</span>
+        <span class="n">inv_idx_map</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Callable</span><span class="p">,</span> <span class="n">IndexMap</span><span class="p">],</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">idx_map</span><span class="p">,</span> <span class="n">Callable</span><span class="p">):</span>
+            <span class="n">idx_map</span> <span class="o">=</span> <span class="n">IndexMap</span><span class="o">.</span><span class="n">from_func</span><span class="p">(</span><span class="n">idx_map</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">inv_idx_map</span><span class="p">,</span> <span class="n">Callable</span><span class="p">):</span>
+            <span class="n">inv_idx_map</span> <span class="o">=</span> <span class="n">IndexMap</span><span class="o">.</span><span class="n">from_func</span><span class="p">(</span><span class="n">inv_idx_map</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__init_handle_by_constructor__</span><span class="p">(</span>
+            <span class="n">_ffi_api</span><span class="o">.</span><span class="n">FormatRewriteRule</span><span class="p">,</span>
+            <span class="n">name</span><span class="p">,</span>
+            <span class="n">new_format_desc</span><span class="p">,</span>
+            <span class="n">buffers_to_rewrite</span><span class="p">,</span>
+            <span class="n">axes_before_rewrite</span><span class="p">,</span>
+            <span class="n">axes_after_rewrite</span><span class="p">,</span>
+            <span class="n">axis_map</span><span class="p">,</span>
+            <span class="n">idx_map</span><span class="p">,</span>
+            <span class="n">inv_idx_map</span><span class="p">,</span>
+        <span class="p">)</span>  <span class="c1"># type: ignore</span></div></div>
+
+
+<div class="viewcode-block" id="column_part_hyb"><a class="viewcode-back" href="../../../generated/tvm.sparse.column_part_hyb.html#tvm.sparse.column_part_hyb">[docs]</a><span class="k">def</span> <span class="nf">column_part_hyb</span><span class="p">(</span><span class="n">num_rows</span><span class="p">,</span> <span class="n">num_cols</span><span class="p">,</span> <span class="n">indptr_nd</span><span class="p">,</span> <span class="n">indices_nd</span><span class="p">,</span> <span class="n">num_col_parts</span><span class="p">,</span> <span class="n">buckets</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Partition input CSR matrix by columns and collect rows into buckets according to non zero elements per row.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    num_rows : int</span>
+<span class="sd">        Number of rows in the CSR matrix.</span>
+<span class="sd">    num_cols : int</span>
+<span class="sd">        Number of columns in the CSR matrix.</span>
+<span class="sd">    indptr : NDArray</span>
+<span class="sd">        The indptr array of CSR matrix.</span>
+<span class="sd">    indices : NDArray</span>
+<span class="sd">        The indices array of CSR matrix.</span>
+<span class="sd">    num_col_parts : int</span>
+<span class="sd">        Number of column partitions.</span>
+<span class="sd">    buckets : List</span>
+<span class="sd">        The bucket sizes array.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Tuple[List[List[NDArray]]]</span>
+<span class="sd">        The pair of (row_indices, col_indices, mask).</span>
+<span class="sd">        row_indices is stored as a list of lists with shape (num_col_parts, len(buckets)), where the innermost element is an NDArray.</span>
+<span class="sd">        col_indices and mask are stored in the same way.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">_ffi_api</span><span class="o">.</span><span class="n">ColumnPartHyb</span><span class="p">(</span>
+        <span class="n">num_rows</span><span class="p">,</span> <span class="n">num_cols</span><span class="p">,</span> <span class="n">indptr_nd</span><span class="p">,</span> <span class="n">indices_nd</span><span class="p">,</span> <span class="n">num_col_parts</span><span class="p">,</span> <span class="n">buckets</span>  <span class="c1"># type: ignore</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="condense"><a class="viewcode-back" href="../../../generated/tvm.sparse.condense.html#tvm.sparse.condense">[docs]</a><span class="k">def</span> <span class="nf">condense</span><span class="p">(</span><span class="n">indptr_nd</span><span class="p">,</span> <span class="n">indices_nd</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">g</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Condense sparse matrix in CSR format to (t x 1) tiles, and group g tiles together.</span>
+
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    indptr : NDArray</span>
+<span class="sd">        The indptr array of CSR format.</span>
+<span class="sd">    indices : NDArray</span>
+<span class="sd">        The indices array of CSR format.</span>
+<span class="sd">    t : int</span>
+<span class="sd">        The tile size.</span>
+<span class="sd">    g : int</span>
+<span class="sd">        The group size.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Tuple[NDArray]</span>
+<span class="sd">        The pair of (group_indptr, tile_indices, mask).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">_ffi_api</span><span class="o">.</span><span class="n">ConDense</span><span class="p">(</span><span class="n">indptr_nd</span><span class="p">,</span> <span class="n">indices_nd</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">g</span><span class="p">)</span>  <span class="c1"># type: ignore</span></div>
+
+
+<div class="viewcode-block" id="csf_to_ell3d"><a class="viewcode-back" href="../../../generated/tvm.sparse.csf_to_ell3d.html#tvm.sparse.csf_to_ell3d">[docs]</a><span class="k">def</span> <span class="nf">csf_to_ell3d</span><span class="p">(</span>
+    <span class="n">csf_indptr_0</span><span class="p">,</span> <span class="n">csf_indices_0</span><span class="p">,</span> <span class="n">csf_indptr_1</span><span class="p">,</span> <span class="n">csf_indices_1</span><span class="p">,</span> <span class="n">nnz_rows_bkt</span><span class="p">,</span> <span class="n">nnz_cols_bkt</span>
+<span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Convert CSF format to composable ELL format in 3-dimensional setting (HeteroGraphs).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    csf_indptr_0 : NDArray</span>
+<span class="sd">        Level 0 indptr array in CSF format.</span>
+<span class="sd">    csf_indices_0 : NDArray</span>
+<span class="sd">        Level 0 indices array in CSF format.</span>
+<span class="sd">    csf_indptr_1 : NDArray</span>
+<span class="sd">        Level 1 indptr array in CSF format.</span>
+<span class="sd">    csf_indices_1 : NDArray</span>
+<span class="sd">        Level 1 indices array in CSF format.</span>
+<span class="sd">    num_rows_bkt : List[int]</span>
+<span class="sd">        Number of non-zero rows bucket.</span>
+<span class="sd">    nnz_cols_bkt : List[int]</span>
+<span class="sd">        Number of non-zero columns bucket.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Tuple[List[NDArray]]</span>
+<span class="sd">        (indptr, row_indices, col_indices, mask)</span>
+<span class="sd">        Each one is a list of NDArray, with length #rels.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">_ffi_api</span><span class="o">.</span><span class="n">CSFToELL3D</span><span class="p">(</span>
+        <span class="n">csf_indptr_0</span><span class="p">,</span> <span class="n">csf_indices_0</span><span class="p">,</span> <span class="n">csf_indptr_1</span><span class="p">,</span> <span class="n">csf_indices_1</span><span class="p">,</span> <span class="n">nnz_rows_bkt</span><span class="p">,</span> <span class="n">nnz_cols_bkt</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="format_decompose"><a class="viewcode-back" href="../../../generated/tvm.sparse.format_decompose.html#tvm.sparse.format_decompose">[docs]</a><span class="k">def</span> <span class="nf">format_decompose</span><span class="p">(</span>
+    <span class="n">mod</span><span class="p">:</span> <span class="n">IRModule</span><span class="p">,</span>
+    <span class="n">composable_formats</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s2">&quot;FormatRewriteRule&quot;</span><span class="p">],</span>
+    <span class="n">include_format_rewrite_blks</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Rewrite the sparse format of sparse buffers in the TIR scripts.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mod : IRModule</span>
+<span class="sd">        The IRModule to lower.</span>
+<span class="sd">    composable_formats : List[FormatRewriteRule]</span>
+<span class="sd">        Composable formats is a list of rewrite rules.</span>
+<span class="sd">    include_format_rewrite_blks : bool</span>
+<span class="sd">        Whether to include format rewrite blocks in the output.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">IRModule</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Expected IRModule, but got </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">mod</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">SparseFormatDecompose</span><span class="p">(</span><span class="n">composable_formats</span><span class="p">,</span> <span class="n">include_format_rewrite_blks</span><span class="p">)(</span><span class="n">mod</span><span class="p">)</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, SparseTIR team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

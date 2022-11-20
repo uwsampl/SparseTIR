@@ -1,0 +1,6 @@
+﻿tvm.sparse.column\_part\_hyb
+============================
+
+.. currentmodule:: tvm.sparse
+
+.. autofunction:: column_part_hyb

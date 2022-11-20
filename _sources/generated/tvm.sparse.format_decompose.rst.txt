@@ -1,0 +1,6 @@
+﻿tvm.sparse.format\_decompose
+============================
+
+.. currentmodule:: tvm.sparse
+
+.. autofunction:: format_decompose

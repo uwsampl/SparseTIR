@@ -1,0 +1,29 @@
+﻿tvm.sparse.FormatRewriteRule
+============================
+
+.. currentmodule:: tvm.sparse
+
+.. autoclass:: FormatRewriteRule
+
+   
+   .. automethod:: __init__
+
+   
+   .. rubric:: Methods
+
+   .. autosummary::
+   
+      ~FormatRewriteRule.__init__
+      ~FormatRewriteRule.same_as
+   
+   
+
+   
+   
+   .. rubric:: Attributes
+
+   .. autosummary::
+   
+      ~FormatRewriteRule.handle
+   
+   

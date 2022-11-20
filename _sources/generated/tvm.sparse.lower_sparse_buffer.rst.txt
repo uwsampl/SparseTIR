@@ -1,0 +1,6 @@
+﻿tvm.sparse.lower\_sparse\_buffer
+================================
+
+.. currentmodule:: tvm.sparse
+
+.. autofunction:: lower_sparse_buffer

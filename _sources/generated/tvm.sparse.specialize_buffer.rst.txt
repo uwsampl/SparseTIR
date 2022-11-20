@@ -1,0 +1,6 @@
+﻿tvm.sparse.specialize\_buffer
+=============================
+
+.. currentmodule:: tvm.sparse
+
+.. autofunction:: specialize_buffer
