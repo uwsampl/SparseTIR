@@ -48,8 +48,9 @@ jobs:
     - name: Build Documentation
       id: build-doc
       run: |
-        docker run ${{ needs.build-docker-image.outputs.tag }} sphinx-build -b html docs/ public/
-        docker cp ${{ needs.build-docker-image.outputs.tag }}:/root/sparsetir/public/ public/
+        rm -rf public/
+        mkdir public
+        docker run -v $(pwd)/public:/root/sparsetir/public ${{ needs.build-docker-image.outputs.tag }} sphinx-build -b html docs/ public/
   
   deploy-doc:
     runs-on: self-hosted
