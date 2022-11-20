@@ -22,7 +22,6 @@ SparseTIR: Sparse Tensor Compiler for Deep Learning
 [Paper](https://arxiv.org/abs/2207.04606)
 
 [![Build Status](https://github.com/uwsampl/sparsetir/actions/workflows/build.yml/badge.svg)](https://github.com/uwsampl/sparsetir/actions/workflows/build.yml)
-[![Documentation Status](https://github.com/uwsampl/sparsetir/actions/workflows/docs.yml/badge.svg)](https://github.com/uwsampl/sparsetir/actions/workflows/docs.yml)
 
 SparseTIR is a tensor-level compiler for sparse/irregular operators in Deep Learning. The design goal of SparseTIR is to provide a general programming abstraction that can cover both sparse and irregular (e.g. Ragged Tensors) workloads in Deep Learning including Graph Neural Networks, Sparse Transformers, Sparse Convolutions, Network Pruning, etc. while generating high-performance code on heterogeneous hardware.
 
