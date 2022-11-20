@@ -4,15 +4,8 @@ on:
     branches:
     - main
 jobs:
-  cleaner:
-    runs-on: self-hosted
-    steps:
-      - name: Clean up previous runs
-        run: rm -rf "${{ github.workspace }}"
-
   build-docker-image:
     runs-on: self-hosted
-    needs: cleaner
     outputs:
       tag: ${{ steps.generate-tag.outputs.tag }}
     steps:
