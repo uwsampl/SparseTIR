@@ -27,8 +27,8 @@ jobs:
     - name: Build Docker image
       run: |
         DOCKER_BUILDKIT=1 docker build \
-          docker/ \
-          --file docker/Dockerfile.ci_gpu \
+          . \
+          --file Dockerfile \
           --tag ${{ steps.generate-tag.outputs.tag }}
 
   run-tests:
@@ -36,4 +36,13 @@ jobs:
     needs: build-docker-image
     steps:
     - name: Run tests
-      run: docker run ${{ needs.build-docker-image.outputs.tag }} bash ../tests/scripts/task_python_sparsetir_unittest.sh
+      run: docker run --gpus all ${{ needs.build-docker-image.outputs.tag }} bash tests/scripts/task_python_sparsetir_unittest.sh
+
+  build-doc-and-push-gh-pages:
+    runs-on: self-hosted
+    needs: build-docker-image
+    steps:
+    - name: Build Documentation
+      run: docker run ${{ needs.build-docker-image.outputs.tag }} sphinx-build -b html docs/ docs-html/
+    # - name: Push changes
+    #   run: docker 
