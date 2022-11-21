@@ -41,7 +41,7 @@ jobs:
     - name: Build Documentation
       id: build-doc
       run: |
-        docker run -v $(pwd)/public:/root/sparsetir/public ${{ needs.build-docker-image.outputs.tag }} sphinx-build -b html docs/ public/
+        docker run -v $(pwd)/../public:/root/sparsetir/public ${{ needs.build-docker-image.outputs.tag }} sphinx-build -b html docs/ public/
 
   deploy-doc:
     runs-on: self-hosted
@@ -52,5 +52,5 @@ jobs:
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: public
+        publish_dir: ../public
   
