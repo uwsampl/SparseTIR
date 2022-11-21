@@ -69,18 +69,17 @@ ENV LD_LIBRARY_PATH=/opt/rocm/lib:${LD_LIBRARY_PATH}
 ENV PATH=/node_modules/.bin:${PATH}
 
 # Install SparseTIR GPU
-# COPY install_sparsetir_gpu.sh /install/install_sparsetir_gpu.sh
 WORKDIR /root/sparsetir
 ADD 3rdparty 3rdparty/
-ADD CMakeLists.txt CMakeLists.txt
 ADD cmake cmake/
 ADD configs configs/
 ADD include include/
 ADD python python/
 ADD src src/
 ADD tests tests/
-ADD install_sparsetir_gpu.sh install_sparsetir_gpu.sh
-RUN bash install_sparsetir_gpu.sh
+COPY CMakeLists.txt CMakeLists.txt
+COPY docker/install/install_sparsetir_gpu.sh /install/install_sparsetir_gpu.sh
+RUN bash /install/install_sparsetir_gpu.sh
 ENV PYTHONPATH=python/:${PYTHONPATH}
 
 # Add documentation and examples

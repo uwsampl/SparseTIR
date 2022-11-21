@@ -16,6 +16,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+cd ../../
 
 echo set\(USE_LLVM \"llvm-config-14 --ignore-libllvm --link-static\"\) >> config.cmake
 echo set\(HIDE_PRIVATE_SYMBOLS ON\) >> config.cmake
