@@ -18,4 +18,4 @@
 
 SCRIPTS_DIR=$(dirname "${BASH_SOURCE[0]}")
 TVM_DIR=$(cd "${SCRIPTS_DIR}" && git rev-parse --show-toplevel)
-python3 "${TVM_DIR}/tvm-docs/script_convert.py" "${TVM_DIR}/gallery/how_to/work_with_microtvm/micro_tvmc.sh"
+python3 "${TVM_DIR}/docs/script_convert.py" "${TVM_DIR}/gallery/how_to/work_with_microtvm/micro_tvmc.sh"

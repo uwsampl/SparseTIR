@@ -25,8 +25,8 @@ cleanup()
 trap cleanup 0
 
 
-echo "Convert scripts to Python..."
-tests/scripts/task_convert_scripts_to_python.sh
+# echo "Convert scripts to Python..."
+# tests/scripts/task_convert_scripts_to_python.sh
 
 # TODO: Remove this ad-hoc pip install once https://github.com/apache/tvm/pull/10741
 # is added to the ci_lint Docker image
