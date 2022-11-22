@@ -93,3 +93,4 @@ ADD examples examples/
 # Install dependencies required by lint
 RUN apt install -y clang-format
 RUN pip3 install flake8==5.0.4 pylint==2.15.6 cpplint==1.6.1 black==22.8.0
+RUN apt install default-jre
