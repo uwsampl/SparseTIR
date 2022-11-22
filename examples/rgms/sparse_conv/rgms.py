@@ -71,9 +71,7 @@ def wmma_sync(d0: int, d1: int):
                     )
 
     @T.prim_func
-    def wmma_sync_16_1_desc(
-        a_frag: T.handle, b_frag: T.handle, c_frag: T.handle
-    ) -> None:
+    def wmma_sync_16_1_desc(a_frag: T.handle, b_frag: T.handle, c_frag: T.handle) -> None:
         A_frag = T.match_buffer(
             a_frag,
             (16, 1, 16),
@@ -104,14 +102,10 @@ def wmma_sync(d0: int, d1: int):
                 with T.block("update"):
                     vio, vj, vk = T.axis.remap("SSR", [io, j, k])
                     T.block_attr({"sparse": True})
-                    C_frag[vio, 0, vj] = (
-                        C_frag[vio, 0, vj] + A_frag[vio, 0, vk] * B_frag[vk, vj]
-                    )
+                    C_frag[vio, 0, vj] = C_frag[vio, 0, vj] + A_frag[vio, 0, vk] * B_frag[vk, vj]
 
     @T.prim_func
-    def wmma_sync_1_16_desc(
-        a_frag: T.handle, b_frag: T.handle, c_frag: T.handle
-    ) -> None:
+    def wmma_sync_1_16_desc(a_frag: T.handle, b_frag: T.handle, c_frag: T.handle) -> None:
         A_frag = T.match_buffer(
             a_frag,
             (1, 16, 16),
@@ -142,9 +136,7 @@ def wmma_sync(d0: int, d1: int):
                 with T.block("update"):
                     vii, vj, vk = T.axis.remap("SSR", [ii, j, k])
                     T.block_attr({"sparse": True})
-                    C_frag[0, vii, vj] = (
-                        C_frag[0, vii, vj] + A_frag[0, vii, vk] * B_frag[vk, vj]
-                    )
+                    C_frag[0, vii, vj] = C_frag[0, vii, vj] + A_frag[0, vii, vk] * B_frag[vk, vj]
 
     @T.prim_func
     def wmma_sync_impl(a_frag: T.handle, b_frag: T.handle, c_frag: T.handle) -> None:
@@ -212,9 +204,7 @@ def wmma_sync(d0: int, d1: int):
 def wmma_load_a(d0: int, d1: int, scope: str):
     @T.prim_func
     def wmma_load_a_desc(a: T.handle, a_frag: T.handle) -> None:
-        A = T.match_buffer(
-            a, (d0, d1, 16), "float16", align=64, offset_factor=16, scope=scope
-        )
+        A = T.match_buffer(a, (d0, d1, 16), "float16", align=64, offset_factor=16, scope=scope)
         A_frag = T.match_buffer(
             a_frag,
             (d0, d1, 16),
@@ -232,9 +222,7 @@ def wmma_load_a(d0: int, d1: int, scope: str):
 
     @T.prim_func
     def wmma_load_a_16_1_desc(a: T.handle, a_frag: T.handle) -> None:
-        A = T.match_buffer(
-            a, (16, 1, 16), "float16", align=64, offset_factor=16, scope=scope
-        )
+        A = T.match_buffer(a, (16, 1, 16), "float16", align=64, offset_factor=16, scope=scope)
         A_frag = T.match_buffer(
             a_frag,
             (16, 1, 16),
@@ -252,9 +240,7 @@ def wmma_load_a(d0: int, d1: int, scope: str):
 
     @T.prim_func
     def wmma_load_a_1_16_desc(a: T.handle, a_frag: T.handle) -> None:
-        A = T.match_buffer(
-            a, (1, 16, 16), "float16", align=64, offset_factor=16, scope=scope
-        )
+        A = T.match_buffer(a, (1, 16, 16), "float16", align=64, offset_factor=16, scope=scope)
         A_frag = T.match_buffer(
             a_frag,
             (1, 16, 16),
@@ -323,9 +309,7 @@ def wmma_load_a(d0: int, d1: int, scope: str):
 def wmma_load_b(scope: str):
     @T.prim_func
     def wmma_load_b_desc(b: T.handle, b_frag: T.handle) -> None:
-        B = T.match_buffer(
-            b, (16, 16), "float16", align=64, offset_factor=16, scope=scope
-        )
+        B = T.match_buffer(b, (16, 16), "float16", align=64, offset_factor=16, scope=scope)
         B_frag = T.match_buffer(
             b_frag,
             (16, 16),
@@ -478,9 +462,7 @@ def wmma_store(d0: int, d1: int, scope: str):
             offset_factor=16,
             scope="wmma.accumulator",
         )
-        C = T.match_buffer(
-            c, (d0, d1, 16), "float16", align=64, offset_factor=16, scope=scope
-        )
+        C = T.match_buffer(c, (d0, d1, 16), "float16", align=64, offset_factor=16, scope=scope)
         with T.block("root"):
             for io, ii, j in T.grid(d0, d1, 16):
                 with T.block("store"):
@@ -497,9 +479,7 @@ def wmma_store(d0: int, d1: int, scope: str):
             offset_factor=16,
             scope="wmma.accumulator",
         )
-        C = T.match_buffer(
-            c, (16, 1, 16), "float16", align=64, offset_factor=16, scope=scope
-        )
+        C = T.match_buffer(c, (16, 1, 16), "float16", align=64, offset_factor=16, scope=scope)
         with T.block("root"):
             for io, ii, j in T.grid(16, 1, 16):
                 with T.block("store"):
@@ -516,9 +496,7 @@ def wmma_store(d0: int, d1: int, scope: str):
             offset_factor=16,
             scope="wmma.accumulator",
         )
-        C = T.match_buffer(
-            c, (1, 16, 16), "float16", align=64, offset_factor=16, scope=scope
-        )
+        C = T.match_buffer(c, (1, 16, 16), "float16", align=64, offset_factor=16, scope=scope)
         with T.block("root"):
             for io, ii, j in T.grid(1, 16, 16):
                 with T.block("store"):
@@ -589,9 +567,7 @@ def rgcn_hetero_forward(m, n, num_rels, feat_in, feat_out):
         nnz_i: T.int32,
         nnz_j: T.int32,
     ):
-        T.func_attr(
-            {"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2}
-        )
+        T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
         R = T.dense_fixed(num_rels)
         I = T.sparse_variable(R, (m, nnz_i), (indptr_i, indices_i), "int32")
         J = T.sparse_variable(I, (n, nnz_j), (indptr_j, indices_j), "int32")
@@ -620,13 +596,11 @@ def rgcn_hetero_forward(m, n, num_rels, feat_in, feat_out):
             with T.init():
                 Y[i, fo] = T.float16(0)
             Y[i, fo] = Y[i, fo] + A[r, i, j] * WX[r, i, j, fo]
-    
+
     return func
 
 
-def ell3d_fp16(
-    d0: int, d1: int, d2: int, nnz: int, nnz_rows: int, nnz_cols: int, feat_out: int
-):
+def ell3d_fp16(d0: int, d1: int, d2: int, nnz: int, nnz_rows: int, nnz_cols: int, feat_out: int):
     @T.prim_func
     def func(
         a: T.handle,
@@ -651,9 +625,7 @@ def convert_indptr_to_mid_array(indptr):
     indptr_numpy = indptr.numpy()
     ret = []
     for i in range(len(indptr_numpy) - 1):
-        ret.append(
-            np.zeros((indptr_numpy[i + 1] - indptr_numpy[i],), dtype=np.int32) + i
-        )
+        ret.append(np.zeros((indptr_numpy[i + 1] - indptr_numpy[i],), dtype=np.int32) + i)
     return np.concatenate(ret, axis=-1)
 
 
@@ -712,9 +684,7 @@ def rgms_tensorcore(
         m_sub, n_sub = g_sub.num_dst_nodes(), g_sub.num_src_nodes()
         indptr, indices, _ = g_sub.adj_sparse(fmt="csc")
         csf_indptr_0.append(csf_indptr_0[-1] + m_sub)
-        csf_indices_0.append(
-            th.arange(m_sub, dtype=th.int32)
-        )
+        csf_indices_0.append(th.arange(m_sub, dtype=th.int32))
         csf_indptr_1.append(csf_indptr_1[-1][-1] + indptr[1:])
         csf_indices_1.append(indices)
 
@@ -763,23 +733,17 @@ def rgms_tensorcore(
             )
         )
     mod = tvm.IRModule.from_expr(
-        rgcn_hetero_forward(m, n, num_rels, feat_in, feat_out).with_attr(
-            "horizontal_fuse", True
-        )
+        rgcn_hetero_forward(m, n, num_rels, feat_in, feat_out).with_attr("horizontal_fuse", True)
     )
     mod = format_decompose(mod, rewrites, include_format_rewrite_blks=False)
     mod = tvm.tir.transform.RemovePreprocess()(mod)
 
     sch = tir.Schedule(mod["main"])
     for bucket_id, _ in enumerate(buckets):
-        sp_iteration = sch.get_sparse_iteration(
-            "rgcn-hetero-forward_wx_{}".format(bucket_id)
-        )
+        sp_iteration = sch.get_sparse_iteration("rgcn-hetero-forward_wx_{}".format(bucket_id))
         r, io, ii, j, fo, fi = sch.get_sp_iters(sp_iteration)
         sch.sparse_fuse(sp_iteration, [r, io])
-        sp_iteration = sch.get_sparse_iteration(
-            "rgcn-hetero-forward_{}".format(bucket_id)
-        )
+        sp_iteration = sch.get_sparse_iteration("rgcn-hetero-forward_{}".format(bucket_id))
         r, io, ii, j, fo = sch.get_sp_iters(sp_iteration)
         sch.sparse_fuse(sp_iteration, [r, io])
     mod = lower_sparse_iter(sch.mod)
@@ -830,12 +794,8 @@ def rgms_tensorcore(
         # assert False
 
         # tensorize
-        sch.tensorize(
-            sch.get_loops(WX_accum)[-3], "wmma_{}_{}_{}_store".format(d0, d1, "shared")
-        )
-        sch.tensorize(
-            sch.get_loops(X_wmma)[-3], "wmma_{}_{}_{}_load_a".format(d0, d1, "shared")
-        )
+        sch.tensorize(sch.get_loops(WX_accum)[-3], "wmma_{}_{}_{}_store".format(d0, d1, "shared"))
+        sch.tensorize(sch.get_loops(X_wmma)[-3], "wmma_{}_{}_{}_load_a".format(d0, d1, "shared"))
         sch.tensorize(sch.get_loops(W_wmma)[-2], "wmma_{}_load_b".format("shared"))
         sch.tensorize(
             sch.get_loops(init_blk)[-3],
@@ -882,24 +842,16 @@ def rgms_tensorcore(
 
     # prepare inputs
     dev = tvm.cuda(0)
-    W_nd = tvm.nd.array(
-        weight.transpose(-1, -2).contiguous().half().cpu().view(-1), device=dev
-    )
+    W_nd = tvm.nd.array(weight.transpose(-1, -2).contiguous().half().cpu().view(-1), device=dev)
     X_nd = tvm.nd.array(feat.half().cpu().view(-1), device=dev)
     Y_nd = tvm.nd.array(th.zeros(m * feat_out, dtype=th.float16), device=dev)
     args = [W_nd, X_nd, Y_nd]
     for bucket_id, _ in enumerate(buckets):
         args.append(
-            tvm.nd.array(
-                mask[bucket_id].numpy().reshape(-1).astype(np.float16), device=dev
-            )
+            tvm.nd.array(mask[bucket_id].numpy().reshape(-1).astype(np.float16), device=dev)
         )
-        args.append(
-            tvm.nd.array(row_indices[bucket_id].numpy().reshape(-1), device=dev)
-        )
-        args.append(
-            tvm.nd.array(col_indices[bucket_id].numpy().reshape(-1), device=dev)
-        )
+        args.append(tvm.nd.array(row_indices[bucket_id].numpy().reshape(-1), device=dev))
+        args.append(tvm.nd.array(col_indices[bucket_id].numpy().reshape(-1), device=dev))
     for bucket_id, _ in enumerate(buckets):
         args.append(tvm.nd.array(mids[bucket_id], device=dev))
     f(*args)

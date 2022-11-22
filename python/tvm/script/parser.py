@@ -509,7 +509,7 @@ class TVMScriptParser(Transformer):
             _ffi_api.Complete,
             func,
             self.context.root_alloc_buffers,
-            self.context.root_buf_doms
+            self.context.root_buf_doms,
         )
 
         self.context.exit_scope()

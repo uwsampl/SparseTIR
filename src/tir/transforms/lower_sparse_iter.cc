@@ -39,7 +39,7 @@ namespace {
 
 class VarCollector : public StmtExprVisitor {
  public:
-  explicit VarCollector() {}
+  VarCollector() {}
   Array<Var> vars;
   std::unordered_set<const VarNode*> var_set;
 
@@ -64,12 +64,12 @@ Array<Axis> CollectAncestors(Axis axis, int max_depth = -1) {
     axis = parents.back();
     parent = axis->parent;
     if (max_depth >= 0) {
-      if (int(parents.size()) >= max_depth) {
+      if (static_cast<int>(parents.size()) >= max_depth) {
         break;
       }
     }
   }
-  for (int i = int(parents.size()) - 1; i >= 0; i--) {
+  for (int i = static_cast<int>(parents.size()) - 1; i >= 0; i--) {
     ret.push_back(parents[i]);
   }
   return ret;
@@ -155,7 +155,7 @@ Axis GetAxisBeforeFuse(const Axis& axis) {
 
 class VarUsedVisitor : public StmtExprVisitor {
  public:
-  explicit VarUsedVisitor() {}
+  VarUsedVisitor() {}
   std::unordered_set<const VarNode*> used_var;
 
  private:
@@ -196,12 +196,12 @@ class LowerSparseIterContext {
 
   /*! \brief Update read regions. */
   void UpdateRead(Buffer buffer, const std::vector<arith::IntSet>& region) {
-    Update(top()->read_buffers_, top()->read_regions_, buffer, region);
+    Update(&top()->read_buffers_, &top()->read_regions_, buffer, region);
   }
 
   /*! \brief Update write regions. */
   void UpdateWrite(Buffer buffer, const std::vector<arith::IntSet>& region) {
-    Update(top()->write_buffers, top()->write_regions_, buffer, region);
+    Update(&top()->write_buffers, &top()->write_regions_, buffer, region);
   }
 
   /*! \brief Return the collected read regions. */
@@ -218,7 +218,7 @@ class LowerSparseIterContext {
   void AddVarDom(Var var, arith::IntSet dom) { top()->dom_map_[var.get()] = dom; }
 
   /*! \brief Get the variable-domain map. */
-  std::unordered_map<const VarNode*, arith::IntSet>& GetDomMap() { return top()->dom_map_; };
+  std::unordered_map<const VarNode*, arith::IntSet>& GetDomMap() { return top()->dom_map_; }
 
   /*! \brief Add an axis-itervar mapping to the context. */
   void AddAxisIterVar(Axis axis, IterVar iter_var) {
@@ -284,21 +284,21 @@ class LowerSparseIterContext {
   inline Info* top() const { return const_cast<Info*>(&stack_.back()); }
 
   /*! \brief Update buffer regions. */
-  void Update(std::vector<Buffer>& buffers, std::vector<std::vector<arith::IntSet>>& regions,
+  void Update(std::vector<Buffer>* buffers, std::vector<std::vector<arith::IntSet>>* regions,
               Buffer buffer, const std::vector<arith::IntSet>& region) {
-    ICHECK_EQ(buffers.size(), regions.size())
+    ICHECK_EQ(buffers->size(), regions->size())
         << " Expected the buffer and regions to have the same size ";
-    for (size_t i = 0; i < regions.size(); ++i) {
-      if (buffers[i].same_as(buffer)) {
-        ICHECK_EQ(regions[i].size(), region.size()) << "Inconsistent buffer dimension";
+    for (size_t i = 0; i < regions->size(); ++i) {
+      if ((*buffers)[i].same_as(buffer)) {
+        ICHECK_EQ((*regions)[i].size(), region.size()) << "Inconsistent buffer dimension";
         for (size_t j = 0; j < region.size(); ++j) {
-          regions[i][j] = arith::Union({regions[i][j], region[j]});
+          (*regions)[i][j] = arith::Union({(*regions)[i][j], region[j]});
         }
         return;
       }
     }
-    buffers.push_back(std::move(buffer));
-    regions.push_back(std::move(region));
+    buffers->push_back(std::move(buffer));
+    regions->push_back(std::move(region));
   }
 
   /*! \brief Return the array of BufferRegion's given buffer array and region array. */
@@ -350,6 +350,7 @@ class IterTransformer : public StmtExprMutator {
   std::vector<BinarySearchStructure> bsearch_structures;  // binary search related structures.
   Array<Buffer> root_alloc_buffers;                       // allocated buffers in the root block.
   Array<BufferDomain> alloc_buf_doms;                     // allocated buffer domains.
+
  private:
   /*! \brief Create base dom map: each axis parameters should be greater than 0. */
   void CreateBaseDomMap(const Array<Axis>& axes) {

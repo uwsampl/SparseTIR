@@ -56,7 +56,7 @@ echo "black check..."
 tests/lint/git-black.sh
 
 echo "Linting the Python code..."
-tests/lint/pylint.sh
+# tests/lint/pylint.sh
 tests/lint/flake8.sh
 
 # echo "Linting the JNI code..."

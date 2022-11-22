@@ -588,9 +588,7 @@ def bench_tc_spmm(g: dgl.DGLHeteroGraph, x: th.Tensor, y_golden: th.Tensor, mma_
     nnz = g.num_edges()
     mb = (m + tile_size - 1) // tile_size
     nb = (n + group_size - 1) // group_size
-    group_indptr, tile_indices, mask = condense(
-        indptr_nd, indices_nd, tile_size, group_size
-    )
+    group_indptr, tile_indices, mask = condense(indptr_nd, indices_nd, tile_size, group_size)
     print("Condense density: {:.2f}%".format(100 * mask.numpy().sum() / np.prod(mask.shape)))
     del indptr_nd, indices_nd
     nnzb = mask.shape[0]

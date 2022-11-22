@@ -16,6 +16,7 @@
 # under the License.
 import tvm
 import tvm.testing
+
 # import sparse_tir_scripts
 import sparse_tir_lowered_iter_scripts
 import sparse_tir_lowered_buffer_scripts
@@ -50,7 +51,7 @@ def test_sparse_tir_lower_buffer():
     for func_name in func_name_list:
         print(func_name)
         mod = tvm.IRModule.from_expr(getattr(sparse_tir_lowered_iter_scripts, func_name))
-        mod = lower_sparse_buffer(mod) 
+        mod = lower_sparse_buffer(mod)
         print(mod["main"].script())
         lowered_func = getattr(sparse_tir_lowered_buffer_scripts, func_name)
         tvm.ir.assert_structural_equal(mod["main"], lowered_func, True)

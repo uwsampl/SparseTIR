@@ -139,17 +139,19 @@ Array<Array<Array<NDArray>>> ColumnPartHyb(int num_rows, int num_cols, NDArray i
       }
       // conversion to NDArray
       int nnz = row_indices[part_id][bucket_id].size();
-      ICHECK(int(col_indices[part_id][bucket_id].size()) == nnz * bucket_size) << "Padding error.";
-      ICHECK(int(mask[part_id][bucket_id].size()) == nnz * bucket_size) << "Padding error.";
+      ICHECK(static_cast<int>(col_indices[part_id][bucket_id].size()) == nnz * bucket_size)
+          << "Padding error.";
+      ICHECK(static_cast<int>(mask[part_id][bucket_id].size()) == nnz * bucket_size)
+          << "Padding error.";
       NDArray row_indices_bucket_local = NDArray::Empty({nnz}, {kDLInt, 32, 1}, {kDLCPU, 0});
       NDArray col_indices_bucket_local =
           NDArray::Empty({nnz, bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
       NDArray mask_bucket_local = NDArray::Empty({nnz, bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
       if (nnz > 0) {
         row_indices_bucket_local.CopyFromBytes(row_indices[part_id][bucket_id].data(),
-                                              nnz * sizeof(int));
+                                               nnz * sizeof(int));
         col_indices_bucket_local.CopyFromBytes(col_indices[part_id][bucket_id].data(),
-                                              nnz * bucket_size * sizeof(int));
+                                               nnz * bucket_size * sizeof(int));
         mask_bucket_local.CopyFromBytes(mask[part_id][bucket_id].data(),
                                         nnz * bucket_size * sizeof(int));
       }
@@ -201,7 +203,7 @@ Array<Array<NDArray>> CSFToELL3D(NDArray csf_indptr_0, NDArray csf_indices_0, ND
 
   int num_rels = csf_indptr_0->shape[0] - 1;
   int num_buckets = nnz_rows_bkt.size();
-  CHECK_EQ(num_buckets, int(nnz_cols_bkt.size()))
+  CHECK_EQ(num_buckets, static_cast<int>(nnz_cols_bkt.size()))
       << "Input nnz_rows and nnz_cols should have same length.";
   std::vector<int> nnz_rows_bkt_vec, nnz_cols_bkt_vec;
   for (const Integer& nnz_rows : nnz_rows_bkt) {
@@ -318,7 +320,8 @@ Array<Array<NDArray>> CSFToELL3D(NDArray csf_indptr_0, NDArray csf_indices_0, ND
     ICHECK((int)row_indices_bucket_local.size() == nnz * row_bucket_size) << "Padding error.";
     ICHECK((int)col_indices_bucket_local.size() == nnz * row_bucket_size * col_bucket_size)
         << "Padding error.";
-    ICHECK((int)mask_bucket_local.size() == nnz * row_bucket_size * col_bucket_size) << "Padding error.";
+    ICHECK((int)mask_bucket_local.size() == nnz * row_bucket_size * col_bucket_size)
+        << "Padding error.";
     NDArray row_indices_bucket_local_nd =
         NDArray::Empty({nnz, row_bucket_size}, {kDLInt, 32, 1}, {kDLCPU, 0});
     row_indices_bucket_local_nd.CopyFromBytes(row_indices_bucket_local.data(),
@@ -422,7 +425,7 @@ Array<NDArray> ConDense(NDArray indptr, NDArray indices, int t, int g) {
   group_indptr_nd.CopyFromBytes(group_indptr.data(), (num_tiles + 1) * sizeof(int));
   tile_indices_nd.CopyFromBytes(tile_indices.data(), (nnz_groups * g) * sizeof(int));
   mask_nd.CopyFromBytes(mask.data(), (nnz_groups * t * g) * sizeof(int));
-  return {group_indptr_nd,     tile_indices_nd, mask_nd};
+  return {group_indptr_nd, tile_indices_nd, mask_nd};
 }
 
 namespace sparse {

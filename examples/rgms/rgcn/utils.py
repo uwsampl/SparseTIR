@@ -106,4 +106,3 @@ def ell3d(
     J = T.sparse_fixed(II, (d2, nnz_cols), indices_j, idtype="int32")
     A = T.match_sparse_buffer(a, (R, IO, II, J), dtype="float32")
     T.evaluate(0)
-

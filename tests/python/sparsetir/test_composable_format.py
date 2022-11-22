@@ -121,6 +121,7 @@ def test_csrmm_padding_rewrite():
     mod = format_decompose(mod, rewrites)
     tvm.ir.assert_structural_equal(mod["main"], padding_rewrite_with_preprocess, True)
 
+
 if __name__ == "__main__":
     test_csrmm_bsr_rewrite()
     test_csrmm_ell_rewrite()

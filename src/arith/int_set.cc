@@ -347,7 +347,8 @@ class IntervalSetEvaluator : public ExprFunctor<IntervalSet(const PrimExpr&)> {
  public:
   IntervalSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map, bool eval_vec = false)
       : analyzer_(analyzer), dom_map_(dom_map), eval_vec_(eval_vec) {}
-  IntervalSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map, const Map<Buffer, Range> buf_dom_map, bool eval_vec=false)
+  IntervalSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map,
+                       const Map<Buffer, Range> buf_dom_map, bool eval_vec = false)
       : analyzer_(analyzer), dom_map_(dom_map), buf_dom_map_(buf_dom_map), eval_vec_(eval_vec) {}
 
   IntervalSet Eval(const PrimExpr& val) { return this->VisitExpr(val); }
@@ -828,7 +829,8 @@ Array<IntSet> EvalSet(const Array<Range>& region, const Map<Var, IntSet>& dom_ma
   return result;
 }
 
-Array<IntSet> EvalSet(const Array<Range>& region, const Map<Var, IntSet>& dom_map, const Map<Buffer, Range>& buf_dom_map) {
+Array<IntSet> EvalSet(const Array<Range>& region, const Map<Var, IntSet>& dom_map,
+                      const Map<Buffer, Range>& buf_dom_map) {
   Analyzer ana;
   IntervalSetEvaluator m(&ana, dom_map, buf_dom_map);
   Array<IntSet> result;

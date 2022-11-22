@@ -40,7 +40,7 @@ using support::StartsWith;
 
 class ThreadTagExtentCollector : public StmtExprVisitor {
  public:
-  explicit ThreadTagExtentCollector() {}
+  ThreadTagExtentCollector() {}
   Map<String, Integer> Collect(const PrimFuncNode* fptr) {
     thread_tag_extent_map_.clear();
     VisitStmt(fptr->body);

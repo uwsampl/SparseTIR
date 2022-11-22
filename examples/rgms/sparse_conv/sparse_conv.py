@@ -27,8 +27,7 @@ from rgms import rgms_tensorcore
 
 
 def get_type_pointers(g: dgl.DGLHeteroGraph):
-    ntype_pointer = np.cumsum([0] +
-                              [g.number_of_nodes(ntype) for ntype in g.ntypes])
+    ntype_pointer = np.cumsum([0] + [g.number_of_nodes(ntype) for ntype in g.ntypes])
 
     etype_pointer = [0]
     for etype in g.canonical_etypes:
@@ -43,10 +42,7 @@ def get_type_pointers(g: dgl.DGLHeteroGraph):
 
 if __name__ == "__main__":
     device = "cuda:0"
-    buffer = torch.zeros(400000 * 64,
-                        dtype=torch.float16,
-                        device=device,
-                        requires_grad=False)
+    buffer = torch.zeros(400000 * 64, dtype=torch.float16, device=device, requires_grad=False)
 
     results = []
 
@@ -69,14 +65,24 @@ if __name__ == "__main__":
             torch.cuda.empty_cache()
             continue
 
-        with profile(activities=[ProfilerActivity.CUDA],
-                    schedule=schedule(wait=0, warmup=10, active=100)) as prof:
+        with profile(
+            activities=[ProfilerActivity.CUDA], schedule=schedule(wait=0, warmup=10, active=100)
+        ) as prof:
             for _ in range(100):
-                y = ConvolutionFunction.apply(inputs, weights, nbmaps, nbsizes,
-                                            buffer,
-                                            (inputs.shape[0], outputs.shape[0]),
-                                            input_mask, output_mask, 0.0, 0, 1,
-                                            transposed)
+                y = ConvolutionFunction.apply(
+                    inputs,
+                    weights,
+                    nbmaps,
+                    nbsizes,
+                    buffer,
+                    (inputs.shape[0], outputs.shape[0]),
+                    input_mask,
+                    output_mask,
+                    0.0,
+                    0,
+                    1,
+                    transposed,
+                )
                 prof.step()
 
         dur_torchsparse = sum([e.cuda_time for e in prof.events()]) / 1000 / 90
@@ -89,27 +95,38 @@ if __name__ == "__main__":
         sizes = data["nbsizes"]
         maps = data["nbmaps"]
         for rel in range(weights.shape[0]):
-            i = maps[offset:offset + sizes[rel], 0]
-            o = maps[offset:offset + sizes[rel], 1]
+            i = maps[offset : offset + sizes[rel], 0]
+            o = maps[offset : offset + sizes[rel], 1]
             offset += sizes[rel]
             if transposed:
                 i, o = o, i
-            graph_data[('src', str(rel), 'dst')] = (i, o)
+            graph_data[("src", str(rel), "dst")] = (i, o)
         g = dgl.heterograph(graph_data)
         type_pointers = get_type_pointers(g)
-        y1, dur_sparsetir = rgcn_tensorcore(g,
-                                            type_pointers,
-                                            feat_in,
-                                            feat_out,
-                                            inputs,
-                                            weights.transpose(-1, -2).contiguous(),
-                                            ty=8,
-                                            num_workloads_per_thread=1,
-                                            buckets=[1])
+        y1, dur_sparsetir = rgcn_tensorcore(
+            g,
+            type_pointers,
+            feat_in,
+            feat_out,
+            inputs,
+            weights.transpose(-1, -2).contiguous(),
+            ty=8,
+            num_workloads_per_thread=1,
+            buckets=[1],
+        )
 
         results.append(
-            (feat_in, feat_out, fpath, g.num_dst_nodes(), g.num_src_nodes(),
-            g.num_edges(), dur_torchsparse, dur_sparsetir))
+            (
+                feat_in,
+                feat_out,
+                fpath,
+                g.num_dst_nodes(),
+                g.num_src_nodes(),
+                g.num_edges(),
+                dur_torchsparse,
+                dur_sparsetir,
+            )
+        )
 
     results.sort(key=lambda x: x[-1])
 
@@ -123,5 +140,6 @@ if __name__ == "__main__":
             "nnz": [_[5] for _ in results],
             "dur_torchsparse": [_[6] for _ in results],
             "dur_sparsetir": [_[7] for _ in results],
-        })
+        }
+    )
     pd.to_csv("sparse_conv.csv", index=False)

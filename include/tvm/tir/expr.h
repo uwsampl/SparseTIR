@@ -660,7 +660,6 @@ class BufferLoad : public PrimExpr {
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BufferLoadNode);
 };
 
-
 /*!
  * \brief Load value from the result produced by the producer.
  *

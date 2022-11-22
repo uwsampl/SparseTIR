@@ -68,4 +68,3 @@ def ell(
     J = T.sparse_fixed(I, (n, nnz_cols), indices_j)
     A = T.match_sparse_buffer(a, (O, I, J), "float32")
     T.evaluate(0)
-
