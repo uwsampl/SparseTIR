@@ -28,7 +28,7 @@ jobs:
       run: |
         DOCKER_BUILDKIT=1 docker build \
           . \
-          --file Dockerfile \
+          --file docker/Dockerfile.ci_sparsetir_gpu \
           --tag ${{ steps.generate-tag.outputs.tag }}
   
   run-lint:
