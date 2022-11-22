@@ -127,6 +127,7 @@ def specialize_rgcn_homo_forward(f):
     M, N, R, FEAT_SIZE, NNZ = f.params[-5:]
     return f.specialize({M: 128, N: 128, R: 16, FEAT_SIZE: 128, NNZ: 1024})
 
+
 def specialize_rgcn_hetero_forward(f):
     M, N, R, FEAT_SIZE, NNZ_I, NNZ_J = f.params[-6:]
     return f.specialize({M: 128, N: 128, R: 16, FEAT_SIZE: 128, NNZ_I: 32, NNZ_J: 1024})

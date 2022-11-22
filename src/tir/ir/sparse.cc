@@ -71,7 +71,7 @@ Axis::Axis(String name, Optional<ObjectRef> parent, PrimExpr length, PrimExpr nn
   node->idtype = std::move(idtype);
   node->sorted = sorted;
   data_ = std::move(node);
-};
+}
 
 TVM_REGISTER_NODE_TYPE(AxisNode);
 
@@ -113,7 +113,8 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 /*! \brief Default constructor of FusedAxis */
 FusedAxis::FusedAxis(Array<Axis> group, int index) {
-  CHECK(index < int(group.size())) << "Index " << index << "exceeds the size of fused axes group.";
+  CHECK(index < static_cast<int>(group.size()))
+      << "Index " << index << "exceeds the size of fused axes group.";
 
   // TODO(zihao): check whether it valid to fuse axes in the group.
   ObjectPtr<FusedAxisNode> node = make_object<FusedAxisNode>();
@@ -124,7 +125,7 @@ FusedAxis::FusedAxis(Array<Axis> group, int index) {
     fused_name += node->group[i]->name;
   }
   node->name = "fused_" + fused_name + "_" + node->group[index]->name;
-  if (index == int(node->group.size() - 1)) {
+  if (index == static_cast<int>(node->group.size()) - 1) {
     // is last fused axis.
     node->length = node->group[index]->nnz;
   } else {

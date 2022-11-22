@@ -31,7 +31,7 @@ namespace tir {
 
 class UnusedArgsRemover : public StmtExprVisitor {
  public:
-  explicit UnusedArgsRemover(const Map<Var, Buffer> data_buf_map): data_buf_map_(data_buf_map) {}
+  explicit UnusedArgsRemover(const Map<Var, Buffer> data_buf_map) : data_buf_map_(data_buf_map) {}
   std::unordered_set<const VarNode*> used_vars;
   std::unordered_set<const BufferNode*> used_bufs;
 
@@ -56,11 +56,11 @@ class UnusedArgsRemover : public StmtExprVisitor {
   }
 
   void VisitStmt_(const BlockNode* op) final {
-    for (const MatchBufferRegion match_buf_region: op->match_buffers) {
+    for (const MatchBufferRegion match_buf_region : op->match_buffers) {
       const Buffer& buf = match_buf_region->buffer;
       data_buf_map_.Set(buf->data, buf);
     }
-    for (const Buffer& buf: op->alloc_buffers) {
+    for (const Buffer& buf : op->alloc_buffers) {
       data_buf_map_.Set(buf->data, buf);
     }
     StmtExprVisitor::VisitStmt_(op);
@@ -74,7 +74,7 @@ PrimFunc RemoveUnusedArgs(PrimFunc f) {
   if (!IsFromLegacyTESchedule(f)) {
     PrimFuncNode* fptr = f.CopyOnWrite();
     Map<Var, Buffer> data_buf_map_;
-    for (const auto& kv: f->buffer_map) {
+    for (const auto& kv : f->buffer_map) {
       const Buffer& buf = kv.second;
       data_buf_map_.Set(buf->data, buf);
     }

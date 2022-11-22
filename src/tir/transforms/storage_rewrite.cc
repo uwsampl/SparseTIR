@@ -182,21 +182,21 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
     }
   }
 
-  int64_t EnterNewScope(StmtEntry& e) {
+  int64_t EnterNewScope(StmtEntry* e) {
     scope_.push_back(StmtEntry());
     int64_t begin_index = static_cast<int64_t>(linear_seq_.size());
     // before scope.
-    linear_seq_.push_back(e);
+    linear_seq_.push_back(*e);
     return begin_index;
   }
 
-  void ExitNewScope(StmtEntry& e, int64_t begin_index) {
-    e.touched = std::move(scope_.back().touched);
+  void ExitNewScope(StmtEntry* e, int64_t begin_index) {
+    e->touched = std::move(scope_.back().touched);
     scope_.pop_back();
     int64_t end_index = static_cast<int64_t>(linear_seq_.size());
     ICHECK_GT(end_index, begin_index);
-    e.scope_pair_offset = begin_index - end_index;
-    linear_seq_.push_back(e);
+    e->scope_pair_offset = begin_index - end_index;
+    linear_seq_.push_back(*e);
     // record the pointer to end index.
     ICHECK_NE(end_index, 0U);
     linear_seq_[begin_index].scope_pair_offset = end_index - begin_index;
@@ -206,9 +206,9 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
   void VisitNewScope(const T* op) {
     StmtEntry e;
     e.stmt = op;
-    int64_t begin_index = EnterNewScope(e);
+    int64_t begin_index = EnterNewScope(&e);
     StmtExprVisitor::VisitStmt_(op);
-    ExitNewScope(e, begin_index);
+    ExitNewScope(&e, begin_index);
   }
 
   void VisitStmt_(const AttrStmtNode* op) final {
@@ -229,16 +229,16 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
   void VisitStmt_(const IfThenElseNode* op) final {
     StmtEntry e_then;
     e_then.stmt = op->then_case.get();
-    int64_t then_begin_index = EnterNewScope(e_then);
+    int64_t then_begin_index = EnterNewScope(&e_then);
     StmtExprVisitor::VisitStmt(op->then_case);
-    ExitNewScope(e_then, then_begin_index);
+    ExitNewScope(&e_then, then_begin_index);
     StmtEntry e_else;
     if (!op->else_case.same_as(Stmt())) {
       // else case not empty;
       e_else.stmt = op->else_case.get();
-      int64_t else_begin_index = EnterNewScope(e_else);
+      int64_t else_begin_index = EnterNewScope(&e_else);
       StmtExprVisitor::VisitStmt(op->else_case);
-      ExitNewScope(e_else, else_begin_index);
+      ExitNewScope(&e_else, else_begin_index);
     }
   }
 

@@ -1,3 +1,20 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 """Tensor-Core SpMM
 Related work: https://arxiv.org/pdf/2112.02052.pdf
 """
@@ -571,9 +588,7 @@ def bench_tc_spmm(g: dgl.DGLHeteroGraph, x: th.Tensor, y_golden: th.Tensor, mma_
     nnz = g.num_edges()
     mb = (m + tile_size - 1) // tile_size
     nb = (n + group_size - 1) // group_size
-    group_indptr, tile_indices, mask = condense(
-        indptr_nd, indices_nd, tile_size, group_size
-    )
+    group_indptr, tile_indices, mask = condense(indptr_nd, indices_nd, tile_size, group_size)
     print("Condense density: {:.2f}%".format(100 * mask.numpy().sum() / np.prod(mask.shape)))
     del indptr_nd, indices_nd
     nnzb = mask.shape[0]

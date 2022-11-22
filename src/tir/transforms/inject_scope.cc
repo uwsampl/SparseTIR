@@ -20,9 +20,9 @@
 /*!
  * \file inject_scope.cc
  */
+#include <tvm/arith/analyzer.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
-#include <tvm/arith/analyzer.h>
 
 #include "ir_utils.h"
 
@@ -43,7 +43,7 @@ class VarCollector : public StmtExprVisitor {
 
 class ScopeInjector : public StmtExprMutator {
  public:
-  explicit ScopeInjector() {}
+  ScopeInjector() {}
 
  private:
   Stmt VisitStmt_(const ForNode* op) final {

@@ -542,7 +542,7 @@ def csr2bsr(
     n_out: T.int32,
     nnz_in: T.int32,
     nnz_out: T.int32,
-    blk_size: T.int32
+    blk_size: T.int32,
 ):
     T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 2})
     I = T.dense_fixed(m_in)
@@ -555,4 +555,3 @@ def csr2bsr(
     B = T.match_sparse_buffer(b, (I_bsr, J_bsr, BI, BJ), "float32")
     with T.iter([I, J], "SS", "csr2bsr") as [i, j]:
         B[i // blk_size, j // blk_size, i % blk_size, j % blk_size] = A[i, j]
- 

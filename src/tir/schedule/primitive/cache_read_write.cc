@@ -1240,7 +1240,7 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int write_bu
 
 class VarCollector : public ExprVisitor {
  public:
-  explicit VarCollector() {}
+  VarCollector() {}
   std::unordered_set<const VarNode*> touched;
 
  private:

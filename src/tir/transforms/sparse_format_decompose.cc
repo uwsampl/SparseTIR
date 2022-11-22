@@ -147,33 +147,33 @@ class IndexRewriter {
     inv_idx_map_ = std::move(inv_idx_map);
   }
 
-  void UpdateInvMap(Map<Axis, PrimExpr>& axis_val_map) {
+  void UpdateInvMap(Map<Axis, PrimExpr>* axis_val_map) {
     Array<PrimExpr> after_indices;
     for (const Axis& axis : axes_after_rewrite_) {
-      if (axis_val_map.count(axis)) {
-        after_indices.push_back(axis_val_map.Get(axis).value());
+      if (axis_val_map->count(axis)) {
+        after_indices.push_back(axis_val_map->Get(axis).value());
       } else {
         after_indices.push_back(Integer(0));
       }
     }
     Array<PrimExpr> before_indices = inv_idx_map_->MapIndices(after_indices);
     for (size_t i = 0; i < axes_before_rewrite_.size(); ++i) {
-      axis_val_map.Set(axes_before_rewrite_[i], before_indices[i]);
+      axis_val_map->Set(axes_before_rewrite_[i], before_indices[i]);
     }
   }
 
-  void UpdateMap(Map<Axis, PrimExpr>& axis_val_map) {
+  void UpdateMap(Map<Axis, PrimExpr>* axis_val_map) {
     Array<PrimExpr> before_indices;
     for (const Axis& axis : axes_before_rewrite_) {
-      if (axis_val_map.count(axis)) {
-        before_indices.push_back(axis_val_map.Get(axis).value());
+      if (axis_val_map->count(axis)) {
+        before_indices.push_back(axis_val_map->Get(axis).value());
       } else {
         before_indices.push_back(Integer(0));
       }
     }
     Array<PrimExpr> after_indices = idx_map_->MapIndices(before_indices);
     for (size_t i = 0; i < axes_after_rewrite_.size(); ++i) {
-      axis_val_map.Set(axes_after_rewrite_[i], after_indices[i]);
+      axis_val_map->Set(axes_after_rewrite_[i], after_indices[i]);
     }
   }
 
@@ -253,7 +253,7 @@ class SparseFormatDecomposer : public StmtExprMutator {
         sp_iter_vars.push_back(SpIterVar(var, false, axis));
         axis_val_map.Set(axis, var);
       }
-      rewriter_.UpdateInvMap(axis_val_map);
+      rewriter_.UpdateInvMap(&axis_val_map);
       Array<PrimExpr> before_indices;
       for (const Axis& axis : before_rewrite->axes) {
         before_indices.push_back(axis_val_map.Get(axis).value());
@@ -311,7 +311,7 @@ class SparseFormatDecomposer : public StmtExprMutator {
         axis_iter_var_map_.Set(sp_iter_var->axis, new_sp_iter_var);
       }
     }
-    rewriter_.UpdateInvMap(axis_val_map);
+    rewriter_.UpdateInvMap(&axis_val_map);
     for (const SpIterVar& sp_iter_var : op->sp_iter_vars) {
       var_map_.Set(sp_iter_var->var, axis_val_map.Get(sp_iter_var->axis).value());
     }
@@ -343,8 +343,8 @@ class SparseFormatDecomposer : public StmtExprMutator {
       axis_val_map.Set(old_buf->axes[i], indices[i]);
     }
     Array<PrimExpr> new_indices;
-    rewriter_.UpdateMap(axis_val_map);
-    rewriter_.UpdateInvMap(axis_val_map);
+    rewriter_.UpdateMap(&axis_val_map);
+    rewriter_.UpdateInvMap(&axis_val_map);
     for (const Axis& axis : new_buf->axes) {
       new_indices.push_back(ana.Simplify(axis_val_map.Get(axis).value()));
     }

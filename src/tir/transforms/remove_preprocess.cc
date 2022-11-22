@@ -31,7 +31,7 @@ namespace tir {
 
 class PreprocessRemover : public StmtExprMutator {
  public:
-  explicit PreprocessRemover() {}
+  PreprocessRemover() {}
   Map<Var, Buffer> extra_buffer_map;
   /* NOTE(Zihao): extra_buffer_map do not preserve order, use another array to record order
    * information. */

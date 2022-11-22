@@ -48,14 +48,15 @@ def nested_loop_no_dependency_after_transform() -> None:
         with T.block("outer"):
             vi = T.axis.spatial(16, i)
             v_jo = T.axis.spatial(4, jo)
-            T.reads(b[vi, 0 : 16])
-            T.writes(a[vi, 0 : 16])
+            T.reads(b[vi, 0:16])
+            T.writes(a[vi, 0:16])
             for ji in T.serial(4):
                 with T.block("inner"):
                     vj = T.axis.spatial(16, 4 * v_jo + ji)
                     T.reads(b[vi, vj])
                     T.writes(a[vi, vj])
                     a[vi, vj] = b[vi, vj]
+
 
 # @T.prim_func
 # def nested_loop_with_dependency() -> None:

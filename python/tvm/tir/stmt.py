@@ -616,7 +616,7 @@ class Block(Stmt):
 
     match_buffers: Optional[List[MatchBufferRegion]]
         The subregion buffer match
-    
+
     buf_doms: Optional[List[BufferDomain]]
         The buffer domains declared in the block.
 

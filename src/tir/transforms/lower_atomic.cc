@@ -38,7 +38,7 @@ namespace tir {
 
 class LowerAtomicTransformer : public StmtExprMutator {
  public:
-  explicit LowerAtomicTransformer() : is_atomic_block(false) {}
+  LowerAtomicTransformer() : is_atomic_block(false) {}
 
  private:
   Stmt VisitStmt_(const BlockNode* op) final {

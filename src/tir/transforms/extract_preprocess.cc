@@ -31,7 +31,7 @@ namespace tir {
 
 class PreprocessExtractor : public StmtExprMutator {
  public:
-  explicit PreprocessExtractor() {}
+  PreprocessExtractor() {}
   Map<Var, Buffer> extra_buffer_map;
 
  private:

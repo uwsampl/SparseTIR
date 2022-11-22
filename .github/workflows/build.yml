@@ -28,8 +28,16 @@ jobs:
       run: |
         DOCKER_BUILDKIT=1 docker build \
           . \
-          --file Dockerfile \
+          --file docker/Dockerfile.ci_sparsetir_gpu \
           --tag ${{ steps.generate-tag.outputs.tag }}
+  
+  run-lint:
+    runs-on: self-hosted
+    needs: build-docker-image
+    steps:
+    - name: Run lint
+      id: lint
+      run: docker run ${{ needs.build-docker-image.outputs.tag }} bash tests/scripts/task_lint.sh
 
   run-tests:
     runs-on: self-hosted

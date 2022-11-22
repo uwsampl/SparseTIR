@@ -55,7 +55,7 @@ Map<Var, Buffer> UpdateBufferMap(PrimFunc f) {
     }
   }
   return buffer_map;
-};
+}
 
 }  // namespace
 

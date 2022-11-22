@@ -252,12 +252,10 @@ def test_fma():
 
 @T.prim_func
 def global_add(a: T.handle) -> None:
-    A = T.match_buffer(a, (1,), dtype='int32')
+    A = T.match_buffer(a, (1,), dtype="int32")
     for i in T.serial(0, 1024):
-        with T.block('global_add'):
-            T.block_attr({
-                "atomic": True
-            })
+        with T.block("global_add"):
+            T.block_attr({"atomic": True})
             T.reads([A[0:1]])
             T.writes([A[0:1]])
             vi = T.axis.S(1024, i)
@@ -266,10 +264,10 @@ def global_add(a: T.handle) -> None:
 
 def test_global_add():
     sch = tir.Schedule(global_add)
-    b = sch.get_block('global_add')
-    i, = sch.get_loops(b)
-    sch.bind(i, 'blockIdx.x')
-    f = tvm.build(sch.mod['main'], target='cuda')
+    b = sch.get_block("global_add")
+    (i,) = sch.get_loops(b)
+    sch.bind(i, "blockIdx.x")
+    f = tvm.build(sch.mod["main"], target="cuda")
 
     # create input and run kernel
     dev = tvm.cuda(0)

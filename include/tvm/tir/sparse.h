@@ -71,7 +71,9 @@ class AxisNode : public Object {
   /* Whether current axis is a sparse axis. */
   bool IsSparse() const { return indices.defined(); }
 
-  AxisKind kind() const { return AxisKind(int(IsVariable()) + 2 * int(IsSparse())); }
+  AxisKind kind() const {
+    return AxisKind(static_cast<int>(IsVariable()) + 2 * static_cast<int>(IsSparse()));
+  }
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("name", &name);
@@ -118,7 +120,7 @@ class Axis : public ObjectRef {
  public:
   TVM_DLL explicit Axis(String name, Optional<ObjectRef> parent, PrimExpr length, PrimExpr nnz,
                         Optional<PrimExpr> nnz_cols, Optional<Var> indptr, Optional<Var> indices,
-                        DataType idtype, bool sorted=true);
+                        DataType idtype, bool sorted = true);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Axis, ObjectRef, AxisNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(AxisNode);
@@ -142,7 +144,7 @@ class FusedAxisNode : public AxisNode {
     v->Visit("index", &index);
   }
 
-  bool IsLastAxis() const { return index + 1 == int(group.size()); }
+  bool IsLastAxis() const { return index + 1 == static_cast<int>(group.size()); }
 
   bool SEqualReduce(const FusedAxisNode* other, SEqualReducer equal) const {
     return AxisNode::SEqualReduce(other, equal) && equal(group, other->group) &&
@@ -346,8 +348,9 @@ class SpIterVarNode : public Object {
       dom = Range::FromMinExtent(Integer(0), axis->nnz_cols.value());
     }
 
-    return IterVar(dom, Var("v" + var->name_hint, var->dtype), is_reduction ? kCommReduce : kDataPar, "");
-  };
+    return IterVar(dom, Var("v" + var->name_hint, var->dtype),
+                   is_reduction ? kCommReduce : kDataPar, "");
+  }
 
   static constexpr const char* _type_key = "tir.sparse.SpIterVar";
   static constexpr const bool _type_has_method_sequal_reduce = true;
