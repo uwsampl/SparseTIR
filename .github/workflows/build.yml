@@ -51,6 +51,7 @@ jobs:
   deploy-doc:
     runs-on: self-hosted
     needs: build-doc
+    if: github.ref == "refs/heads/main"
     steps:
     - name: Deploy documentation
       id: deploy-doc
