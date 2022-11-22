@@ -3,6 +3,11 @@ on:
   push:
     branches:
     - main
+  pull-requests:
+    branches:
+    - main
+  # Allow manual trigger.
+  workflow_dispatch:
 jobs:
   build-docker-image:
     runs-on: self-hosted
