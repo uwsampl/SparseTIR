@@ -42,6 +42,7 @@ jobs:
   build-doc:
     runs-on: self-hosted
     needs: build-docker-image
+    if: ${{ github.ref == 'refs/heads/main' }}
     steps:
     - name: Build Documentation
       id: build-doc
