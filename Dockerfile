@@ -54,6 +54,9 @@ RUN bash /install/ubuntu_install_dgl.sh
 COPY docker/install/ubuntu_install_torch.sh /install/ubuntu_install_torch.sh
 RUN bash /install/ubuntu_install_torch.sh
 
+COPY docker/install/ubuntu_install_rat.sh /install/ubuntu_install_rat.sh
+RUN bash /install/ubuntu_install_rat.sh
+
 # Environment variables
 ENV PATH=/usr/local/nvidia/bin:${PATH}
 ENV PATH=/usr/local/cuda/bin:${PATH}
@@ -70,6 +73,7 @@ ENV PATH=/node_modules/.bin:${PATH}
 
 # Install SparseTIR GPU
 WORKDIR /root/sparsetir
+ADD .git/ .git/
 ADD 3rdparty 3rdparty/
 ADD cmake cmake/
 ADD configs configs/
@@ -85,3 +89,7 @@ ENV PYTHONPATH=python/:${PYTHONPATH}
 # Add documentation and examples
 ADD docs docs/
 ADD examples examples/
+
+# Install dependencies required by lint
+RUN apt install -y clang-format
+RUN pip3 install flake8==5.0.4 pylint==2.15.6 cpplint==1.6.1 black==22.8.0

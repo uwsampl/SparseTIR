@@ -130,9 +130,9 @@ ALLOW_SPECIFIC_FILE = {
     "apps/android_rpc/app/src/main/res/mipmap-hdpi/ic_launcher.png",
     "apps/android_rpc/app/src/main/res/mipmap-mdpi/ic_launcher.png",
     # documentation related files
-    "docs/_static/css/tvm_theme.css",
-    "docs/_static/img/tvm-logo-small.png",
-    "docs/_static/img/tvm-logo-square.png",
+    "tvm-docs/_static/css/tvm_theme.css",
+    "tvm-docs/_static/img/tvm-logo-small.png",
+    "tvm-docs/_static/img/tvm-logo-square.png",
     # pytest config
     "pytest.ini",
     # microTVM tests
