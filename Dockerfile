@@ -86,9 +86,21 @@ COPY docker/install/install_sparsetir_gpu.sh /install/install_sparsetir_gpu.sh
 RUN bash /install/install_sparsetir_gpu.sh
 ENV PYTHONPATH=python/:${PYTHONPATH}
 
-# Add documentation and examples
+# Add other folders
 ADD docs docs/
+ADD conftest.py conftest.py
+ADD gallery gallery/
+ADD golang golang/
+ADD jenkins jenkins/
+ADD jvm jvm/
+ADD tvm-docs tvm-docs/
+ADD vta vta/
+ADD conda conda/
+ADD apps apps/
 ADD examples examples/
+ADD configs configs/
+ADD version.py version.py
+ADD web web/
 
 # Install dependencies required by lint
 RUN apt install -y clang-format
