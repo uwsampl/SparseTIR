@@ -40,6 +40,7 @@
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Install SparseTIR</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#build-from-source">Build from Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#install-python-binding">Install Python Binding</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="tutorials/blitz.html">The Blitz Course to SparseTIR</a></li>
@@ -97,11 +98,27 @@
 <div class="section" id="build-from-source">
 <h2>Build from Source<a class="headerlink" href="#build-from-source" title="Permalink to this headline"></a></h2>
 <blockquote>
-<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git clone --recursive git@github.com:uwsampl/sparsetir.git
+<div><p>The first step is to compile source code written in C++.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git clone --recursive git@github.com:uwsampl/sparsetir.git
 mkdir build
 <span class="nb">cd</span> build
 cmake .. -DUSE_CUDA<span class="o">=</span>ON -DUSE_LLVM<span class="o">=</span>ON
 make -j<span class="k">$(</span>nproc<span class="k">)</span>
+</pre></div>
+</div>
+</div></blockquote>
+</div>
+<div class="section" id="install-python-binding">
+<h2>Install Python Binding<a class="headerlink" href="#install-python-binding" title="Permalink to this headline"></a></h2>
+<blockquote>
+<div><p>If compilation is successful, the next step is to install SparseTIR binding for Python, you can either install Python package via:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span> python
+python3 setup.py install
+</pre></div>
+</div>
+<p>or set environment variable <cite>${PYTHONPATH}</cite>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span> <span class="nv">SPARSETIR_PATH</span><span class="o">=</span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>
+<span class="nb">export</span> <span class="nv">PYTHONPATH</span><span class="o">=</span><span class="si">${</span><span class="nv">SPARSETIR_PATH</span><span class="si">}</span>/python:<span class="si">${</span><span class="nv">PYTHONPATH</span><span class="si">}</span>
 </pre></div>
 </div>
 </div></blockquote>

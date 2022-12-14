@@ -23,6 +23,8 @@ Currently we only support build SparseTIR from source code.
 Build from Source
 -----------------
 
+  The first step is to compile source code written in C++.
+
   .. code:: bash
 
     git clone --recursive git@github.com:uwsampl/sparsetir.git
@@ -30,3 +32,23 @@ Build from Source
     cd build
     cmake .. -DUSE_CUDA=ON -DUSE_LLVM=ON
     make -j$(nproc)
+
+Install Python Binding
+----------------------
+
+  If compilation is successful, the next step is to install SparseTIR binding for Python, you can either install Python package via:
+
+  .. code:: bash
+
+    cd python
+    python3 setup.py install
+  
+
+  or set environment variable `${PYTHONPATH}`:
+
+  .. code:: bash
+
+    export SPARSETIR_PATH=$(pwd)
+    export PYTHONPATH=${SPARSETIR_PATH}/python:${PYTHONPATH}
+
+
