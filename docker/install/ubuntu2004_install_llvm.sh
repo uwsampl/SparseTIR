@@ -31,5 +31,4 @@ wget -q -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
 
 apt-get update && apt-get install -y \
      llvm-14 \
-     clang-14 libclang-14-dev \
-     clang-format-14
+     clang-14 libclang-14-dev
