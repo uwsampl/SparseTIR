@@ -55,7 +55,7 @@ cleanup()
 }
 trap cleanup 0
 
-CLANG_FORMAT=clang-format
+CLANG_FORMAT=clang-format-14
 
 if [ -x "$(command -v clang-format-10)" ]; then
     CLANG_FORMAT=clang-format-10
