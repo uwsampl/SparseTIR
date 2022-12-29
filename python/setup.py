@@ -45,8 +45,7 @@ def get_lib_path():
     # Will be invoked which introduces dependencies
     libinfo_py = os.path.join(CURRENT_DIR, "./tvm/_ffi/libinfo.py")
     libinfo = {"__file__": libinfo_py}
-    exec(compile(open(libinfo_py, "rb").read(), libinfo_py, "exec"), libinfo,
-         libinfo)
+    exec(compile(open(libinfo_py, "rb").read(), libinfo_py, "exec"), libinfo, libinfo)
     version = libinfo["__version__"]
     if not CONDA_BUILD:
         lib_path = libinfo["find_lib_path"]()
@@ -59,28 +58,25 @@ def get_lib_path():
 
         # Add standalone_crt, if present
         for name in lib_path:
-            candidate_path = os.path.join(os.path.dirname(name),
-                                          "standalone_crt")
+            candidate_path = os.path.join(os.path.dirname(name), "standalone_crt")
             if os.path.isdir(candidate_path):
                 libs.append(candidate_path)
                 break
 
         # Add microTVM template projects
         for name in lib_path:
-            candidate_path = os.path.join(os.path.dirname(name),
-                                          "microtvm_template_projects")
+            candidate_path = os.path.join(os.path.dirname(name), "microtvm_template_projects")
             if os.path.isdir(candidate_path):
                 libs.append(candidate_path)
                 break
 
         # Add tvmc configuration json files
         for name in lib_path:
-            candidate_path = os.path.abspath(
-                os.path.join(os.path.dirname(name), "..", "configs"))
+            candidate_path = os.path.abspath(os.path.join(os.path.dirname(name), "..", "configs"))
             if os.path.isdir(candidate_path):
-                print('------------------')
+                print("------------------")
                 print(candidate_path)
-                print('------------------')
+                print("------------------")
                 libs.append(candidate_path)
                 break
 
@@ -109,15 +105,11 @@ def config_cython():
     """Try to configure cython and return cython configuration"""
     if FFI_MODE not in ("cython"):
         if os.name == "nt" and not CONDA_BUILD:
-            print(
-                "WARNING: Cython is not supported on Windows, will compile without cython module"
-            )
+            print("WARNING: Cython is not supported on Windows, will compile without cython module")
             return []
         sys_cflags = sysconfig.get_config_var("CFLAGS")
         if sys_cflags and "i386" in sys_cflags and "x86_64" in sys_cflags:
-            print(
-                "WARNING: Cython library may not be compiled correctly with both i386 and x64"
-            )
+            print("WARNING: Cython library may not be compiled correctly with both i386 and x64")
             return []
     try:
         from Cython.Build import cythonize
@@ -129,9 +121,7 @@ def config_cython():
             subdir = "_cy2"
         ret = []
         path = "tvm/_ffi/_cython"
-        extra_compile_args = [
-            "-std=c++14", "-DDMLC_USE_LOGGING_LIBRARY=<tvm/runtime/logging.h>"
-        ]
+        extra_compile_args = ["-std=c++14", "-DDMLC_USE_LOGGING_LIBRARY=<tvm/runtime/logging.h>"]
         if os.name == "nt":
             library_dirs = ["tvm", "../build/Release", "../build"]
             libraries = ["tvm"]
@@ -159,19 +149,17 @@ def config_cython():
                     library_dirs=library_dirs,
                     libraries=libraries,
                     language="c++",
-                ))
+                )
+            )
         return cythonize(ret, compiler_directives={"language_level": 3})
     except ImportError as error:
         if FFI_MODE == "cython":
             raise error
-        print(
-            "WARNING: Cython is not installed, will compile without cython module"
-        )
+        print("WARNING: Cython is not installed, will compile without cython module")
         return []
 
 
 class BinaryDistribution(Distribution):
-
     def has_ext_modules(self):
         return True
 
@@ -200,8 +188,7 @@ if wheel_include_libs:
 
             if os.path.isdir(path):
                 _, libname = os.path.split(path)
-                shutil.copytree(path, os.path.join(CURRENT_DIR, "tvm",
-                                                   libname))
+                shutil.copytree(path, os.path.join(CURRENT_DIR, "tvm", libname))
                 fo.write(f"recursive-include tvm/{libname} *\n")
 
     setup_kwargs = {"include_package_data": True}
@@ -216,12 +203,8 @@ if include_libs:
             for root, dirs, files in os.walk(path):
                 for filename in files:
                     file_path = os.path.join(root, filename)
-                    LIB_DATA_FILES.append(os.path.relpath(
-                        file_path, curr_path))
-    setup_kwargs = {
-        "include_package_data": True,
-        "data_files": [("tvm", LIB_DATA_FILES)]
-    }
+                    LIB_DATA_FILES.append(os.path.relpath(file_path, curr_path))
+    setup_kwargs = {"include_package_data": True, "data_files": [("tvm", LIB_DATA_FILES)]}
 
 
 def get_package_data_files():
@@ -230,8 +213,7 @@ def get_package_data_files():
 
 
 def long_description_contents():
-    with open(pathlib.Path(CURRENT_DIR).resolve().parent / "README.md",
-              encoding="utf-8") as readme:
+    with open(pathlib.Path(CURRENT_DIR).resolve().parent / "README.md", encoding="utf-8") as readme:
         description = readme.read()
 
     return description
@@ -246,16 +228,13 @@ sys.path.pop(0)
 
 requirements = gen_requirements.join_requirements()
 extras_require = {
-    piece: deps
-    for piece, (_, deps) in requirements.items()
-    if piece not in ("all", "core")
+    piece: deps for piece, (_, deps) in requirements.items() if piece not in ("all", "core")
 }
 
 setup(
     name="tvm",
     version=__version__,
-    description=
-    "TVM: An End to End Tensor IR/DSL Stack for Deep Learning Systems",
+    description="SparseTIR: Sparse Tensor Compiler for Deep Learning (fork from Apache TVM)",
     long_description=long_description_contents(),
     long_description_content_type="text/markdown",
     url="https://tvm.apache.org/",
