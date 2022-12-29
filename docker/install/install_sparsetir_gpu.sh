@@ -17,6 +17,7 @@
 # under the License.
 
 
+# Compile C++ source code.
 echo set\(USE_LLVM \"llvm-config-14 --ignore-libllvm --link-static\"\) >> config.cmake
 echo set\(HIDE_PRIVATE_SYMBOLS ON\) >> config.cmake
 echo set\(USE_CUDA ON\) >> config.cmake
@@ -26,3 +27,8 @@ mkdir -p build
 cd build
 cmake ..
 make -j$(nproc)
+cd ..
+
+# Install Python binding.
+cd python/
+python3 setup.py install

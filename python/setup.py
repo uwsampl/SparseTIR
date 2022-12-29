@@ -74,6 +74,9 @@ def get_lib_path():
         for name in lib_path:
             candidate_path = os.path.abspath(os.path.join(os.path.dirname(name), "..", "configs"))
             if os.path.isdir(candidate_path):
+                print("------------------")
+                print(candidate_path)
+                print("------------------")
                 libs.append(candidate_path)
                 break
 
@@ -192,9 +195,16 @@ if wheel_include_libs:
 
 if include_libs:
     curr_path = os.path.dirname(os.path.abspath(os.path.expanduser(__file__)))
+    LIB_DATA_FILES = []
     for i, path in enumerate(LIB_LIST):
-        LIB_LIST[i] = os.path.relpath(path, curr_path)
-    setup_kwargs = {"include_package_data": True, "data_files": [("tvm", LIB_LIST)]}
+        if os.path.isfile(path):
+            LIB_DATA_FILES.append(os.path.relpath(path, curr_path))
+        if os.path.isdir(path):
+            for root, dirs, files in os.walk(path):
+                for filename in files:
+                    file_path = os.path.join(root, filename)
+                    LIB_DATA_FILES.append(os.path.relpath(file_path, curr_path))
+    setup_kwargs = {"include_package_data": True, "data_files": [("tvm", LIB_DATA_FILES)]}
 
 
 def get_package_data_files():
@@ -224,7 +234,7 @@ extras_require = {
 setup(
     name="tvm",
     version=__version__,
-    description="TVM: An End to End Tensor IR/DSL Stack for Deep Learning Systems",
+    description="SparseTIR: Sparse Tensor Compiler for Deep Learning (forked from Apache TVM)",
     long_description=long_description_contents(),
     long_description_content_type="text/markdown",
     url="https://tvm.apache.org/",
@@ -251,7 +261,6 @@ setup(
     ext_modules=config_cython(),
     **setup_kwargs,
 )
-
 
 if wheel_include_libs:
     # Wheel cleanup
