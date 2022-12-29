@@ -30,4 +30,5 @@ make -j$(nproc)
 cd ..
 
 # Install Python binding.
-python3 python/setup.py install
+cd python/
+python3 setup.py install
