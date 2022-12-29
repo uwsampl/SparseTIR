@@ -234,7 +234,7 @@ extras_require = {
 setup(
     name="tvm",
     version=__version__,
-    description="SparseTIR: Sparse Tensor Compiler for Deep Learning (fork from Apache TVM)",
+    description="SparseTIR: Sparse Tensor Compiler for Deep Learning (forked from Apache TVM)",
     long_description=long_description_contents(),
     long_description_content_type="text/markdown",
     url="https://tvm.apache.org/",
