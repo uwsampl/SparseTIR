@@ -74,6 +74,7 @@ ENV PATH=/node_modules/.bin:${PATH}
 # Install SparseTIR GPU
 WORKDIR /root/sparsetir
 ADD . .
+RUN pip3 install cython
 RUN bash docker/install/install_sparsetir_gpu.sh
 
 # Install dependencies required by lint
