@@ -75,7 +75,6 @@ ENV PATH=/node_modules/.bin:${PATH}
 WORKDIR /root/sparsetir
 ADD . .
 RUN bash docker/install/install_sparsetir_gpu.sh
-ENV PYTHONPATH=python/:${PYTHONPATH}
 
 # Install dependencies required by lint
 RUN apt install -y clang-format-14
