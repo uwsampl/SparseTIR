@@ -39,7 +39,8 @@
               <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Install SparseTIR</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#build-from-source">Build from Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#pre-requisites">Pre-requisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#build-the-shared-library">Build the Shared Library</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#install-python-binding">Install Python Binding</a></li>
 </ul>
 </li>
@@ -94,15 +95,32 @@
              
   <div class="section" id="install-sparsetir">
 <h1>Install SparseTIR<a class="headerlink" href="#install-sparsetir" title="Permalink to this headline"></a></h1>
-<p>Currently we only support build SparseTIR from source code.</p>
-<div class="section" id="build-from-source">
-<h2>Build from Source<a class="headerlink" href="#build-from-source" title="Permalink to this headline"></a></h2>
+<p>Currently we only support build SparseTIR from source code, you’ll need to build the shared library (which is written in C++) first and then install Python bindings.
+It’s worth noting that SparseTIR is a fork of Apache TVM project, and you don’t need to install Apache TVM to use Sparse TIR.</p>
+<div class="section" id="pre-requisites">
+<h2>Pre-requisites<a class="headerlink" href="#pre-requisites" title="Permalink to this headline"></a></h2>
+<blockquote>
+<div><p>We recommend user to install following packages before compiling SparseTIR shared library:
+- A recent C++ compiler supporting C++ 14.
+- CMake 3.18 or higher
+- LLVM 10 or higher
+- CUDA Toolkit 11 or higher
+- Python 3.9 or higher</p>
+</div></blockquote>
+</div>
+<div class="section" id="build-the-shared-library">
+<h2>Build the Shared Library<a class="headerlink" href="#build-the-shared-library" title="Permalink to this headline"></a></h2>
 <blockquote>
 <div><p>The first step is to compile source code written in C++.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git clone --recursive git@github.com:uwsampl/sparsetir.git
-mkdir build
+<span class="nb">echo</span> set<span class="se">\(</span>USE_LLVM <span class="se">\&quot;</span>llvm-config --ignore-libllvm --link-static<span class="se">\&quot;\)</span> &gt;&gt; config.cmake
+<span class="nb">echo</span> set<span class="se">\(</span>HIDE_PRIVATE_SYMBOLS ON<span class="se">\)</span> &gt;&gt; config.cmake
+<span class="nb">echo</span> set<span class="se">\(</span>USE_CUDA ON<span class="se">\)</span> &gt;&gt; config.cmake
+<span class="nb">echo</span> set<span class="se">\(</span>USE_CUBLAS ON<span class="se">\)</span> &gt;&gt; config.cmake
+<span class="nb">echo</span> set<span class="se">\(</span>USE_CUDNN ON<span class="se">\)</span> &gt;&gt; config.cmake
+mkdir -p build
 <span class="nb">cd</span> build
-cmake .. -DUSE_CUDA<span class="o">=</span>ON -DUSE_LLVM<span class="o">=</span>ON
+cmake ..
 make -j<span class="k">$(</span>nproc<span class="k">)</span>
 </pre></div>
 </div>
