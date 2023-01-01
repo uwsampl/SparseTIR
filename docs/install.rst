@@ -18,19 +18,35 @@
 Install SparseTIR
 =================
 
-Currently we only support build SparseTIR from source code.
+Currently we only support build SparseTIR from source code, you'll need to build the shared library (which is written in C++) first and then install Python bindings.
+It's worth noting that SparseTIR is a fork of Apache TVM project, and you don't need to install Apache TVM to use Sparse TIR.
 
-Build from Source
------------------
+Pre-requisites
+--------------
+
+  We recommend user to install following packages before compiling SparseTIR shared library:
+  - A recent C++ compiler supporting C++ 14.
+  - CMake 3.18 or higher
+  - LLVM 10 or higher
+  - CUDA Toolkit 11 or higher
+  - Python 3.9 or higher
+
+Build the Shared Library
+------------------------
 
   The first step is to compile source code written in C++.
 
   .. code:: bash
 
     git clone --recursive git@github.com:uwsampl/sparsetir.git
-    mkdir build
-    cd build
-    cmake .. -DUSE_CUDA=ON -DUSE_LLVM=ON
+    echo set\(USE_LLVM \"llvm-config --ignore-libllvm --link-static\"\) >> config.cmake
+    echo set\(HIDE_PRIVATE_SYMBOLS ON\) >> config.cmake
+    echo set\(USE_CUDA ON\) >> config.cmake
+    echo set\(USE_CUBLAS ON\) >> config.cmake
+    echo set\(USE_CUDNN ON\) >> config.cmake
+    mkdir -p build
+    cd build 
+    cmake ..
     make -j$(nproc)
 
 Install Python Binding
