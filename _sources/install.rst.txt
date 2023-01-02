@@ -25,11 +25,13 @@ Pre-requisites
 --------------
 
   We recommend user to install following packages before compiling SparseTIR shared library:
+
   - A recent C++ compiler supporting C++ 14.
   - CMake 3.18 or higher
   - LLVM 10 or higher
   - CUDA Toolkit 11 or higher
   - Python 3.9 or higher
+
 
 Build the Shared Library
 ------------------------
