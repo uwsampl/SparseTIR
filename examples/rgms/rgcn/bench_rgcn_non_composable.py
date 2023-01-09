@@ -109,7 +109,7 @@ def test_lower_rgcn_hetero(
     f(*args)
 
     # evaluate time
-    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=1, repeat=100)
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
     print("sparse-tir: {:.3f}".format(evaluator(*args).mean * 1000))
 
 

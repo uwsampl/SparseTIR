@@ -858,7 +858,7 @@ def rgms_tensorcore(
     answer = Y_nd.numpy()
 
     # evaluate time
-    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=1, repeat=100)
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
     measure = evaluator(*args).mean * 1000
     print("sparse-tir:\t\t{:.3f} ms".format(measure))
     return answer, measure
