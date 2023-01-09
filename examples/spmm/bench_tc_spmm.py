@@ -660,7 +660,7 @@ def bench_tc_spmm(g: dgl.DGLHeteroGraph, x: th.Tensor, y_golden: th.Tensor, mma_
         c_nd.numpy().reshape(-1, feat_size)[:m], y_golden.cpu().numpy(), rtol=1e-1
     )
 
-    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=100)
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=1, repeat=100)
     print("tc-spmm time: {:.5f}ms".format(evaluator(*args).mean * 1000))
 
 
