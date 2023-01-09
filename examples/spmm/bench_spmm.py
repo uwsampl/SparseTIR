@@ -226,7 +226,7 @@ def bench_hyb(
     tvm.testing.assert_allclose(c_nd.numpy().reshape(-1, feat_size), y_golden.numpy(), rtol=1e-4)
 
     # evaluate time
-    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=100)
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=1, repeat=100)
     print("tir hyb time: {:.5f}ms".format(evaluator(*args).mean * 1000))
 
 
