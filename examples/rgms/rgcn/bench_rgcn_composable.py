@@ -224,7 +224,7 @@ def test_rgcn_composable_format(
     tvm.testing.assert_allclose(Y_nd.numpy(), ground_truth_y.cpu().numpy().flatten(), rtol=1e-3)
 
     # evaluate time
-    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=1, repeat=100)
+    evaluator = f.time_evaluator(f.entry_name, tvm.cuda(0), number=10)
     print("sparse-tir:\t\t {:.3f} ms".format(evaluator(*args).mean * 1000))
 
 
