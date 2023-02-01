@@ -26,9 +26,6 @@ echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal main >> /etc/apt/so
 # 14
 echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
 echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
-# 16
-echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
-echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
 
 wget -q -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
 
