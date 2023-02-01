@@ -16,6 +16,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# Clear ccache
+ccache -C
 
 # Compile C++ source code.
 echo set\(USE_LLVM \"llvm-config-15 --ignore-libllvm --link-static\"\) >> config.cmake
@@ -30,6 +32,5 @@ make -j$(nproc)
 cd ..
 
 # Install Python binding.
-export PYTHONPATH=$(pwd)/python:${PYTHONPATH}
-# cd python/
-# pip3 install -e .
+cd python/
+pip3 install -e .
