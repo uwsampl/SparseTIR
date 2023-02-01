@@ -30,5 +30,6 @@ make -j$(nproc)
 cd ..
 
 # Install Python binding.
-cd python/
-pip3 install -e .
+export PYTHONPATH=$(pwd)/python:${PYTHONPATH}
+# cd python/
+# pip3 install -e .
