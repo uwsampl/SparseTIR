@@ -16,6 +16,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# Clear ccache
+ccache -C
+if [ -d build/ ];
+then
+  rm -rf build/
+fi
 
 # Compile C++ source code.
 echo set\(USE_LLVM \"llvm-config-14 --ignore-libllvm --link-static\"\) >> config.cmake
@@ -31,4 +37,4 @@ cd ..
 
 # Install Python binding.
 cd python/
-python3 setup.py install
+pip3 install -e .
