@@ -29,6 +29,7 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
 RUN apt-get clean
 RUN apt-get update --fix-missing
 RUN apt-get -y install cmake
+RUN apt-get install libtinfo-dev
 
 COPY docker/install/ubuntu_install_core.sh /install/ubuntu_install_core.sh
 RUN bash /install/ubuntu_install_core.sh
