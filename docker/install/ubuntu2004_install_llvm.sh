@@ -23,12 +23,15 @@ set -o pipefail
 echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal main >> /etc/apt/sources.list.d/llvm.list
 echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal main >> /etc/apt/sources.list.d/llvm.list
 
-# 14
-echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
-echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
+# 15
+echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main >> /etc/apt/sources.list.d/llvm.list
+echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main >> /etc/apt/sources.list.d/llvm.list
+# 16
+echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal-16 main >> /etc/apt/sources.list.d/llvm.list
+echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-16 main >> /etc/apt/sources.list.d/llvm.list
 
 wget -q -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
 
 apt-get update && apt-get install -y \
-     llvm-14 \
-     clang-14 libclang-14-dev
+     llvm-15 \
+     clang-15 libclang-15-dev
