@@ -31,4 +31,4 @@ cd ..
 
 # Install Python binding.
 cd python/
-python3 setup.py install
+pip3 install -e .
