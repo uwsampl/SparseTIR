@@ -18,6 +18,10 @@
 
 # Clear ccache
 ccache -C
+if [ -d build/ ];
+then
+  rm -rf build/
+fi
 
 # Compile C++ source code.
 echo set\(USE_LLVM \"llvm-config-15 --ignore-libllvm --link-static\"\) >> config.cmake
