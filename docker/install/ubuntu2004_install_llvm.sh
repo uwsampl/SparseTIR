@@ -20,15 +20,8 @@ set -e
 set -u
 set -o pipefail
 
-echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal main >> /etc/apt/sources.list.d/llvm.list
-echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal main >> /etc/apt/sources.list.d/llvm.list
+bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
 
-# 14
-echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
-echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
-
-wget -q -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
-
-apt-get update && apt-get install -y \
-     llvm-14 clang-format-14 \
-     clang-14 libclang-14-dev libpolly-14-dev
+wget https://apt.llvm.org/llvm.sh
+chmod +x llvm.sh
+sudo ./llvm.sh 14 all
