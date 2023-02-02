@@ -29,7 +29,7 @@ echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal-13 main\
 
 apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 15CF4D18AF4F7421
 
-apt-get update && install -y \
+apt-get update && apt-get install -y \
      llvm-9 llvm-10 llvm-11 llvm-12 llvm-13 \
      clang-9 libclang-9-dev \
      clang-10 libclang-10-dev \
