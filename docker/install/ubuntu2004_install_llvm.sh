@@ -20,15 +20,20 @@ set -e
 set -u
 set -o pipefail
 
+wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+# or
+wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+# Fingerprint: 6084 F3CF 814B 57C1 CF12 EFD5 15CF 4D18 AF4F 7421
+
 echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal main >> /etc/apt/sources.list.d/llvm.list
 echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal main >> /etc/apt/sources.list.d/llvm.list
 
-# 14
-echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
-echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-14 main >> /etc/apt/sources.list.d/llvm.list
+# 15
+echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main >> /etc/apt/sources.list.d/llvm.list
+echo deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main >> /etc/apt/sources.list.d/llvm.list
 
 wget -q -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
 
 apt-get update && apt-get install -y \
-     llvm-14 clang-format-14 \
-     clang-14 libclang-14-dev libclang-common-14-dev
+     llvm-15 clang-format-15 \
+     clang-15 libclang-15-dev libpolly-15-dev
