@@ -55,10 +55,10 @@ cleanup()
 }
 trap cleanup 0
 
-if [ -x "$(command -v clang-format-15)" ]; then
-    CLANG_FORMAT=clang-format-15
+if [ -x "$(command -v clang-format-13)" ]; then
+    CLANG_FORMAT=clang-format-13
 else
-    echo "Cannot find clang-format-15"
+    echo "Cannot find clang-format-13"
     exit 1
 fi
 
