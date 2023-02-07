@@ -103,6 +103,7 @@ class ConcreteScheduleNode : public ScheduleNode {
   LoopRV Fuse(const Array<LoopRV>& loop_rvs) override;
   Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) override;
   void Reorder(const Array<LoopRV>& ordered_loop_rvs) override;
+  void ReorderBlockIterVar(const BlockRV& block_rv, const Array<Integer> new_order) override;
   void LiftLoop(const LoopRV& loop_rv) override;
   /******** Schedule: Manipulate ForKind ********/
   void Parallel(const LoopRV& loop_rv) override;

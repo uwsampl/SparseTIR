@@ -185,7 +185,14 @@ TVM_DLL StmtSRef Fuse(ScheduleState self, const Array<StmtSRef>& loop_srefs);
  * \param ordered_loop_srefs An array of srefs which indicates the new order of loops
  */
 TVM_DLL void Reorder(ScheduleState self, const Array<StmtSRef>& ordered_loop_srefs);
-
+/*!
+ * \brief Reorder itervars inside a block.
+ * \param self The state of the schedule.
+ * \param block_sref The sref of block to be transformed.
+ * \param new_order The new itervar order.
+ */
+TVM_DLL void ReorderBlockIterVar(ScheduleState self, const StmtSRef& block_sref,
+                                 const Array<Integer>& new_order);
 /*!
  * \brief Lift a loop to its outer scope.
  * TODO(zihao): docstring
