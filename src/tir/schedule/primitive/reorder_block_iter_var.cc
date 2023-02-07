@@ -78,7 +78,7 @@ void ReorderBlockIterVar(ScheduleState self, const StmtSRef& block_sref,
   // check whether new_order is valid or not;
   int num_block_itervars = block_n->iter_vars.size();
   std::set<int> ind_set(new_order_vec.begin(), new_order_vec.end());
-  bool is_full = int(new_order_vec.size()) == num_block_itervars;
+  bool is_full = static_cast<int>(new_order_vec.size()) == num_block_itervars;
   bool is_unique = (ind_set.size() == new_order_vec.size());
   bool in_boundary = std::all_of(new_order_vec.begin(), new_order_vec.end(),
                                  [&](int x) { return x >= 0 && x < num_block_itervars; });
