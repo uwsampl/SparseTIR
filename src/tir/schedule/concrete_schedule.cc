@@ -453,6 +453,14 @@ void ConcreteScheduleNode::Reorder(const Array<LoopRV>& ordered_loop_rvs) {
   this->state_->DebugVerify();
 }
 
+void ConcreteScheduleNode::ReorderBlockIterVar(const BlockRV& block_rv,
+                                               const Array<Integer> new_order) {
+  TVM_TIR_SCHEDULE_BEGIN();
+  tir::ReorderBlockIterVar(state_, GetSRef(block_rv), new_order);
+  TVM_TIR_SCHEDULE_END("reorder_block_iter_var", this->error_render_level_);
+  this->state_->DebugVerify();
+}
+
 void ConcreteScheduleNode::LiftLoop(const LoopRV& loop_rv) {
   TVM_TIR_SCHEDULE_BEGIN();
   StmtSRef loop_sref = this->GetSRef(loop_rv);

@@ -198,6 +198,15 @@ void TracedScheduleNode::Reorder(const Array<LoopRV>& ordered_loop_rvs) {
                                       /*outputs=*/{}));
 }
 
+void TracedScheduleNode::ReorderBlockIterVar(const BlockRV& block_rv,
+                                             const Array<Integer> new_order) {
+  ConcreteScheduleNode::ReorderBlockIterVar(block_rv, new_order);
+  static const InstructionKind& kind = InstructionKind::Get("ReorderBlockIterVar");
+  trace_->Append(/*inst=*/Instruction(/*kind=*/kind,
+                                      /*inputs=*/{block_rv, new_order}, /*attrs=*/{},
+                                      /*outputs=*/{}));
+}
+
 void TracedScheduleNode::LiftLoop(const LoopRV& loop_rv) {
   ConcreteScheduleNode::LiftLoop(loop_rv);
 
