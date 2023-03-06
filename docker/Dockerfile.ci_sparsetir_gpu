@@ -78,4 +78,4 @@ RUN bash docker/install/install_sparsetir_gpu.sh
 
 # Install dependencies required by lint
 RUN pip3 install flake8==5.0.4 pylint==2.15.6 cpplint==1.6.1 black==22.8.0
-RUN apt install -y default-jre
+RUN apt-get update --fix-missing && apt-get install -y default-jre
