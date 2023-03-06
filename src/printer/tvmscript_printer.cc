@@ -1539,7 +1539,7 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
 
 Doc TVMScriptPrinter::PrintSparseIterationName(const SparseIterationNode* op) {
   Doc doc;
-  doc << "with " << tir_prefix_ << ".iter([";
+  doc << "with " << tir_prefix_ << ".sp_iter([";
 
   int n_iter = static_cast<int>(op->sp_iter_vars.size());
 

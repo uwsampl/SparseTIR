@@ -47,7 +47,7 @@ def sddmm(m: int, n: int, feat_size: int, nnz: int):
         B = T.match_sparse_buffer(b, (J_detach, K), "float32")
         C = T.match_sparse_buffer(c, (I, J), "float32")
 
-        with T.iter([I, J, K], "SSR", "sddmm") as [i, j, k]:
+        with T.sp_iter([I, J, K], "SSR", "sddmm") as [i, j, k]:
             with T.init():
                 C[i, j] = 0.0
             C[i, j] = C[i, j] + A[i, k] * B[j, k]

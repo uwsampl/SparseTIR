@@ -38,7 +38,7 @@ def csrmm(
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (J_detach, K), "float32")
     C = T.match_sparse_buffer(c, (I, K), "float32")
-    with T.iter([I, J, K], "SRS", "csrmm") as [i, j, k]:
+    with T.sp_iter([I, J, K], "SRS", "csrmm") as [i, j, k]:
         with T.init():
             C[i, k] = 0.0
         C[i, k] = C[i, k] + A[i, j] * B[j, k]
@@ -64,7 +64,7 @@ def csrmm_dense_iter(
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (J_detach, K), "float32")
     C = T.match_sparse_buffer(c, (I, K), "float32")
-    with T.iter([I, J_detach, K], "SRS", "csrmm") as [i, j, k]:
+    with T.sp_iter([I, J_detach, K], "SRS", "csrmm") as [i, j, k]:
         with T.init():
             C[i, k] = 0.0
         C[i, k] = C[i, k] + A[i, j] * B[j, k]
@@ -83,7 +83,7 @@ def segment_reduce(
     J = T.dense_variable(I, (100, nnz), indptr, "int32")
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (I,), "float32")
-    with T.iter([I, J], "SR", "segment_reduce") as [i, j]:
+    with T.sp_iter([I, J], "SR", "segment_reduce") as [i, j]:
         with T.init():
             B[i] = 0.0
         B[i] = B[i] + A[i, j]
@@ -104,7 +104,7 @@ def csr_reduce(
     J = T.sparse_variable(I, (m, nnz), (indptr, indices), "int32")
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (I,), "float32")
-    with T.iter([I, J], "SR", "csr_reduce") as [i, j]:
+    with T.sp_iter([I, J], "SR", "csr_reduce") as [i, j]:
         with T.init():
             B[i] = 0.0
         B[i] = B[i] + A[i, j]
@@ -134,7 +134,7 @@ def bsrmm(
     B = T.match_sparse_buffer(b, (J_detach, BJ, F), "float32")
     C = T.match_sparse_buffer(c, (I, BI, F), "float32")
 
-    with T.iter([I, BI, BJ, F, J], "SSRSR", "bsrmm") as [
+    with T.sp_iter([I, BI, BJ, F, J], "SSRSR", "bsrmm") as [
         i,
         bi,
         bj,
@@ -169,7 +169,7 @@ def ellmm(
     B = T.match_sparse_buffer(b, (J_detach, BJ, F), "float32")
     C = T.match_sparse_buffer(c, (I, BI, F), "float32")
 
-    with T.iter([I, J, BI, BJ, F], "SRSRS", "ellmm") as [
+    with T.sp_iter([I, J, BI, BJ, F], "SRSRS", "ellmm") as [
         i,
         j,
         bi,
@@ -197,7 +197,7 @@ def csr_element_wise(
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (I, J), "float32")
 
-    with T.iter([I, J], "SS", "csr_element_wise") as [i, j]:
+    with T.sp_iter([I, J], "SS", "csr_element_wise") as [i, j]:
         B[i, j] = A[i, j] * 2.5
 
 
@@ -222,7 +222,7 @@ def hyper_gnn(
     I_T = T.sparse_variable(J_detach, (n, nnz), (indptr_T, indices_T), "int32")
     X = T.match_sparse_buffer(x, (I, F), "float32")
     Y = T.match_sparse_buffer(y, (I, F), "float32")
-    with T.iter([I, F, J, T.attach(I_T, J)], "SSRR", "hyper_gnn") as [i, f, j, i_t]:
+    with T.sp_iter([I, F, J, T.attach(I_T, J)], "SSRR", "hyper_gnn") as [i, f, j, i_t]:
         with T.init():
             Y[i, f] = T.float32(0)
         Y[i, f] = Y[i, f] + X[i_t, f]
@@ -258,7 +258,7 @@ def bmm(
     X = T.match_sparse_buffer(x, (B, I, IJ), "float32")
     Y = T.match_sparse_buffer(y, (B, J, JK), "float32")
     Z = T.match_sparse_buffer(z, (B, I, IK), "float32")
-    with T.iter([B, I, J, K], "SSRS", "bmm") as [b, i, j, k]:
+    with T.sp_iter([B, I, J, K], "SSRS", "bmm") as [b, i, j, k]:
         with T.init():
             Z[b, i, k] = 0.0
         Z[b, i, k] = Z[b, i, k] + X[b, i, j] * Y[b, j, k]
@@ -285,7 +285,7 @@ def sddmm(
     B = T.match_sparse_buffer(b, (J_detach, K), "float32")
     C = T.match_sparse_buffer(c, (I, J), "float32")
 
-    with T.iter([I, J, K], "SSR", "sddmm") as [i, j, k]:
+    with T.sp_iter([I, J, K], "SSR", "sddmm") as [i, j, k]:
         with T.init():
             C[i, j] = 0.0
         C[i, j] = C[i, j] + A[i, k] * B[j, k]
@@ -312,7 +312,7 @@ def fused_sddmm(
     B = T.match_sparse_buffer(b, (J_detach, K), "float32")
     C = T.match_sparse_buffer(c, (I, J), "float32")
 
-    with T.iter([T.fuse(I, J), K], "SSR", "sddmm") as [i, j, k]:
+    with T.sp_iter([T.fuse(I, J), K], "SSR", "sddmm") as [i, j, k]:
         with T.init():
             C[i, j] = 0.0
         C[i, j] = C[i, j] + A[i, k] * B[j, k]
@@ -339,7 +339,7 @@ def square_sum(
     A = T.match_sparse_buffer(a, (I, J, K), "float32")
     B = T.match_sparse_buffer(b, (I,), "float32")
 
-    with T.iter([I, J, K], "SRR", "square_sum") as [i, j, k]:
+    with T.sp_iter([I, J, K], "SRR", "square_sum") as [i, j, k]:
         with T.init():
             B[i] = 0.0
         B[i] = B[i] + A[i, j, k]
@@ -372,7 +372,7 @@ def square_sum_two_K(
     A = T.match_sparse_buffer(a, (I, J, K0), "float32")
     B = T.match_sparse_buffer(b, (I,), "float32")
 
-    with T.iter([I, J, K1], "SRR", "square_sum") as [i, j, k]:
+    with T.sp_iter([I, J, K1], "SRR", "square_sum") as [i, j, k]:
         with T.init():
             B[i] = 0.0
         B[i] = B[i] + A[i, j, k]
@@ -397,7 +397,7 @@ def fused_reduction_4d_2d(
     L = T.dense_variable(K, (32768, nnz_l), indptr_l, "int32")
     X = T.match_sparse_buffer(x, (I, J, K, L), "float32")
     Y = T.match_sparse_buffer(y, (I, J), "float32")
-    with T.iter([T.fuse(I, J), K, L], "SSRR", "reduction_4d_2d") as [i, j, k, l]:
+    with T.sp_iter([T.fuse(I, J), K, L], "SSRR", "reduction_4d_2d") as [i, j, k, l]:
         with T.init():
             Y[i, j] = 0.0
         Y[i, j] = Y[i, j] + X[i, j, k, l]
@@ -422,7 +422,7 @@ def fused_reduction_4d_3d(
     L = T.dense_variable(K, (32768, nnz_l), indptr_l, "int32")
     X = T.match_sparse_buffer(x, (I, J, K, L), "float32")
     Y = T.match_sparse_buffer(y, (I, J, K), "float32")
-    with T.iter([T.fuse(I, J, K), L], "SSSR", "reduction_4d_3d") as [i, j, k, l]:
+    with T.sp_iter([T.fuse(I, J, K), L], "SSSR", "reduction_4d_3d") as [i, j, k, l]:
         with T.init():
             Y[i, j, k] = 0.0
         Y[i, j, k] = Y[i, j, k] + X[i, j, k, l]
@@ -453,7 +453,7 @@ def rgcn_homo_forward(
     W = T.match_sparse_buffer(w, (R, F_out, F_in), "float32")
     X = T.match_sparse_buffer(x, (J_detach, F_in), "float32")
     Y = T.match_sparse_buffer(y, (I, F_out), "float32")
-    with T.iter([I, F_out, J, F_in], "SSRR", "rgcn-homo-forward") as [
+    with T.sp_iter([I, F_out, J, F_in], "SSRR", "rgcn-homo-forward") as [
         i,
         fo,
         j,
@@ -493,7 +493,7 @@ def rgcn_hetero_forward(
     W = T.match_sparse_buffer(w, (R, F_out, F_in), "float32")
     X = T.match_sparse_buffer(x, (J_detach, F_in), "float32")
     Y = T.match_sparse_buffer(y, (I_detach, F_out), "float32")
-    with T.iter([F_out, R, I, J, F_in], "SSSRR", "rgcn-hetero-forward") as [fo, r, i, j, fi]:
+    with T.sp_iter([F_out, R, I, J, F_in], "SSSRR", "rgcn-hetero-forward") as [fo, r, i, j, fi]:
         with T.init():
             Y[i, fo] = 0.0
         Y[i, fo] = Y[i, fo] + A[r, i, j] * W[r, fo, fi] * X[j, fi]
@@ -515,16 +515,16 @@ def sparse_softmax(
     B = T.match_sparse_buffer(b, (I, J), "float32")
     TMP = T.alloc_sparse_buffer((I,), "float32", "global")
     TMP1 = T.alloc_sparse_buffer((I,), "float32", "global")
-    with T.iter([I], "S", "sparse_softmax") as [i]:
-        with T.iter([J], "R", "computer_max") as [j]:
+    with T.sp_iter([I], "S", "sparse_softmax") as [i]:
+        with T.sp_iter([J], "R", "computer_max") as [j]:
             with T.init():
                 TMP[i] = T.min_value("float32")
             TMP[i] = T.max(TMP[i], A[i, j])
-        with T.iter([J], "R", "exp_and_sum") as [j]:
+        with T.sp_iter([J], "R", "exp_and_sum") as [j]:
             with T.init():
                 TMP1[i] = T.float32(0)
             TMP1[i] = TMP1[i] + T.exp(A[i, j] - TMP[i], dtype="float32")
-        with T.iter([J], "S", "div") as [j]:
+        with T.sp_iter([J], "S", "div") as [j]:
             B[i, j] = T.exp(A[i, j], dtype="float32") / TMP1[i]
 
 
@@ -553,5 +553,5 @@ def csr2bsr(
     BJ = T.dense_fixed(blk_size)
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (I_bsr, J_bsr, BI, BJ), "float32")
-    with T.iter([I, J], "SS", "csr2bsr") as [i, j]:
+    with T.sp_iter([I, J], "SS", "csr2bsr") as [i, j]:
         B[i // blk_size, j // blk_size, i % blk_size, j % blk_size] = A[i, j]

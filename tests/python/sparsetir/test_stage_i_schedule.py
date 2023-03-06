@@ -49,7 +49,7 @@ def reordered_bsrmm(
     B = T.match_sparse_buffer(b, (J_detach, BJ, F), "float32")
     C = T.match_sparse_buffer(c, (I, BI, F), "float32")
 
-    with T.iter([BI, BJ, I, J, F], "SRSRS", "bsrmm") as [
+    with T.sp_iter([BI, BJ, I, J, F], "SRSRS", "bsrmm") as [
         vbi,
         vbj,
         vi,
