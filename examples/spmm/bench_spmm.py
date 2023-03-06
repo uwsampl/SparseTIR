@@ -173,7 +173,6 @@ def bench_hyb(
             sch.reorder(foo, fi, j, foi)
             if is_atomic:
                 sch.annotate(blk, "atomic", True)
-                # write_blk = sch.cache_write(blk, 0, "local")
                 write_blk = sch.reverse_cache_write(blk, 0, "local")
                 sch.reverse_compute_at(write_blk, fi, True)
                 # sch.unroll(sch.get_loops(write_blk)[-2])
