@@ -53,7 +53,7 @@ def csrmm(
     A = T.match_sparse_buffer(a, (I, J), "float32")
     B = T.match_sparse_buffer(b, (J_detach, K1, K2, K3), "float32")
     C = T.match_sparse_buffer(c, (I, K1, K2, K3), "float32")
-    with T.iter([I, J, K1, K2, K3], "SRSSS", "csrmm") as [i, j, k1, k2, k3]:
+    with T.sp_iter([I, J, K1, K2, K3], "SRSSS", "csrmm") as [i, j, k1, k2, k3]:
         with T.init():
             C[i, k1, k2, k3] = T.float32(0)
         C[i, k1, k2, k3] = C[i, k1, k2, k3] + A[i, j] * B[j, k1, k2, k3]

@@ -581,7 +581,7 @@ def rgcn_hetero_forward(m, n, num_rels, feat_in, feat_out):
         Y = T.match_sparse_buffer(y, (I_detach, F_out), "float16")
         WX = T.match_sparse_buffer(wx, (R, I, J, F_out), "float16")
 
-        with T.iter([R, I, J, F_out, F_in], "SSSSR", "rgcn-hetero-forward_wx") as [
+        with T.sp_iter([R, I, J, F_out, F_in], "SSSSR", "rgcn-hetero-forward_wx") as [
             r,
             i,
             j,
@@ -592,7 +592,7 @@ def rgcn_hetero_forward(m, n, num_rels, feat_in, feat_out):
                 WX[r, i, j, fo] = T.float16(0)
             WX[r, i, j, fo] += X[j, fi] * W[r, fi, fo]
 
-        with T.iter([R, I, J, F_out], "SSRS", "rgcn-hetero-forward") as [r, i, j, fo]:
+        with T.sp_iter([R, I, J, F_out], "SSRS", "rgcn-hetero-forward") as [r, i, j, fo]:
             with T.init():
                 Y[i, fo] = T.float16(0)
             Y[i, fo] = Y[i, fo] + A[r, i, j] * WX[r, i, j, fo]

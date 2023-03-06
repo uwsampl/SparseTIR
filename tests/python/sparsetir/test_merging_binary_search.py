@@ -26,7 +26,7 @@ def func(indptr: T.handle, indices: T.handle, m: T.int32, n: T.int32, nnz: T.int
     I = T.dense_fixed(m)
     J = T.sparse_variable(I, (n, nnz), (indptr, indices))
     A = T.alloc_sparse_buffer([I, J], "float32")
-    with T.iter([T.fuse(I, J)], "SS", "test") as [vi, vj]:
+    with T.sp_iter([T.fuse(I, J)], "SS", "test") as [vi, vj]:
         A[vi, vj] = (vi + vj) * (vi - vj)
 
 

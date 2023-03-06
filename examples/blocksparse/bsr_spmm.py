@@ -49,7 +49,7 @@ def bsrmm(mb, nb, nnz, blk, feat_size):
         B = T.match_sparse_buffer(b, (J_detach, BJ, F), "float16")
         C = T.match_sparse_buffer(c, (I, BI, F), "float16")
 
-        with T.iter([I, BI, BJ, F, J], "SSRSR", "bsrmm") as [
+        with T.sp_iter([I, BI, BJ, F, J], "SSRSR", "bsrmm") as [
             i,
             bi,
             bj,
@@ -87,7 +87,7 @@ def dbsrmm(mb, nb, nnz0, nnz1, blk, feat_size):
         B = T.match_sparse_buffer(b, (J_detach, BJ, F), "float16")
         C = T.match_sparse_buffer(c, (I_detach, BI, F), "float16")
 
-        with T.iter([O, I, BI, BJ, F, J], "SSSRSR", "bsrmm") as [
+        with T.sp_iter([O, I, BI, BJ, F, J], "SSSRSR", "bsrmm") as [
             o,
             i,
             bi,

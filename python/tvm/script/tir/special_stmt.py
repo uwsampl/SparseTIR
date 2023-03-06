@@ -448,8 +448,44 @@ class BlockAttr(SpecialStmt):
 
 
 @register
-class IterAttr(SpecialStmt):
-    """Special function iter_attr({attr_key: attr_value})
+class SparseIterationAttr(SpecialStmt):
+    """Special function sp_iter_attr({attr_key: attr_value})
+
+    Example
+    -------
+    .. code-block:: python
+
+        T.sp_iter_attr({"preprocess": True})
+    """
+
+    def __init__(self):
+        def sp_iter_attr(attrs: Mapping[str, Object], span: Span = None):
+            assert self.context, "call 'exit_scope' before 'enter_scope'"
+            block_scope = self.context.current_block_scope()
+            if block_scope is None:
+                self.context.report_error(
+                    "Expected to declare block annotations inside a block.",
+                    span,
+                )
+            if block_scope.annotations is not None:
+                self.context.report_error(
+                    "Duplicate block annotations declaration, "
+                    + "previous one is "
+                    + str(block_scope.annotations),
+                    span,
+                )
+            attrs = {
+                key: String(val) if isinstance(val, str) else val for key, val in attrs.items()
+            }
+            block_scope.annotations = attrs
+
+        super().__init__(sp_iter_attr, def_symbol=False)
+
+
+@register
+class LegacySparseIterationAttr(SpecialStmt):
+    """Legacy Sparse Iteration Attribution API to ensure compatibility.
+    iter_attr({attr_key: attr_value})
 
     Example
     -------

@@ -559,7 +559,7 @@ def tcspmm(
     A = T.match_sparse_buffer(a, [IO, JO, II, JI], "float16")
     B = T.match_sparse_buffer(b, [J, F], "float16")
     C = T.match_sparse_buffer(c, [IO, II, F], "float16")
-    with T.iter([IO, JO, II, JI, F], "SRSRS", "tcspmm") as [io, jo, ii, ji, f]:
+    with T.sp_iter([IO, JO, II, JI, F], "SRSRS", "tcspmm") as [io, jo, ii, ji, f]:
         with T.init():
             C[io, ii, f] = T.float16(0)
         C[io, ii, f] = C[io, ii, f] + A[io, jo, ii, ji] * B[ji, f]
