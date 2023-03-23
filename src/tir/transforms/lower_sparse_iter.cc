@@ -761,7 +761,8 @@ class IterTransformer : public StmtExprMutator {
             }
             offset =
                 BinarySearch(indptr_buf, prefix_indices, Integer(0),
-                             GetParentAxis(original_axis)->nnz + Integer(1), offset, false, true);
+                             GetParentAxis(original_axis)->nnz + Integer(1), offset, false, true)
+                    .first;
           }
           Axis original_axis = GetAxisBeforeFuse(fused_axis->group[fused_axis->index]);
           if (!original_axis->IsSparse()) {
@@ -823,10 +824,31 @@ class IterTransformer : public StmtExprMutator {
 
   /*!
    * \brief Perform binary search inside TIR.
-   * \return The buffer (size=1) containing the binary search result.
+   * \param buf The sparse buffer to be searched (must be ascendingly sorted in the last dimension).
+   * \param prefix_indices The prefix indices of the sparse buffer from the first dimension to the
+   *    d-1 dimension (suppose `buf` is d-dimensional).
+   * \param lb The lower bound (close) of the search range [lb, ub)
+   * \param ub The upper bound (open) of the search range [lb, ub)
+   * \param val The value to be searched.
+   * \param left Whether returns the leftmost or rightmost index of the suitable locations.
+   *   If left = true, returns the leftmost index of the locations whose value is greater or
+   *   equal to `val`.
+   *   If left = false, returns the leftmost index of the locations whose value is greater
+   *   than `val`.
+   *   If no such index exists, returns `ub`.
+   * \param minus_one Whether to minus one to the final result (when used together with
+   *   `left = false`, you will get the rightmost index of the suitable location to maintain
+   *   ascending order).
+   * \param exact_match Whether returns the exact match index if exists, if set to True, we create
+   *   a new buffer `valid` to store whether the exact match exists (1: exists, 0: not exists).
+   * \return A pair where the first element containing the binary search result, and another
+   * (optional) element containing the found match information.
    */
-  PrimExpr BinarySearch(SparseBuffer buf, Array<PrimExpr> prefix_indices, PrimExpr lb, PrimExpr ub,
-                        PrimExpr val, bool left, bool minus_one = false) {
+  std::pair<PrimExpr, Optional<PrimExpr>> BinarySearch(SparseBuffer buf,
+                                                       Array<PrimExpr> prefix_indices, PrimExpr lb,
+                                                       PrimExpr ub, PrimExpr val, bool left,
+                                                       bool minus_one = false,
+                                                       bool exact_match = false) {
     /* Algorithm:
      * - when left = true
      *   - pre-condition
@@ -847,6 +869,7 @@ class IterTransformer : public StmtExprMutator {
         << "The dimensionality of buffer shoule equal the length of prefix indices plus 1.";
     CHECK(buf->axes.back()->sorted)
         << "The last axes of " << buf << " must be sorted to perform binary search on.";
+    CHECK(exact_match == false || left == true) << "If use exact_match, left must be true.";
     // Check bsearch_map_ to avoid duplicate searches.
     Array<ObjectRef> args;
     args.push_back(buf);
@@ -856,6 +879,7 @@ class IterTransformer : public StmtExprMutator {
     args.push_back(val);
     args.push_back(Bool(left));
     args.push_back(Bool(minus_one));
+    args.push_back(Bool(exact_match));
     if (bsearch_map_.count(args)) {
       return bsearch_map_[args];
     }
@@ -908,6 +932,13 @@ class IterTransformer : public StmtExprMutator {
     String mid_buf_name = "mid_" + std::to_string(bsearch_blk_counter);
     SparseBuffer mid = SparseBuffer(Var(mid_buf_name, PointerType(PrimType(dtype), "global")), axes,
                                     dtype, mid_buf_name, Integer(0));
+    String found_match_buf_name = "found_match_" + std::to_string(bsearch_blk_counter);
+    Optional<SparseBuffer> found_match;
+    if (exact_match) {
+      found_match = SparseBuffer(
+          Var(found_match_buf_name, PointerType(PrimType(DataType{kDLInt, 32, 1}), "global")), axes,
+          DataType{kDLInt, 32, 1}, found_match_buf_name, Integer(0));
+    }
 
     Stmt low_store = BufferStore(low, lb, {Integer(0)});
     Stmt high_store = BufferStore(high, ub, {Integer(0)});
@@ -933,6 +964,10 @@ class IterTransformer : public StmtExprMutator {
       body_stmts.push_back(
           BufferStore(mid, BufferLoad(mid, mid_indices) - Integer(1), mid_indices));
     }
+    if (exact_match) {
+      body_stmts.push_back(BufferStore(found_match.value(),
+                                       Select(mid_val != ub && pivot == val, Integer(1), Integer(0)), mid_indices));
+    }
     SeqStmt body(body_stmts);
 
     String name = "binary_search_block_" + std::to_string(bsearch_blk_counter);
@@ -952,8 +987,11 @@ class IterTransformer : public StmtExprMutator {
     BufferRegion write = BufferRegion(mid, write_regions);
     bsearch_structures.push_back(
         BinarySearchStructure({name, body, var_map, inv_var_map, {low, high}, read, write}));
-    bsearch_map_[args] = mid_val;
-    return mid_val;
+    std::pair<PrimExpr, Optional<PrimExpr>> ret_val = {
+        mid_val,
+        exact_match ? BufferLoad(found_match.value(), mid_indices) : Optional<PrimExpr>(NullOpt)};
+    bsearch_map_[args] = ret_val;
+    return ret_val;
   }
 
   /*! \brief Return indices viewed in a given buffer. */
@@ -1031,7 +1069,7 @@ class IterTransformer : public StmtExprMutator {
               extent = buf_axis->nnz_cols.value();
             }
             new_index =
-                BinarySearch(indices_buf, indices_path, Integer(0), extent, coordinate, true);
+                BinarySearch(indices_buf, indices_path, Integer(0), extent, coordinate, true).first;
           } else {
             // it's dense axis.
             new_index = coordinate;
@@ -1086,7 +1124,8 @@ class IterTransformer : public StmtExprMutator {
   Map<Axis, SparseBuffer> axis_indptr_map_;   // axis to indptr buffer map.
   Map<Axis, SparseBuffer> axis_indices_map_;  // axis to indices buffer map.
   std::unordered_map<const VarNode*, arith::IntSet> base_dom_map_;  // The base dom map.
-  std::unordered_map<ObjectRef, PrimExpr, StructuralHash, StructuralEqual>
+  std::unordered_map<ObjectRef, std::pair<PrimExpr, Optional<PrimExpr>>, StructuralHash,
+                     StructuralEqual>
       bsearch_map_;         // The map storing existing binary search keys and values.
   int bsearch_blk_counter;  // Counter for generated binary search blocks.
 };
