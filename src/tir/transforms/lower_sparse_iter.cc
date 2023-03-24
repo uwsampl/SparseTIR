@@ -965,11 +965,6 @@ class IterTransformer : public StmtExprMutator {
       PrimExpr if_stmt = (pivot != val || mid_val == ub);
       body_stmts.push_back(IfThenElse(if_stmt, then_stmt));
     }
-    // if (search_type == kEqual) {
-    //   body_stmts.push_back(
-    //       BufferStore(success.value(),
-    //                   Select(mid_val != ub && pivot == val, Integer(1), Integer(0)), mid_indices));
-    // }
     SeqStmt body(body_stmts);
 
     String name = "binary_search_block_" + std::to_string(bsearch_blk_counter);
