@@ -298,6 +298,8 @@ class SparseBuffer(Buffer):
         The name of the sparse buffer
     extra_storage : Optional[PrimExpr]
         Required extra storage (e.g. for indptr)
+    default_value : Optional[PrimExpr]
+        The default value about missing value of the the sparse buffer
     span : Span
     """
 
@@ -306,10 +308,11 @@ class SparseBuffer(Buffer):
     dtype: str
     name: str
     extra_storage: Optional[PrimExpr]
+    default_value: Optional[PrimExpr]
     span: Span
 
-    def __init__(self, data, axes, dtype, name, extra_storage, span):
-        self.__init_handle_by_constructor__(_ffi_api.SparseBuffer, data, axes, dtype, name, extra_storage, span)  # type: ignore
+    def __init__(self, data, axes, dtype, name, extra_storage, default_value, span):
+        self.__init_handle_by_constructor__(_ffi_api.SparseBuffer, data, axes, dtype, name, extra_storage, default_value, span)  # type: ignore
 
 
 @tvm._ffi.register_object("tir.sparse.SpIterVar")

@@ -367,6 +367,7 @@ class TIRTextPrinter : public StmtFunctor<Doc(const Stmt&)>,
   Doc VisitStmt_(const WhileNode* op) override;
   Doc VisitStmt_(const PrefetchNode* op) override;
   Doc VisitStmt_(const BlockRealizeNode* op) override;
+  Doc VisitStmt_(const SparseIterationNode* op) override;
   Doc VisitStmtDefault_(const Object* op) override;
 
   Doc VisitType_(const PrimTypeNode* node) override;
