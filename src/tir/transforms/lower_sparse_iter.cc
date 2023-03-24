@@ -965,6 +965,11 @@ class IterTransformer : public StmtExprMutator {
       PrimExpr if_stmt = (pivot != val || mid_val == ub);
       body_stmts.push_back(IfThenElse(if_stmt, then_stmt));
     }
+    // if (search_type == kEqual) {
+    //   body_stmts.push_back(
+    //       BufferStore(success.value(),
+    //                   Select(mid_val != ub && pivot == val, Integer(1), Integer(0)), mid_indices));
+    // }
     SeqStmt body(body_stmts);
 
     String name = "binary_search_block_" + std::to_string(bsearch_blk_counter);
@@ -1225,6 +1230,8 @@ PrimFunc LowerSparseIter(PrimFunc f, bool check_invalid_binary_search) {
     // Step 4. Lower sparse tir level.
     Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;
     new_attr_dict.Set("sparse_tir_level", Integer(1));
+    // Step 5. keep the check_invalid_binary_search setting as an attr
+    new_attr_dict.Set("check_invalid_binary_search", Bool(check_invalid_binary_search));
     fptr->attrs = DictAttrs(new_attr_dict);
     // Step 5. postprocess bufferload with possible invalid indices
     if (check_invalid_binary_search) {
