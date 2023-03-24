@@ -271,17 +271,22 @@ class SparseBufferNode : public BufferNode {
   PrimExpr GetNNZ() const;
 
   Buffer flattened;
-
+  /*!
+   * \brief The default value in the sparse buffer.
+   */
+  Optional<PrimExpr> default_value;
   void VisitAttrs(AttrVisitor* v) {
     BufferNode::VisitAttrs(v);
     v->Visit("axes", &axes);
     v->Visit("extra_storage", &extra_storage);
     v->Visit("flattened", &flattened);
+    v->Visit("default_value", &default_value);
   }
 
   bool SEqualReduce(const SparseBufferNode* other, SEqualReducer equal) const {
     return BufferNode::SEqualReduce(other, equal) && equal(axes, other->axes) &&
-           equal(extra_storage, other->extra_storage) && equal(flattened, other->flattened);
+           equal(extra_storage, other->extra_storage) && equal(flattened, other->flattened) &&
+           equal(default_value, other->default_value);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
@@ -289,6 +294,7 @@ class SparseBufferNode : public BufferNode {
     hash_reduce(axes);
     hash_reduce(extra_storage);
     hash_reduce(flattened);
+    hash_reduce(default_value);
   }
 
   static constexpr const char* _type_key = "tir.sparse.SparseBuffer";
@@ -304,7 +310,8 @@ class SparseBufferNode : public BufferNode {
 class SparseBuffer : public Buffer {
  public:
   TVM_DLL explicit SparseBuffer(Var data, Array<Axis> axes, DataType dtype, String name,
-                                Optional<PrimExpr> extra_storage, Span span = Span());
+                                Optional<PrimExpr> extra_storage,
+                                Optional<PrimExpr> default_value = NullOpt, Span span = Span());
   TVM_DEFINE_OBJECT_REF_METHODS(SparseBuffer, Buffer, SparseBufferNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(SparseBufferNode);
 };

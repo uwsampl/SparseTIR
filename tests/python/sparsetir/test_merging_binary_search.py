@@ -33,7 +33,14 @@ def func(indptr: T.handle, indices: T.handle, m: T.int32, n: T.int32, nnz: T.int
 @T.prim_func
 def lowered(indptr: T.handle, indices: T.handle, m: T.int32, n: T.int32, nnz: T.int32) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(m, idtype="int32")
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (n, nnz), indptr, idtype="int32")

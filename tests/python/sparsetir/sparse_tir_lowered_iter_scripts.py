@@ -31,7 +31,14 @@ def csrmm(
     nnz: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(m, idtype="int32")
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (n, nnz), indptr, idtype="int32")
@@ -77,7 +84,14 @@ def csrmm_dense_iter(
     nnz: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(m, idtype="int32")
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (n, nnz), indptr, idtype="int32")
@@ -125,7 +139,14 @@ def csrmm_dense_iter(
 @T.prim_func
 def segment_reduce(a: T.handle, b: T.handle, indptr: T.handle, n: T.int32, nnz: T.int32) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(n, idtype="int32")
     J = T.dense_variable(I, (100, nnz), indptr, idtype="int32")
     A = T.match_sparse_buffer(a, [I, J], dtype="float32")
@@ -162,7 +183,14 @@ def csr_reduce(
     nnz: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(n, idtype="int32")
     J = T.sparse_variable(I, (m, nnz), (indptr, indices), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (m, nnz), indptr, idtype="int32")
@@ -205,7 +233,14 @@ def bsrmm(
     feat_size: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(nb, idtype="int32")
     J = T.sparse_variable(I, (mb, nnzb), (indptr, indices), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (mb, nnzb), indptr, idtype="int32")
@@ -256,7 +291,14 @@ def ellmm(
     blk: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(nb, idtype="int32")
     J = T.sparse_fixed(I, (mb, col), indices, idtype="int32", sorted=True)
     J_dense = T.dense_fixed(col, idtype="int32")
@@ -293,7 +335,14 @@ def csr_element_wise(
     nnz: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(m, idtype="int32")
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (n, nnz), indptr, idtype="int32")
@@ -334,7 +383,14 @@ def hyper_gnn(
     feat_size: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(n, idtype="int32")
     F = T.dense_fixed(feat_size, idtype="int32")
     J = T.sparse_variable(I, (m, nnz), (indptr, indices), idtype="int32", sorted=True)
@@ -410,7 +466,14 @@ def bmm(
     nnz_ik: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     B = T.dense_fixed(batch_size, idtype="int32")
     I = T.dense_variable(B, (32768, nnz_i), indptr_i, idtype="int32")
     J = T.dense_variable(B, (32768, nnz_j), indptr_j, idtype="int32")
@@ -477,7 +540,14 @@ def sddmm(
     nnz: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(m, idtype="int32")
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (n, nnz), indptr, idtype="int32")
@@ -525,7 +595,14 @@ def fused_sddmm(
     nnz: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(m, idtype="int32")
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (n, nnz), indptr, idtype="int32")
@@ -590,7 +667,14 @@ def square_sum(
     N2: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(M, idtype="int32")
     J = T.sparse_variable(I, (N1, nnz_j), (indptr_j, indices_j), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (N1, nnz_j), indptr_j, idtype="int32")
@@ -648,7 +732,14 @@ def square_sum_two_K(
     N2: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(M, idtype="int32")
     J = T.sparse_variable(I, (N1, nnz_j), (indptr_j, indices_j), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (N1, nnz_j), indptr_j, idtype="int32")
@@ -749,7 +840,14 @@ def fused_reduction_4d_2d(
     nnz_l: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(n, idtype="int32")
     J = T.dense_variable(I, (32768, nnz_j), indptr_j, idtype="int32")
     K = T.dense_variable(J, (32768, nnz_k), indptr_k, idtype="int32")
@@ -803,7 +901,14 @@ def fused_reduction_4d_3d(
     nnz_l: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(n, idtype="int32")
     J = T.dense_variable(I, (32768, nnz_j), indptr_j, idtype="int32")
     K = T.dense_variable(J, (32768, nnz_k), indptr_k, idtype="int32")
@@ -852,7 +957,14 @@ def rgcn_homo_forward(
     nnz: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(m, idtype="int32")
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (n, nnz), indptr, idtype="int32")
@@ -917,7 +1029,14 @@ def rgcn_hetero_forward(
     nnz_j: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     R = T.dense_fixed(num_rels, idtype="int32")
     I = T.sparse_variable(R, (m, nnz_i), (indptr_i, indices_i), idtype="int32", sorted=True)
     I_dense = T.dense_variable(R, (m, nnz_i), indptr_i, idtype="int32")
@@ -994,7 +1113,14 @@ def sparse_softmax(
     a: T.handle, b: T.handle, indptr: T.handle, indices: T.handle, n: T.int32, nnz: T.int32
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(n, idtype="int32")
     J = T.sparse_variable(I, (n, nnz), (indptr, indices), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (n, nnz), indptr, idtype="int32")
@@ -1058,7 +1184,14 @@ def csr2bsr(
     blk_size: T.int32,
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     I = T.dense_fixed(m_in, idtype="int32")
     J = T.sparse_variable(I, (n_in, nnz_in), (indptr_in, indices_in), idtype="int32", sorted=True)
     J_dense = T.dense_variable(I, (n_in, nnz_in), indptr_in, idtype="int32")

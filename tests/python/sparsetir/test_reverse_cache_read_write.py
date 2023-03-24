@@ -58,7 +58,14 @@ def tcspmm_rev_cache_read(
     a: T.handle, b: T.handle, c: T.handle, indptr: T.handle, indices: T.handle
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     IO = T.dense_fixed(128, idtype="int32")
     JO = T.dense_variable(IO, (128, 1024), indptr, idtype="int32")
     II = T.dense_fixed(16, idtype="int32")
@@ -145,7 +152,14 @@ def tcspmm_rev_cache_read_21(
     a: T.handle, b: T.handle, c: T.handle, indptr: T.handle, indices: T.handle
 ) -> None:
     # function attr dict
-    T.func_attr({"global_symbol": "main", "tir.noalias": True, "sparse_tir_level": 1})
+    T.func_attr(
+        {
+            "global_symbol": "main",
+            "tir.noalias": True,
+            "sparse_tir_level": 1,
+            "check_invalid_binary_search": False,
+        }
+    )
     IO = T.dense_fixed(128, idtype="int32")
     JO = T.dense_variable(IO, (128, 1024), indptr, idtype="int32")
     II = T.dense_fixed(16, idtype="int32")

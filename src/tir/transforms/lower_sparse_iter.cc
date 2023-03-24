@@ -345,10 +345,12 @@ typedef enum {
 class IterTransformer : public StmtExprMutator {
  public:
   explicit IterTransformer(Map<Axis, SparseBuffer> axis_indptr_map,
-                           Map<Axis, SparseBuffer> axis_indices_map, const Array<Axis>& sp_axes)
+                           Map<Axis, SparseBuffer> axis_indices_map, const Array<Axis>& sp_axes,
+                           bool check_invalid_binary_search)
       : axis_indptr_map_(std::move(axis_indptr_map)),
         axis_indices_map_(std::move(axis_indices_map)),
-        bsearch_blk_counter(0) {
+        bsearch_blk_counter(0),
+        check_invalid_binary_search_(check_invalid_binary_search) {
     CreateBaseDomMap(sp_axes);
   }
 
@@ -503,6 +505,14 @@ class IterTransformer : public StmtExprMutator {
         return false;
       }
     };
+    bool back_up_check_region = binary_search_vaild_check_region;
+    if (check_invalid_binary_search_) {
+      auto valid_check_flag =
+          sp_iteration->annotations.Get("binary_search_vaild_check").value_or(Bool(true));
+      if (Downcast<Bool>(valid_check_flag) == false) {
+        binary_search_vaild_check_region = false;
+      }
+    }
 
     int n_iters = static_cast<int>(sp_iteration->sp_iter_vars.size());
     Array<Var> loop_vars;
@@ -633,6 +643,9 @@ class IterTransformer : public StmtExprMutator {
       // Create new block.
       Map<String, ObjectRef> annotations = sp_iteration->annotations;
       annotations.Set("sparse", Bool(true));
+      if (binary_search_vaild_check_region && check_invalid_binary_search_) {
+        annotations.Set("binary_search_vaild_check", Bool(true));
+      }
       Block block(/*iter_vars=*/info.block_iters,
                   /*reads=*/reads_new,
                   /*writes=*/writes_new,
@@ -673,6 +686,9 @@ class IterTransformer : public StmtExprMutator {
           Map<String, ObjectRef> annotations;
           annotations.Set("sparse", Bool(true));
           annotations.Set("preprocess", Bool(true));
+          if (check_invalid_binary_search_) {
+            annotations.Set("is_binary_search_block", Bool(true));
+          }
           Array<BufferRegion> reads, writes;
           if (i == static_cast<int>(bsearch_block_info.size()) - 1) {
             // innermost
@@ -713,6 +729,8 @@ class IterTransformer : public StmtExprMutator {
       }
     }
 
+    // restore binary search vaild check region
+    binary_search_vaild_check_region = back_up_check_region;
     // Exit the context.
     ctx_.ExitScope();
 
@@ -978,11 +996,16 @@ class IterTransformer : public StmtExprMutator {
       body_stmts.push_back(
           BufferStore(mid, BufferLoad(mid, mid_indices) - Integer(1), mid_indices));
     }
-    if (search_type == kEqual) {
-      body_stmts.push_back(
-          BufferStore(success.value(),
-                      Select(mid_val != ub && pivot == val, Integer(1), Integer(0)), mid_indices));
+    if (!binary_search_vaild_check_region && check_invalid_binary_search_) {
+      Stmt then_stmt = BufferStore(mid, -1, mid_indices);
+      PrimExpr if_stmt = (pivot != val || mid_val == ub);
+      body_stmts.push_back(IfThenElse(if_stmt, then_stmt));
     }
+    // if (search_type == kEqual) {
+    //   body_stmts.push_back(
+    //       BufferStore(success.value(),
+    //                   Select(mid_val != ub && pivot == val, Integer(1), Integer(0)), mid_indices));
+    // }
     SeqStmt body(body_stmts);
 
     String name = "binary_search_block_" + std::to_string(bsearch_blk_counter);
@@ -1144,9 +1167,11 @@ class IterTransformer : public StmtExprMutator {
                      StructuralEqual>
       bsearch_map_;         // The map storing existing binary search keys and values.
   int bsearch_blk_counter;  // Counter for generated binary search blocks.
+  bool binary_search_vaild_check_region = true;
+  bool check_invalid_binary_search_ = false;
 };
 
-PrimFunc LowerSparseIter(PrimFunc f) {
+PrimFunc LowerSparseIter(PrimFunc f, bool check_invalid_binary_search) {
   // Only apply this pass to TIR that is not from TE schedules
   if (!IsFromLegacyTESchedule(f) && SparseTIRLevel(f) == 2) {
     PrimFuncNode* fptr = f.CopyOnWrite();
@@ -1156,7 +1181,8 @@ PrimFunc LowerSparseIter(PrimFunc f) {
     std::tie(axis_indptr_map, axis_indices_map, fptr->buffer_map, fptr->sp_axes, buf_doms) =
         UpdateMetadata(f);
     // Step 2. Lower iterations.
-    IterTransformer lower_sparse(axis_indptr_map, axis_indices_map, fptr->sp_axes);
+    IterTransformer lower_sparse(axis_indptr_map, axis_indices_map, fptr->sp_axes,
+                                 check_invalid_binary_search);
     Stmt body = lower_sparse(std::move(fptr->body));
     // Step 3. Wrap with root block, insert bsearch blocks and allocated buffers.
     if (!lower_sparse.bsearch_structures.empty()) {
@@ -1174,6 +1200,8 @@ PrimFunc LowerSparseIter(PrimFunc f) {
     // Step 4. Lower sparse tir level.
     Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;
     new_attr_dict.Set("sparse_tir_level", Integer(1));
+    // Step 5. keep the check_invalid_binary_search setting as an attr
+    new_attr_dict.Set("check_invalid_binary_search", Bool(check_invalid_binary_search));
     fptr->attrs = DictAttrs(new_attr_dict);
     return f;
   } else {
@@ -1186,9 +1214,9 @@ namespace transform {
 /*!
  * \brief The lowering pass from TIR to Sparse TIR.
  */
-Pass LowerSparseIter() {
+Pass LowerSparseIter(bool check_invalid_binary_search) {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
-    return LowerSparseIter(std::move(f));
+    return LowerSparseIter(std::move(f), check_invalid_binary_search);
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.LowerSparseIter", {});
 }

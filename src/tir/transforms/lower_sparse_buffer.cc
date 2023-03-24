@@ -74,6 +74,8 @@ class BufferTransformer : public StmtExprMutator {
     }
   }
 
+  Map<Buffer, const PrimExpr> getBufferDefaultValMap() { return buffer_default_val_map; }
+
  private:
   PrimExpr Simplify(const BufferLoad& load) {
     if (indptr_buf.count(load->buffer.get()) && load->indices.size() == 1) {
@@ -158,6 +160,7 @@ class BufferTransformer : public StmtExprMutator {
       indices.push_back(VisitExpr(index));
     }
     if (const SparseBufferNode* sp_buf = op->buffer.as<SparseBufferNode>()) {
+      buffer_default_val_map.Set(sp_buf->flattened, sp_buf->default_value.value());
       ret = BufferLoad(sp_buf->flattened, {ComputeOffset(sp_buf->axes, indices)});
     } else {
       if (indices.same_as(op->indices)) {
@@ -176,6 +179,7 @@ class BufferTransformer : public StmtExprMutator {
       indices.push_back(VisitExpr(index));
     }
     if (const SparseBufferNode* sp_buf = op->buffer.as<SparseBufferNode>()) {
+      buffer_default_val_map.Set(sp_buf->flattened, sp_buf->default_value.value());
       return BufferStore(sp_buf->flattened, value, {ComputeOffset(sp_buf->axes, indices)});
     } else {
       if (value.same_as(op->value) && indices.same_as(op->indices)) {
@@ -351,7 +355,81 @@ class BufferTransformer : public StmtExprMutator {
   arith::Analyzer ana_;
   std::unordered_set<const BufferNode*> indptr_buf;
   Map<Var, PrimExpr> global_var_map_;
+  Map<Buffer, const PrimExpr> buffer_default_val_map;
   bool is_horizontal_fuse_;
+};
+
+class SparseIndicesBufferPostProcess : public StmtExprMutator {
+ public:
+  explicit SparseIndicesBufferPostProcess(Map<Buffer, const PrimExpr> default_val_map)
+      : default_val_map_(default_val_map) {}
+
+ private:
+  Stmt VisitStmt_(const BlockNode* op) final {
+    auto it = op->annotations.find("binary_search_vaild_check");
+    if (it != op->annotations.end() && (Downcast<Bool>((*it).second)->value)) {
+      return GetRef<Block>(op);
+    }
+    it = op->annotations.find("is_binary_search_block");
+    if (it != op->annotations.end() && Downcast<Bool>((*it).second)->value) {
+      for (auto i : op->writes) {
+        binary_search_buffer.insert(i->buffer.get());
+      }
+      return GetRef<Block>(op);
+    }
+    auto ret = StmtExprMutator::VisitStmt_(op);
+    return ret;
+  }
+
+  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
+    if (binary_search_buffer.count(op->buffer.get()) &&
+        buffer_processed.count(op->buffer.get()) == 0) {
+      buffer_need_process.push_back(GetRef<BufferLoad>(op));
+      find_mid_buffer++;
+    } else {
+      auto find_backup = find_mid_buffer;
+      for (auto i : op->indices) {
+        VisitExpr(i);
+      }
+      if (find_mid_buffer != find_backup) {
+        find_mid_buffer = find_backup;
+        ICHECK(default_val_map_.count(op->buffer));
+        return default_val_map_[op->buffer];
+      }
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
+  Stmt VisitStmt_(const BufferStoreNode* op) final {
+    size_t original_size = buffer_need_process.size();
+    PrimExpr value = VisitExpr(op->value);
+    if (original_size < buffer_need_process.size()) {
+      if (original_size + 1 != buffer_need_process.size()) {
+        auto bufferload = buffer_need_process[original_size + 1];
+        for (size_t i = original_size + 2; i < buffer_need_process.size(); i++) {
+          ICHECK(buffer_need_process[i].same_as(bufferload))
+              << "current only allow same mid buffer load expr in one buffer store stmt";
+        }
+      }
+      auto buffer_found = buffer_need_process.back();
+      buffer_need_process.erase(buffer_need_process.end() - 1);
+      buffer_processed.insert(buffer_found->buffer.get());
+      PrimExpr if_stmt = (-1 != buffer_found);
+      auto new_stmt =
+          IfThenElse(if_stmt, StmtExprMutator::VisitStmt_(op),
+                     BufferStore(op->buffer, ana.Simplify(value), op->indices, op->span));
+      buffer_processed.erase(buffer_found->buffer.get());
+      return new_stmt;
+    } else {
+      return StmtExprMutator::VisitStmt_(op);
+    }
+  }
+  std::vector<BufferLoad> buffer_need_process;
+  std::set<const BufferNode*> buffer_processed;
+  std::set<const BufferNode*> binary_search_buffer;
+  Map<Buffer, const PrimExpr> default_val_map_;
+  arith::Analyzer ana;
+  int find_mid_buffer = 0;
 };
 
 PrimFunc LowerSparseBuffer(PrimFunc f) {
@@ -362,13 +440,20 @@ PrimFunc LowerSparseBuffer(PrimFunc f) {
     // Step 1. Update the PrimFunc's buffer map.
     fptr->buffer_map = std::move(UpdateBufferMap(f));
     // Step 2. Lower sparse buffers.
-    fptr->body = BufferTransformer(fptr->sp_axes, fptr->buffer_map,
-                                   is_horizontal_fuse)(std::move(fptr->body));
-    // Step 3. Remove sparse axes
+    BufferTransformer buffer_transformer(fptr->sp_axes, fptr->buffer_map, is_horizontal_fuse);
+
+    fptr->body = buffer_transformer(std::move(fptr->body));
+    // Step 3. post process for binary search buffer
+    if (GetRef<PrimFunc>(fptr)->GetAttr("check_invalid_binary_search", Bool(false))) {
+      fptr->body = SparseIndicesBufferPostProcess(buffer_transformer.getBufferDefaultValMap())(
+          std::move(fptr->body));
+    }
+    // Step 4. Remove sparse axes
     fptr->sp_axes.clear();
-    // Step 4. Lower sparse tir level
+    // Step 5. Lower sparse tir level
     Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;
     new_attr_dict.Set("sparse_tir_level", Integer(0));
+    new_attr_dict.erase("check_invalid_binary_search");
     fptr->attrs = DictAttrs(new_attr_dict);
     return f;
   } else {
