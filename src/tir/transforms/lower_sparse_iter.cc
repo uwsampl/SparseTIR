@@ -891,7 +891,7 @@ class IterTransformer : public StmtExprMutator {
     args.push_back(lb);
     args.push_back(ub);
     args.push_back(val);
-    args.push_back(Integer(int(search_type)));
+    args.push_back(Integer(static_cast<int>(search_type)));
     args.push_back(Bool(minus_one));
     if (bsearch_map_.count(args)) {
       return bsearch_map_[args];
