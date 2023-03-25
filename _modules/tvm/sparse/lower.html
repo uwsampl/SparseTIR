@@ -109,17 +109,19 @@
 <span class="kn">from</span> <span class="nn">tvm.tir.transform</span> <span class="k">import</span> <span class="n">LowerSparseBuffer</span><span class="p">,</span> <span class="n">LowerSparseIter</span>
 
 
-<div class="viewcode-block" id="lower_sparse_iter"><a class="viewcode-back" href="../../../generated/tvm.sparse.lower_sparse_iter.html#tvm.sparse.lower_sparse_iter">[docs]</a><span class="k">def</span> <span class="nf">lower_sparse_iter</span><span class="p">(</span><span class="n">mod</span><span class="p">:</span> <span class="n">IRModule</span><span class="p">):</span>
+<div class="viewcode-block" id="lower_sparse_iter"><a class="viewcode-back" href="../../../generated/tvm.sparse.lower_sparse_iter.html#tvm.sparse.lower_sparse_iter">[docs]</a><span class="k">def</span> <span class="nf">lower_sparse_iter</span><span class="p">(</span><span class="n">mod</span><span class="p">:</span> <span class="n">IRModule</span><span class="p">,</span> <span class="n">check_invalid_binary_search</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Lower sparse iterators in Sparse TIR.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    mod : IRModule</span>
 <span class="sd">        The IRModule to lower.</span>
+<span class="sd">    check_invalid_binary_search : bool</span>
+<span class="sd">        Whether check invalid indices made by binary search.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">IRModule</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Expected IRModule, but got </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">mod</span><span class="p">)))</span>
-    <span class="k">return</span> <span class="n">LowerSparseIter</span><span class="p">()(</span><span class="n">mod</span><span class="p">)</span></div>
+    <span class="k">return</span> <span class="n">LowerSparseIter</span><span class="p">(</span><span class="n">check_invalid_binary_search</span><span class="p">)(</span><span class="n">mod</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="lower_sparse_buffer"><a class="viewcode-back" href="../../../generated/tvm.sparse.lower_sparse_buffer.html#tvm.sparse.lower_sparse_buffer">[docs]</a><span class="k">def</span> <span class="nf">lower_sparse_buffer</span><span class="p">(</span><span class="n">mod</span><span class="p">:</span> <span class="n">IRModule</span><span class="p">):</span>
