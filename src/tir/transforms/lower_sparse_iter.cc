@@ -1127,7 +1127,7 @@ class IterTransformer : public StmtExprMutator {
 
 class InvalidIndicesPostProcess : public StmtExprMutator {
  public:
-  explicit InvalidIndicesPostProcess() {}
+  InvalidIndicesPostProcess() {}
 
  private:
   Stmt VisitStmt_(const BlockNode* op) final {
