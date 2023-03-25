@@ -849,7 +849,7 @@ class IterTransformer : public StmtExprMutator {
    * \param ub The upper bound (open) of the search range [lb, ub)
    * \param val The value to be searched.
    * \param minus_one Whether to minus one to the final result (when used together with
-   *   `kUpper`, you will get the rightmost index of the suitable location to maintain
+   *   `left=false`, you will get the rightmost index of the suitable location to maintain
    *   ascending order).
    */
   PrimExpr BinarySearch(SparseBuffer buf, Array<PrimExpr> prefix_indices, PrimExpr lb, PrimExpr ub,
@@ -1130,6 +1130,11 @@ class InvalidIndicesPostProcess : public StmtExprMutator {
   InvalidIndicesPostProcess() {}
 
  private:
+  /*! \brief Visitor of block node.
+  *  \note For block with attr "binary_search_vaild_check",just skip it.
+           For binary search block,collect mid buffer it writes.
+           For other block do indices post process.
+  */
   Stmt VisitStmt_(const BlockNode* op) final {
     auto it = op->annotations.find("binary_search_vaild_check");
     if (it != op->annotations.end() && (Downcast<Bool>((*it).second)->value)) {
@@ -1146,6 +1151,9 @@ class InvalidIndicesPostProcess : public StmtExprMutator {
     return ret;
   }
 
+  /*! \brief Visitor of buffer store node.
+   *  \note Get default value expr for bufferload with invalid indices
+   */
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     if (binary_search_buffer.count(op->buffer.get()) &&
         buffer_processed.count(op->buffer.get()) == 0) {
@@ -1165,19 +1173,24 @@ class InvalidIndicesPostProcess : public StmtExprMutator {
     return StmtExprMutator::VisitExpr_(op);
   }
 
+  /*! \brief Visitor of buffer store node.
+   *  \note Construct IfThenElse stmt for invalid indices bufferload
+   */
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     size_t original_size = buffer_need_process.size();
     PrimExpr value = VisitExpr(op->value);
-    if (original_size < buffer_need_process.size()) {
-      if (original_size + 1 != buffer_need_process.size()) {
-        auto bufferload = buffer_need_process[original_size + 1];
-        for (size_t i = original_size + 2; i < buffer_need_process.size(); i++) {
+    size_t new_buffer_num = buffer_need_process.size() - original_size;
+    if (new_buffer_num) {
+      if (new_buffer_num > 1) {
+        auto bufferload = buffer_need_process[original_size];
+        for (size_t i = original_size + 1; i < buffer_need_process.size(); i++) {
           ICHECK(buffer_need_process[i].same_as(bufferload))
               << "current only allow same mid buffer load expr in one buffer store stmt";
         }
       }
       auto buffer_found = buffer_need_process.back();
-      buffer_need_process.erase(buffer_need_process.end() - 1);
+      buffer_need_process.erase(buffer_need_process.end() - new_buffer_num,
+                                buffer_need_process.end());
       buffer_processed.insert(buffer_found->buffer.get());
       PrimExpr if_stmt = (-1 != buffer_found);
       auto new_stmt =
