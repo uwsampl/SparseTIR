@@ -241,7 +241,8 @@ PrimExpr SparseBufferNode::GetNNZ() const { return flattened->shape[0]; }
 
 /*! \brief Default constructor of SparseBuffer */
 SparseBuffer::SparseBuffer(Var data, Array<Axis> axes, DataType dtype, String name,
-                           Optional<PrimExpr> extra_storage, Span span) {
+                           Optional<PrimExpr> extra_storage, Optional<PrimExpr> default_value,
+                           Span span) {
   ObjectPtr<SparseBufferNode> node = make_object<SparseBufferNode>();
   CHECK_GT(static_cast<int>(axes.size()), 0)
       << "ValueError: A SparseBuffer should have at least one dimension";
@@ -275,6 +276,13 @@ SparseBuffer::SparseBuffer(Var data, Array<Axis> axes, DataType dtype, String na
   node->extra_storage = extra_storage;
   node->name = name;
   node->dtype = dtype;
+  if (!default_value) {
+    node->default_value = Cast(dtype, Integer(0));
+  } else {
+    ICHECK(default_value.value()->dtype == dtype)
+        << "sparse buffer default value should match buffer data type";
+    node->default_value = default_value;
+  }
   // collect shape
   Array<PrimExpr> shape;
   for (const Axis& axis : axes) {
@@ -307,9 +315,10 @@ TVM_REGISTER_NODE_TYPE(SparseBufferNode);
 
 TVM_REGISTER_GLOBAL("tir.sparse.SparseBuffer")
     .set_body_typed([](Var data, Array<Axis> axes, DataType dtype, String name,
-                       Optional<PrimExpr> extra_storage, Span span) {
+                       Optional<PrimExpr> extra_storage, Optional<PrimExpr> default_value,
+                       Span span) {
       return SparseBuffer(std::move(data), std::move(axes), std::move(dtype), std::move(name),
-                          std::move(extra_storage), std::move(span));
+                          std::move(extra_storage), std::move(default_value), std::move(span));
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
@@ -326,6 +335,9 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << "]";
       if (op->extra_storage.defined()) {
         p->stream << ", " << op->extra_storage.value();
+      }
+      if (op->default_value.defined()) {
+        p->stream << ", " << op->default_value.value();
       }
       p->stream << ")";
     });

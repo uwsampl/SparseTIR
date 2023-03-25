@@ -806,15 +806,20 @@ def RenormalizeSplitPattern():
     return _ffi_api.RenormalizeSplitPattern()  # type: ignore
 
 
-def LowerSparseIter():
+def LowerSparseIter(check_invalid_binary_search: bool = False):
     """Lower iterations in Sparse TIR
+
+    Parameters
+    ----------
+    check_invalid_binary_search : bool
+        Whether check invalid indices made by binary search.
 
     Returns
     -------
     fpass : tvm.transform.Pass
         The result pass
     """
-    return _ffi_api.LowerSparseIter()  # type: ignore
+    return _ffi_api.LowerSparseIter(check_invalid_binary_search)  # type: ignore
 
 
 def LowerSparseBuffer():

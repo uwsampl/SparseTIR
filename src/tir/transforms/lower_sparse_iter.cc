@@ -325,30 +325,17 @@ class LowerSparseIterContext {
 };
 
 /*!
- * \brief The binary search type.
- */
-typedef enum {
-  /*! \brief `lower_bound` search. */
-  kLower = 0U,
-  /*!
-   * \brief finds the element equals given value, and creates a `success` buffer to
-   *  store successful state.
-   */
-  kEqual = 1U,
-  /*! \brief `upper_bound` search. */
-  kUpper = 2U,
-} BinarySearchType;
-
-/*!
  * \brief Lower sparse iterations by rewriting AST.
  */
 class IterTransformer : public StmtExprMutator {
  public:
   explicit IterTransformer(Map<Axis, SparseBuffer> axis_indptr_map,
-                           Map<Axis, SparseBuffer> axis_indices_map, const Array<Axis>& sp_axes)
+                           Map<Axis, SparseBuffer> axis_indices_map, const Array<Axis>& sp_axes,
+                           bool check_invalid_binary_search)
       : axis_indptr_map_(std::move(axis_indptr_map)),
         axis_indices_map_(std::move(axis_indices_map)),
-        bsearch_blk_counter(0) {
+        bsearch_blk_counter(0),
+        check_invalid_binary_search_(check_invalid_binary_search) {
     CreateBaseDomMap(sp_axes);
   }
 
@@ -503,6 +490,14 @@ class IterTransformer : public StmtExprMutator {
         return false;
       }
     };
+    bool back_up_check_region = binary_search_vaild_check_region;
+    if (check_invalid_binary_search_) {
+      auto valid_check_flag =
+          sp_iteration->annotations.Get("binary_search_vaild_check").value_or(Bool(true));
+      if (Downcast<Bool>(valid_check_flag) == false) {
+        binary_search_vaild_check_region = false;
+      }
+    }
 
     int n_iters = static_cast<int>(sp_iteration->sp_iter_vars.size());
     Array<Var> loop_vars;
@@ -633,6 +628,9 @@ class IterTransformer : public StmtExprMutator {
       // Create new block.
       Map<String, ObjectRef> annotations = sp_iteration->annotations;
       annotations.Set("sparse", Bool(true));
+      if (binary_search_vaild_check_region && check_invalid_binary_search_) {
+        annotations.Set("binary_search_vaild_check", Bool(true));
+      }
       Block block(/*iter_vars=*/info.block_iters,
                   /*reads=*/reads_new,
                   /*writes=*/writes_new,
@@ -673,6 +671,9 @@ class IterTransformer : public StmtExprMutator {
           Map<String, ObjectRef> annotations;
           annotations.Set("sparse", Bool(true));
           annotations.Set("preprocess", Bool(true));
+          if (check_invalid_binary_search_) {
+            annotations.Set("is_binary_search_block", Bool(true));
+          }
           Array<BufferRegion> reads, writes;
           if (i == static_cast<int>(bsearch_block_info.size()) - 1) {
             // innermost
@@ -713,6 +714,8 @@ class IterTransformer : public StmtExprMutator {
       }
     }
 
+    // restore binary search vaild check region
+    binary_search_vaild_check_region = back_up_check_region;
     // Exit the context.
     ctx_.ExitScope();
 
@@ -776,8 +779,7 @@ class IterTransformer : public StmtExprMutator {
             }
             offset =
                 BinarySearch(indptr_buf, prefix_indices, Integer(0),
-                             GetParentAxis(original_axis)->nnz + Integer(1), offset, kUpper, true)
-                    .first;
+                             GetParentAxis(original_axis)->nnz + Integer(1), offset, false, true);
           }
           Axis original_axis = GetAxisBeforeFuse(fused_axis->group[fused_axis->index]);
           if (!original_axis->IsSparse()) {
@@ -846,33 +848,21 @@ class IterTransformer : public StmtExprMutator {
    * \param lb The lower bound (close) of the search range [lb, ub)
    * \param ub The upper bound (open) of the search range [lb, ub)
    * \param val The value to be searched.
-   * \param search_type The binary search type: kLower, kEqual or kUpper,
-   *   If kLower, returns the leftmost index of the locations whose value is greater or
-   *   equal to `val`.
-   *   If kEqual, returns the leftmost index of the locations whose value is greater or
-   *   equal to `val`, and creates a `success` buffer stores success state of the search (
-   *   whether there exists elements equals the given value.)
-   *   If kUpper, returns the leftmost index of the locations whose value is greater
-   *   than `val`.
-   *   If no such index exists, returns `ub`.
    * \param minus_one Whether to minus one to the final result (when used together with
-   *   `kUpper`, you will get the rightmost index of the suitable location to maintain
+   *   `left=false`, you will get the rightmost index of the suitable location to maintain
    *   ascending order).
    */
-  std::pair<PrimExpr, Optional<PrimExpr>> BinarySearch(SparseBuffer buf,
-                                                       Array<PrimExpr> prefix_indices, PrimExpr lb,
-                                                       PrimExpr ub, PrimExpr val,
-                                                       BinarySearchType search_type,
-                                                       bool minus_one = false) {
+  PrimExpr BinarySearch(SparseBuffer buf, Array<PrimExpr> prefix_indices, PrimExpr lb, PrimExpr ub,
+                        PrimExpr val, bool left, bool minus_one = false) {
     /* Algorithm:
-     * - lower_bound (search_type == kLower || search_type == kEqual)
+     * - when left = true
      *   - pre-condition
      *     lb < ub, and the last dimension of buf is sorted.
      *   - loop-invariant
      *     low <= mid < high, buf[..., lb:low] < val, buf[..., high:ub] >= val
      *   - post-condition
      *     low = mid = high,  buf[..., lb:low] < val, buf[..., high:ub] >= val
-     * - upper_bound (search_type == kUpper)
+     * - when left = false
      *   - pre-condition
      *     lb < ub, and the last dimension of buf is sorted.
      *   - loop-invariant
@@ -891,7 +881,7 @@ class IterTransformer : public StmtExprMutator {
     args.push_back(lb);
     args.push_back(ub);
     args.push_back(val);
-    args.push_back(Integer(static_cast<int>(search_type)));
+    args.push_back(Bool(left));
     args.push_back(Bool(minus_one));
     if (bsearch_map_.count(args)) {
       return bsearch_map_[args];
@@ -945,13 +935,6 @@ class IterTransformer : public StmtExprMutator {
     String mid_buf_name = "mid_" + std::to_string(bsearch_blk_counter);
     SparseBuffer mid = SparseBuffer(Var(mid_buf_name, PointerType(PrimType(dtype), "global")), axes,
                                     dtype, mid_buf_name, Integer(0));
-    String success_buf_name = "success_" + std::to_string(bsearch_blk_counter);
-    Optional<SparseBuffer> success;
-    if (search_type == kEqual) {
-      success = SparseBuffer(
-          Var(success_buf_name, PointerType(PrimType(DataType{kDLInt, 8, 1}), "global")), axes,
-          DataType{kDLInt, 8, 1}, success_buf_name, Integer(0));
-    }
 
     Stmt low_store = BufferStore(low, lb, {Integer(0)});
     Stmt high_store = BufferStore(high, ub, {Integer(0)});
@@ -964,7 +947,6 @@ class IterTransformer : public StmtExprMutator {
     Array<PrimExpr> indices = prefix_indices;
     indices.push_back(mid_val);
     PrimExpr pivot = BufferLoad(buf, indices);
-    bool left = search_type == kLower || search_type == kEqual;
     PrimExpr pivot_cmp_cond = left ? (pivot < val) : (pivot > val);
     Stmt if_true = left ? BufferStore(low, mid_val + 1, {Integer(0)})
                         : BufferStore(high, mid_val, {Integer(0)});
@@ -978,10 +960,10 @@ class IterTransformer : public StmtExprMutator {
       body_stmts.push_back(
           BufferStore(mid, BufferLoad(mid, mid_indices) - Integer(1), mid_indices));
     }
-    if (search_type == kEqual) {
-      body_stmts.push_back(
-          BufferStore(success.value(),
-                      Select(mid_val != ub && pivot == val, Integer(1), Integer(0)), mid_indices));
+    if (!binary_search_vaild_check_region && check_invalid_binary_search_) {
+      Stmt then_stmt = BufferStore(mid, -1, mid_indices);
+      PrimExpr if_stmt = (pivot != val || mid_val == ub);
+      body_stmts.push_back(IfThenElse(if_stmt, then_stmt));
     }
     SeqStmt body(body_stmts);
 
@@ -1002,11 +984,8 @@ class IterTransformer : public StmtExprMutator {
     BufferRegion write = BufferRegion(mid, write_regions);
     bsearch_structures.push_back(
         BinarySearchStructure({name, body, var_map, inv_var_map, {low, high}, read, write}));
-    std::pair<PrimExpr, Optional<PrimExpr>> ret_val = {
-        mid_val, search_type == kEqual ? BufferLoad(success.value(), mid_indices)
-                                       : Optional<PrimExpr>(NullOpt)};
-    bsearch_map_[args] = ret_val;
-    return ret_val;
+    bsearch_map_[args] = mid_val;
+    return mid_val;
   }
 
   /*! \brief Return indices viewed in a given buffer. */
@@ -1084,8 +1063,7 @@ class IterTransformer : public StmtExprMutator {
               extent = buf_axis->nnz_cols.value();
             }
             new_index =
-                BinarySearch(indices_buf, indices_path, Integer(0), extent, coordinate, kLower)
-                    .first;
+                BinarySearch(indices_buf, indices_path, Integer(0), extent, coordinate, true);
           } else {
             // it's dense axis.
             new_index = coordinate;
@@ -1140,13 +1118,98 @@ class IterTransformer : public StmtExprMutator {
   Map<Axis, SparseBuffer> axis_indptr_map_;   // axis to indptr buffer map.
   Map<Axis, SparseBuffer> axis_indices_map_;  // axis to indices buffer map.
   std::unordered_map<const VarNode*, arith::IntSet> base_dom_map_;  // The base dom map.
-  std::unordered_map<ObjectRef, std::pair<PrimExpr, Optional<PrimExpr>>, StructuralHash,
-                     StructuralEqual>
+  std::unordered_map<ObjectRef, PrimExpr, StructuralHash, StructuralEqual>
       bsearch_map_;         // The map storing existing binary search keys and values.
   int bsearch_blk_counter;  // Counter for generated binary search blocks.
+  bool binary_search_vaild_check_region = true;
+  bool check_invalid_binary_search_ = false;
 };
 
-PrimFunc LowerSparseIter(PrimFunc f) {
+class InvalidIndicesPostProcess : public StmtExprMutator {
+ public:
+  InvalidIndicesPostProcess() {}
+
+ private:
+  /*! \brief Visitor of block node.
+  *  \note For block with attr "binary_search_vaild_check",just skip it.
+           For binary search block,collect mid buffer it writes.
+           For other block do indices post process.
+  */
+  Stmt VisitStmt_(const BlockNode* op) final {
+    auto it = op->annotations.find("binary_search_vaild_check");
+    if (it != op->annotations.end() && (Downcast<Bool>((*it).second)->value)) {
+      return GetRef<Block>(op);
+    }
+    it = op->annotations.find("is_binary_search_block");
+    if (it != op->annotations.end() && Downcast<Bool>((*it).second)->value) {
+      for (auto i : op->writes) {
+        binary_search_buffer.insert(i->buffer.get());
+      }
+      return GetRef<Block>(op);
+    }
+    auto ret = StmtExprMutator::VisitStmt_(op);
+    return ret;
+  }
+
+  /*! \brief Visitor of buffer store node.
+   *  \note Get default value expr for bufferload with invalid indices
+   */
+  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
+    if (binary_search_buffer.count(op->buffer.get()) &&
+        buffer_processed.count(op->buffer.get()) == 0) {
+      buffer_need_process.push_back(GetRef<BufferLoad>(op));
+      find_mid_buffer++;
+    } else {
+      auto find_backup = find_mid_buffer;
+      for (auto i : op->indices) {
+        VisitExpr(i);
+      }
+      if (find_mid_buffer != find_backup) {
+        find_mid_buffer = find_backup;
+        auto sparse_buffer = Downcast<SparseBuffer>(op->buffer);
+        return sparse_buffer->default_value.value();
+      }
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
+  /*! \brief Visitor of buffer store node.
+   *  \note Construct IfThenElse stmt for invalid indices bufferload
+   */
+  Stmt VisitStmt_(const BufferStoreNode* op) final {
+    size_t original_size = buffer_need_process.size();
+    PrimExpr value = VisitExpr(op->value);
+    size_t new_buffer_num = buffer_need_process.size() - original_size;
+    if (new_buffer_num) {
+      if (new_buffer_num > 1) {
+        auto bufferload = buffer_need_process[original_size];
+        for (size_t i = original_size + 1; i < buffer_need_process.size(); i++) {
+          ICHECK(buffer_need_process[i].same_as(bufferload))
+              << "current only allow same mid buffer load expr in one buffer store stmt";
+        }
+      }
+      auto buffer_found = buffer_need_process.back();
+      buffer_need_process.erase(buffer_need_process.end() - new_buffer_num,
+                                buffer_need_process.end());
+      buffer_processed.insert(buffer_found->buffer.get());
+      PrimExpr if_stmt = (-1 != buffer_found);
+      auto new_stmt =
+          IfThenElse(if_stmt, StmtExprMutator::VisitStmt_(op),
+                     BufferStore(op->buffer, ana.Simplify(value), op->indices, op->span));
+      buffer_processed.erase(buffer_found->buffer.get());
+      return new_stmt;
+    } else {
+      return StmtExprMutator::VisitStmt_(op);
+    }
+  }
+  std::vector<BufferLoad> buffer_need_process;
+  std::set<const BufferNode*> buffer_processed;
+  std::set<const BufferNode*> binary_search_buffer;
+  arith::Analyzer ana;
+  int find_mid_buffer = 0;
+};
+
+PrimFunc LowerSparseIter(PrimFunc f, bool check_invalid_binary_search) {
   // Only apply this pass to TIR that is not from TE schedules
   if (!IsFromLegacyTESchedule(f) && SparseTIRLevel(f) == 2) {
     PrimFuncNode* fptr = f.CopyOnWrite();
@@ -1156,7 +1219,8 @@ PrimFunc LowerSparseIter(PrimFunc f) {
     std::tie(axis_indptr_map, axis_indices_map, fptr->buffer_map, fptr->sp_axes, buf_doms) =
         UpdateMetadata(f);
     // Step 2. Lower iterations.
-    IterTransformer lower_sparse(axis_indptr_map, axis_indices_map, fptr->sp_axes);
+    IterTransformer lower_sparse(axis_indptr_map, axis_indices_map, fptr->sp_axes,
+                                 check_invalid_binary_search);
     Stmt body = lower_sparse(std::move(fptr->body));
     // Step 3. Wrap with root block, insert bsearch blocks and allocated buffers.
     if (!lower_sparse.bsearch_structures.empty()) {
@@ -1175,6 +1239,10 @@ PrimFunc LowerSparseIter(PrimFunc f) {
     Map<String, ObjectRef> new_attr_dict = fptr->attrs->dict;
     new_attr_dict.Set("sparse_tir_level", Integer(1));
     fptr->attrs = DictAttrs(new_attr_dict);
+    // Step 5. postprocess bufferload with possible invalid indices
+    if (check_invalid_binary_search) {
+      fptr->body = InvalidIndicesPostProcess()(std::move(fptr->body));
+    }
     return f;
   } else {
     return f;
@@ -1186,9 +1254,9 @@ namespace transform {
 /*!
  * \brief The lowering pass from TIR to Sparse TIR.
  */
-Pass LowerSparseIter() {
+Pass LowerSparseIter(bool check_invalid_binary_search) {
   auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
-    return LowerSparseIter(std::move(f));
+    return LowerSparseIter(std::move(f), check_invalid_binary_search);
   };
   return CreatePrimFuncPass(pass_func, 0, "tir.LowerSparseIter", {});
 }

@@ -20,17 +20,19 @@ from tvm import IRModule
 from tvm.tir.transform import LowerSparseBuffer, LowerSparseIter
 
 
-def lower_sparse_iter(mod: IRModule):
+def lower_sparse_iter(mod: IRModule, check_invalid_binary_search: bool = False):
     """Lower sparse iterators in Sparse TIR.
 
     Parameters
     ----------
     mod : IRModule
         The IRModule to lower.
+    check_invalid_binary_search : bool
+        Whether check invalid indices made by binary search.
     """
     if not isinstance(mod, IRModule):
         raise TypeError("Expected IRModule, but got {}".format(type(mod)))
-    return LowerSparseIter()(mod)
+    return LowerSparseIter(check_invalid_binary_search)(mod)
 
 
 def lower_sparse_buffer(mod: IRModule):

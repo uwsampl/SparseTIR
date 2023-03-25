@@ -485,6 +485,11 @@ Doc TVMScriptPrinter::AllocBufferDeclaration(const Buffer& buf) {
     if (sp_buf->extra_storage.defined()) {
       doc << ", extra_storage=" << Print(sp_buf->extra_storage.value());
     }
+
+    // default value
+    if (sp_buf->default_value.defined()) {
+      doc << ", default_value=" << Print(sp_buf->default_value.value());
+    }
     // scope
     const auto* ptr_type = sp_buf->data->type_annotation.as<PointerTypeNode>();
     ICHECK(ptr_type) << "Buffer variable is not of pointer type";

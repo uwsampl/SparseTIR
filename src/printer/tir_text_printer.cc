@@ -606,6 +606,27 @@ Doc TIRTextPrinter::VisitStmt_(const PrefetchNode* op) {
   return doc;
 }
 
+Doc TIRTextPrinter::VisitStmt_(const SparseIterationNode* op) {
+  Doc doc;
+  doc << "sparse_iteration " << op->name << "(";
+  doc << Print(op->sp_iter_vars[0]->var);
+  for (int i = 1; i < static_cast<int>(op->sp_iter_vars.size()); ++i) {
+    doc << "," << Print(op->sp_iter_vars[i]->var);
+  }
+  doc << ")";
+  Doc body;
+  if (op->init.defined()) {
+    Doc init_block;
+    init_block << "with init()";
+    init_block << PrintBody(op->init.value());
+    body << init_block << Doc::NewLine();
+  }
+  // Print body
+  body << Print(op->body);
+  doc << " {" << Doc::Indent(2, Doc::NewLine() << body) << Doc::NewLine() << "}";
+  return doc;
+}
+
 Doc TIRTextPrinter::VisitStmt_(const BlockRealizeNode* op) {
   const auto* block_op = op->block.as<BlockNode>();
   // print block name and block vars

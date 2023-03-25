@@ -983,7 +983,6 @@ class PreflattenedBufferMap(SpecialStmt):
             buffer_type="default",
             span=None,
         ):
-
             param = None
             for key, value in self.context.func_buffer_map.items():
                 if value.same_as(postflattened):
@@ -1194,6 +1193,7 @@ class MatchSparseBuffer(SpecialStmt):
             axes: List[Axis],
             dtype: str = "float32",
             extra_storage: Optional[PrimExpr] = None,
+            default_value: Optional[PrimExpr] = None,
             span: Optional[Span] = None,
         ):
             if not isinstance(self.node, ast.Assign) or not len(self.node.lhs) == 1:
@@ -1214,7 +1214,7 @@ class MatchSparseBuffer(SpecialStmt):
                 storage_type = PrimType("int8") if storage_type.dtype == "bool" else storage_type
                 data = Var(buffer_name, PointerType(storage_type, "global"), span)
                 buffer = tvm.tir.sparse.SparseBuffer(
-                    data, axes, dtype, buffer_name, extra_storage, span
+                    data, axes, dtype, buffer_name, extra_storage, default_value, span
                 )
                 self.context.func_buffer_map[param] = buffer
                 self.context.update_symbol(buffer_name, buffer, self.node)
@@ -1235,6 +1235,7 @@ class AllocSparseBuffer(SpecialStmt):
             axes: List[Axis],
             dtype: str = "float32",
             scope: str = "global",
+            default_value: Optional[PrimExpr] = None,
             span: Optional[Span] = None,
         ):
             if not isinstance(self.node, ast.Assign) or not len(self.node.lhs) == 1:
@@ -1245,7 +1246,9 @@ class AllocSparseBuffer(SpecialStmt):
             buffer_name: str = self.node.lhs[0].id.name
 
             data = Var(buffer_name, PointerType(PrimType(dtype), scope), span)
-            buffer = tvm.tir.sparse.SparseBuffer(data, axes, dtype, buffer_name, 0, span)
+            buffer = tvm.tir.sparse.SparseBuffer(
+                data, axes, dtype, buffer_name, 0, default_value, span
+            )
             if self.context.current_block_scope():
                 self.context.current_block_scope().alloc_buffers.append(buffer)
             else:

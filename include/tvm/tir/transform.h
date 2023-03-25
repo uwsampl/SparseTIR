@@ -629,7 +629,7 @@ TVM_DLL Pass RenormalizeSplitPattern();
  * \brief Lower sparse iterations in Sparse TIR.
  * \return The pass.
  */
-TVM_DLL Pass LowerSparseIter();
+TVM_DLL Pass LowerSparseIter(bool check_invalid_binary_search = false);
 
 /*!
  * \brief Lower sparse buffers in Sparse TIR.

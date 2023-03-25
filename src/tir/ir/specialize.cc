@@ -252,7 +252,7 @@ class PrimFuncSpecializer : public StmtExprMutator {
         return buffer;
       } else {
         return SparseBuffer(sp_buf->data, std::move(axes), sp_buf->dtype, sp_buf->name,
-                            sp_buf->extra_storage, sp_buf->span);
+                            sp_buf->extra_storage, sp_buf->default_value, sp_buf->span);
       }
     } else {
       Array<PrimExpr> shape =
