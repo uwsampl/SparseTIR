@@ -19,7 +19,7 @@
 SparseTIR: Sparse Tensor Compiler for Deep Learning
 ==============================================
 [Documentation](https://sampl.cs.washington.edu/SparseTIR/) |
-[Paper]([https://arxiv.org/abs/2207.04606](https://dl.acm.org/doi/10.1145/3582016.3582047)
+[Paper](https://dl.acm.org/doi/10.1145/3582016.3582047)
 
 [![Build Status](https://github.com/uwsampl/sparsetir/actions/workflows/build.yml/badge.svg)](https://github.com/uwsampl/sparsetir/actions/workflows/build.yml)
 
